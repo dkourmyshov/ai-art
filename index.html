@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEMBRANE — ai.art</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+#lbl{
+  position:fixed;bottom:1.4rem;left:1.6rem;
+  font-size:10px;line-height:2.1;letter-spacing:.2em;
+  color:rgba(255,255,255,.13);text-transform:uppercase;
+  pointer-events:none;user-select:none
+}
+#mode{
+  position:fixed;top:1.3rem;right:1.6rem;
+  font-size:10px;letter-spacing:.4em;
+  color:rgba(255,255,255,.1);text-transform:uppercase;
+  pointer-events:none;user-select:none;
+  transition:opacity .8s
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="lbl">MEMBRANE<br>REACTION-DIFFUSION<br>AI.ART 2026</div>
+<div id="mode"></div>
+<script>
+/* ================================================================
+   MEMBRANE — Gray-Scott Reaction-Diffusion
+
+   dU/dt = Du·∇²U − U·V² + f·(1−U)
+   dV/dt = Dv·∇²V + U·V² − (f+k)·V
+
+   Two chemical species on a torus. Patterns emerge from
+   Alan Turing's 1952 morphogenesis equations.
+   ================================================================ */
+
+const C = document.getElementById('c');
+const modeEl = document.getElementById('mode');
+
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('Float textures unavailable');
+const linearOK = !!gl.getExtension('OES_texture_float_linear');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 uv;
+void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}`;
+
+const SIM = `
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 res,mouse;
+uniform float active,f,k;
+varying vec2 uv;
+void main(){
+  vec2 d=1./res;
+  vec4 c=texture2D(tex,uv);
+  float U=c.r,V=c.g,lU=-U,lV=-V;
+  vec4 n;
+  n=texture2D(tex,uv+vec2( 0., 1.)*d); lU+=.2 *n.r; lV+=.2 *n.g;
+  n=texture2D(tex,uv+vec2( 0.,-1.)*d); lU+=.2 *n.r; lV+=.2 *n.g;
+  n=texture2D(tex,uv+vec2( 1., 0.)*d); lU+=.2 *n.r; lV+=.2 *n.g;
+  n=texture2D(tex,uv+vec2(-1., 0.)*d); lU+=.2 *n.r; lV+=.2 *n.g;
+  n=texture2D(tex,uv+vec2( 1., 1.)*d); lU+=.05*n.r; lV+=.05*n.g;
+  n=texture2D(tex,uv+vec2( 1.,-1.)*d); lU+=.05*n.r; lV+=.05*n.g;
+  n=texture2D(tex,uv+vec2(-1., 1.)*d); lU+=.05*n.r; lV+=.05*n.g;
+  n=texture2D(tex,uv+vec2(-1.,-1.)*d); lU+=.05*n.r; lV+=.05*n.g;
+  float uvv=U*V*V;
+  float nU=clamp(U+.21 *lU-uvv+f*(1.-U),0.,1.);
+  float nV=clamp(V+.105*lV+uvv-(f+k)*V, 0.,1.);
+  if(active>.5){
+    vec2 m=mouse/res; m.y=1.-m.y;
+    float s=1.-smoothstep(0.,.028,length(uv-m));
+    nU=mix(nU,.5,s); nV=mix(nV,.9,s);
+  }
+  gl_FragColor=vec4(nU,nV,0.,1.);
+}`;
+
+const RENDER = `
+precision highp float;
+uniform sampler2D tex;
+uniform float time;
+varying vec2 uv;
+vec3 pal(float t){return .5+.5*cos(6.28318*(vec3(0.,.33,.67)+t));}
+void main(){
+  float v=texture2D(tex,uv).g;
+  float p=pow(v,.55);
+  vec3 col=pal(p*.9+time*.014)*p*1.9;
+  col+=pow(v,7.)*2.5*vec3(.9,.97,1.);
+  gl_FragColor=vec4(col,1.);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(type === gl.VERTEX_SHADER ? 'VS:' : 'FS:', gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    console.error('Link:', gl.getProgramInfoLog(p));
+  return p;
+}
+
+const SP = mkProg(VS, SIM);
+const RP = mkProg(VS, RENDER);
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindP(prog) {
+  const a = gl.getAttribLocation(prog, 'p');
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(a);
+  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+}
+const u = (prog, name) => gl.getUniformLocation(prog, name);
+
+/* ── Ping-pong buffers ───────────────────────────────── */
+let W, H, tx = [], fb = [], ping = 0;
+
+function initSim() {
+  W = C.width; H = C.height;
+  const MX = 640;
+  if (W > MX || H > MX) { const s = MX / Math.max(W, H); W = W * s | 0; H = H * s | 0; }
+
+  tx.forEach(t => gl.deleteTexture(t));
+  fb.forEach(f => gl.deleteFramebuffer(f));
+  tx = []; fb = [];
+
+  /* Initial condition: U=1 everywhere, random circular V seeds */
+  const dat = new Float32Array(W * H * 4);
+  for (let i = 0; i < W * H; i++) { dat[i*4] = 1; dat[i*4+3] = 1; }
+  const ns = 40 + (W * H * .0005 | 0);
+  for (let s = 0; s < ns; s++) {
+    const cx = Math.random() * W | 0, cy = Math.random() * H | 0;
+    const r = 2 + (Math.random() * 6 | 0);
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      const i = ((cy+dy+H)%H) * W + (cx+dx+W)%W;
+      dat[i*4] = .5; dat[i*4+1] = .9;
+    }
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, i ? null : dat);
+    tx.push(t);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    fb.push(f);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  ping = 0;
+}
+
+/* ── Pattern modes ──────────────────────────────────── */
+const MODES = [
+  { name: 'mitosis',  f: .0545, k: .062  },
+  { name: 'coral',    f: .0545, k: .0595 },
+  { name: 'spirals',  f: .034,  k: .063  },
+  { name: 'maze',     f: .030,  k: .057  },
+  { name: 'spots',    f: .039,  k: .058  },
+  { name: 'stripes',  f: .046,  k: .066  },
+];
+let mi = 0, mt = 0, cF = MODES[0].f, cK = MODES[0].k;
+modeEl.textContent = MODES[0].name;
+
+/* ── Input ───────────────────────────────────────────── */
+const M = { x: 0, y: 0, on: false };
+function setM(cx, cy) {
+  const b = C.getBoundingClientRect();
+  M.x = (cx - b.left) / b.width  * W;
+  M.y = (cy - b.top)  / b.height * H;
+}
+C.addEventListener('mousemove',  e => { setM(e.clientX, e.clientY); M.on = true; });
+C.addEventListener('mouseleave', () => M.on = false);
+C.addEventListener('touchmove',  e => { e.preventDefault(); setM(e.touches[0].clientX, e.touches[0].clientY); M.on = true; }, { passive: false });
+C.addEventListener('touchend',   () => M.on = false);
+
+/* ── Resize ────────────────────────────────────────── */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  C.width  = window.innerWidth  * dpr | 0;
+  C.height = window.innerHeight * dpr | 0;
+  C.style.width  = window.innerWidth  + 'px';
+  C.style.height = window.innerHeight + 'px';
+  initSim();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── Main loop ──────────────────────────────────────── */
+const t0 = performance.now();
+(function loop() {
+  requestAnimationFrame(loop);
+  const t = (performance.now() - t0) / 1000;
+
+  /* Advance pattern mode every ~30 s at 60 fps */
+  if (++mt > 1800) {
+    mt = 0;
+    mi = (mi + 1) % MODES.length;
+    modeEl.textContent = MODES[mi].name;
+  }
+  cF += (MODES[mi].f - cF) * .003;
+  cK += (MODES[mi].k - cK) * .003;
+
+  /* Simulation: 5 steps per frame */
+  gl.useProgram(SP); bindP(SP);
+  gl.viewport(0, 0, W, H);
+  gl.uniform2f(u(SP,'res'),    W, H);
+  gl.uniform2f(u(SP,'mouse'),  M.x, M.y);
+  gl.uniform1f(u(SP,'active'), M.on ? 1 : 0);
+  gl.uniform1f(u(SP,'f'),      cF);
+  gl.uniform1f(u(SP,'k'),      cK);
+  gl.uniform1i(u(SP,'tex'),    0);
+  for (let i = 0; i < 5; i++) {
+    const pong = 1 - ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb[pong]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    ping = pong;
+  }
+
+  /* Render to screen with optional linear upscaling */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(RP); bindP(RP);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+  if (linearOK) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.uniform1i(u(RP,'tex'),  0);
+  gl.uniform1f(u(RP,'time'), t);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  if (linearOK) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+})();
+</script>
+</body>
+</html>

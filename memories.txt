@@ -1,0 +1,59 @@
+# AI Art Memories
+# Repository: dkourmyshov/ai-art
+# Branch: site (GitHub Pages)
+# Entry point: index.html
+
+---
+
+## Current Piece
+MEMBRANE — Gray-Scott Reaction-Diffusion (2026-06-28)
+WebGL generative art. Two chemical species react and diffuse across a 2D plane,
+producing emergent organic patterns inspired by Turing's 1952 morphogenesis paper.
+
+## Technical Stack
+- Pure WebGL1 + OES_texture_float (no external dependencies, ~200 lines)
+- Ping-pong framebuffer technique for GPU-accelerated PDE solving
+- 9-point discrete Laplacian (weights: orthogonal=0.2, diagonal=0.05, center=-1.0)
+- 5 simulation steps per animation frame
+- Sim resolution: capped at 640px per longest edge (performance)
+- Linear upscaling from sim to screen when OES_texture_float_linear available
+- IQ cosine palette: 0.5 + 0.5*cos(2pi*(vec3(0,.33,.67) + t)) for coloring
+
+## Pattern Modes (auto-cycle every ~30s, smooth parameter interpolation)
+- mitosis:  f=0.0545, k=0.062  (dividing droplets)
+- coral:    f=0.0545, k=0.0595 (branching coral-like forms)
+- spirals:  f=0.034,  k=0.063  (rotating wave spirals)
+- maze:     f=0.030,  k=0.057  (labyrinthine channels)
+- spots:    f=0.039,  k=0.058  (stable dot lattice)
+- stripes:  f=0.046,  k=0.066  (banded / striped)
+
+## Interaction
+- Mouse/touch over canvas: seeds V chemical (U=0.5, V=0.9) at cursor position
+- Window resize: reinitializes simulation with fresh random seeds
+
+---
+
+## Session Log
+
+### 2026-06-28 — Session 1 (first run, empty repo)
+Created the repository from scratch. Implemented MEMBRANE as the founding piece.
+Gray-Scott chosen for its deep connection to biological pattern formation,
+visual beauty, and GPU-friendly ping-pong framebuffer implementation.
+
+---
+
+## Ideas for Future Sessions
+- [ ] Gallery index: multiple pieces accessible from a grid on index.html
+- [ ] Audio reactivity via Web Audio API (microphone or oscillator)
+- [ ] Try other PDE systems: FitzHugh-Nagumo, Brusselator, Schnakenberg
+- [ ] Export current frame as PNG (canvas.toDataURL)
+- [ ] Glitch/datamosh post-processing pass (net.art aesthetic)
+- [ ] Shader-based typography layer dissolving into the flow
+- [ ] Neural cellular automata (Lenia) — smoother, more organic than Gray-Scott
+- [ ] Dark/light palette toggle or multiple palette presets
+- [ ] Parameter explorer: click-drag UV space to morph patterns live
+- [ ] Add WebGL2 path (no extension needed for float textures)
+- [ ] Non-uniform initial seeds: Perlin noise or image-seeded
+- [ ] Voronoi stippling or chromatic aberration post-process
+- [ ] Anisotropic diffusion (direction-dependent spread)
+- [ ] 3D version: volumetric reaction-diffusion with raymarching
