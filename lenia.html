@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LENIA — ai.art</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+#lbl{
+  position:fixed;bottom:1.4rem;left:1.6rem;
+  font-size:10px;line-height:2.1;letter-spacing:.2em;
+  color:rgba(255,255,255,.13);text-transform:uppercase;
+  pointer-events:none;user-select:none
+}
+#mode{
+  position:fixed;top:1.3rem;right:1.6rem;
+  font-size:10px;letter-spacing:.4em;
+  color:rgba(255,255,255,.1);text-transform:uppercase;
+  pointer-events:none;user-select:none;
+  transition:opacity .8s
+}
+#back{
+  position:fixed;top:1.3rem;left:1.6rem;
+  font-size:10px;letter-spacing:.25em;
+  color:rgba(255,255,255,.15);text-transform:uppercase;
+  text-decoration:none
+}
+#back:hover{color:rgba(255,255,255,.5)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<a href="index.html" id="back">← AI.ART</a>
+<div id="lbl">LENIA<br>CONTINUOUS LIFE<br>AI.ART 2026</div>
+<div id="mode"></div>
+<script>
+/* ================================================================
+   LENIA — Continuous Cellular Automata
+   After Bert Chan (2018)
+
+   dx/dt = G(K * x)
+
+   K: annular Gaussian kernel (ring shape)
+   G: bell-curve growth function centered at mu with width sigma
+
+   Organisms emerge from a field of continuous states [0,1],
+   evolving according to local neighborhood averages.
+   ================================================================ */
+
+const C = document.getElementById('c');
+const modeEl = document.getElementById('mode');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('Float textures unavailable');
+gl.getExtension('OES_texture_float_linear');
+const linearOK = !!gl.getExtension('OES_texture_float_linear');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 uv;
+void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}`;
+
+/* Simulation: one Lenia step.
+   Kernel radius 5px, peak at r=2.5 (normalized 0.5).
+   Growth function: 2*exp(-((n-mu)^2)/(2*sigma^2)) - 1  => [-1,1]  */
+const SIM = `
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 res;
+uniform float mu, sigma, dt;
+uniform vec2 mouse;
+uniform float active;
+varying vec2 uv;
+
+void main(){
+  vec2 d = 1.0 / res;
+  float n = 0.0, ws = 0.0;
+
+  /* 11x11 neighbourhood, annular Gaussian kernel */
+  for (int dy = -5; dy <= 5; dy++) {
+    for (int dx = -5; dx <= 5; dx++) {
+      float r = length(vec2(float(dx), float(dy)));
+      if (r > 5.5) continue;
+      /* bell centered at normalized radius 0.5 */
+      float q = (r / 5.0 - 0.5) * 4.0;
+      float w = exp(-q * q * 2.0);
+      n += w * texture2D(tex, uv + vec2(float(dx), float(dy)) * d).r;
+      ws += w;
+    }
+  }
+  if (ws > 0.0) n /= ws;
+
+  /* Growth: maps neighbourhood average -> delta in [-1,1] */
+  float g = 2.0 * exp(-((n - mu) * (n - mu)) / (2.0 * sigma * sigma)) - 1.0;
+
+  float a = clamp(texture2D(tex, uv).r + dt * g, 0.0, 1.0);
+
+  /* Mouse seeds living material */
+  if (active > 0.5) {
+    vec2 m = mouse / res;
+    m.y = 1.0 - m.y;
+    float s = 1.0 - smoothstep(0.0, 0.038, length(uv - m));
+    a = mix(a, 0.75, s);
+  }
+
+  gl_FragColor = vec4(a, 0.0, 0.0, 1.0);
+}`;
+
+/* Render: bioluminescent palette + iridescent shimmer + vignette */
+const RENDER = `
+precision highp float;
+uniform sampler2D tex;
+uniform float time;
+varying vec2 uv;
+
+vec3 leniaPal(float v) {
+  /* void -> indigo -> cyan -> jade -> white */
+  vec3 a = vec3(0.000, 0.000, 0.000);
+  vec3 b = vec3(0.010, 0.018, 0.200);
+  vec3 c = vec3(0.000, 0.550, 0.760);
+  vec3 d = vec3(0.140, 0.900, 0.560);
+  vec3 e = vec3(0.940, 1.000, 0.940);
+  if (v < 0.12) return mix(a, b, v / 0.12);
+  if (v < 0.38) return mix(b, c, (v - 0.12) / 0.26);
+  if (v < 0.67) return mix(c, d, (v - 0.38) / 0.29);
+  return mix(d, e, (v - 0.67) / 0.33);
+}
+
+void main(){
+  float v = texture2D(tex, uv).r;
+  vec3 col = leniaPal(v);
+
+  /* Slow iridescent hue drift on living regions */
+  float drift = sin(time * 0.35) * 0.5 + 0.5;
+  col = mix(col, col.gbr, drift * v * 0.18);
+
+  /* Subtle grid shimmer — reveals internal field structure */
+  float sh = sin(uv.x * 180.0 + time * 0.6) * sin(uv.y * 180.0 + time * 0.45);
+  col += vec3(0.0, 0.06, 0.10) * sh * v * v;
+
+  /* Radial vignette */
+  float vign = 1.0 - 0.45 * pow(length(uv - 0.5) * 1.75, 2.0);
+  col *= vign;
+
+  /* Bloom on peaks */
+  float bloom = pow(max(v - 0.78, 0.0) * 4.8, 2.0);
+  col += vec3(0.05, 0.55, 0.35) * bloom * 0.6;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const SP = mkProg(VS, SIM);
+const RP = mkProg(VS, RENDER);
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindP(prog) {
+  const a = gl.getAttribLocation(prog, 'p');
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(a);
+  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+}
+const u = (prog, name) => gl.getUniformLocation(prog, name);
+
+/* ── Ping-pong buffers ───────────────────────────────── */
+let W, H, tx = [], fb = [], ping = 0;
+
+function makeBlobs() {
+  const dat = new Float32Array(W * H * 4);
+  const ns = 28 + (W * H * 0.00035 | 0);
+  for (let s = 0; s < ns; s++) {
+    const cx = Math.random() * W | 0;
+    const cy = Math.random() * H | 0;
+    const r  = 5 + (Math.random() * 14 | 0);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy > r*r) continue;
+        const ix = ((cx + dx) % W + W) % W;
+        const iy = ((cy + dy) % H + H) % H;
+        dat[(iy * W + ix) * 4] = 0.28 + Math.random() * 0.52;
+      }
+    }
+  }
+  return dat;
+}
+
+function initSim() {
+  W = C.width; H = C.height;
+  const MX = 512;
+  if (W > MX || H > MX) { const s = MX / Math.max(W, H); W = W * s | 0; H = H * s | 0; }
+
+  tx.forEach(t => gl.deleteTexture(t));
+  fb.forEach(f => gl.deleteFramebuffer(f));
+  tx = []; fb = [];
+
+  const dat = makeBlobs();
+  for (let i = 0; i < 2; i++) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, i ? null : dat);
+    tx.push(t);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    fb.push(f);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  ping = 0;
+}
+
+function reseed() {
+  const dat = makeBlobs();
+  gl.bindTexture(gl.TEXTURE_2D, tx[0]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, dat);
+  gl.bindTexture(gl.TEXTURE_2D, tx[1]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, null);
+  ping = 0;
+}
+
+/* ── Organism parameter modes ───────────────────────── */
+/* mu: growth center, sigma: growth width, dt: step size
+   Each set favors a different emergent morphology.         */
+const MODES = [
+  { name: 'bloom',   mu: 0.200, sigma: 0.040, dt: 0.100 },
+  { name: 'weave',   mu: 0.150, sigma: 0.022, dt: 0.090 },
+  { name: 'fronds',  mu: 0.265, sigma: 0.044, dt: 0.100 },
+  { name: 'crystal', mu: 0.305, sigma: 0.056, dt: 0.110 },
+  { name: 'pulse',   mu: 0.183, sigma: 0.033, dt: 0.090 },
+];
+let mi = 0, mt = 0;
+let cMu = MODES[0].mu, cSigma = MODES[0].sigma, cDt = MODES[0].dt;
+modeEl.textContent = MODES[0].name;
+
+/* ── Input ───────────────────────────────────────────── */
+const M = { x: 0, y: 0, on: false };
+function setM(cx, cy) {
+  const b = C.getBoundingClientRect();
+  M.x = (cx - b.left) / b.width  * W;
+  M.y = (cy - b.top)  / b.height * H;
+}
+C.addEventListener('mousemove',  e => { setM(e.clientX, e.clientY); M.on = true; });
+C.addEventListener('mouseleave', () => M.on = false);
+C.addEventListener('touchmove',  e => { e.preventDefault(); setM(e.touches[0].clientX, e.touches[0].clientY); M.on = true; }, { passive: false });
+C.addEventListener('touchend',   () => M.on = false);
+
+/* ── Resize ─────────────────────────────────────────── */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  C.width  = window.innerWidth  * dpr | 0;
+  C.height = window.innerHeight * dpr | 0;
+  C.style.width  = window.innerWidth  + 'px';
+  C.style.height = window.innerHeight + 'px';
+  initSim();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── Main loop ──────────────────────────────────────── */
+const t0 = performance.now();
+(function loop() {
+  requestAnimationFrame(loop);
+  const t = (performance.now() - t0) / 1000;
+
+  /* Advance organism mode every ~40s; reseed for each new mode */
+  if (++mt > 2400) {
+    mt = 0;
+    mi = (mi + 1) % MODES.length;
+    modeEl.textContent = MODES[mi].name;
+    reseed();
+  }
+  /* Interpolate parameters smoothly within a mode */
+  cMu    += (MODES[mi].mu    - cMu)    * 0.004;
+  cSigma += (MODES[mi].sigma - cSigma) * 0.004;
+  cDt    += (MODES[mi].dt    - cDt)    * 0.004;
+
+  /* Simulation: 2 steps per frame */
+  gl.useProgram(SP); bindP(SP);
+  gl.viewport(0, 0, W, H);
+  gl.uniform2f(u(SP,'res'),    W, H);
+  gl.uniform2f(u(SP,'mouse'),  M.x, M.y);
+  gl.uniform1f(u(SP,'active'), M.on ? 1 : 0);
+  gl.uniform1f(u(SP,'mu'),     cMu);
+  gl.uniform1f(u(SP,'sigma'),  cSigma);
+  gl.uniform1f(u(SP,'dt'),     cDt);
+  gl.uniform1i(u(SP,'tex'),    0);
+
+  for (let i = 0; i < 2; i++) {
+    const pong = 1 - ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb[pong]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    ping = pong;
+  }
+
+  /* Render to screen */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(RP); bindP(RP);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+  if (linearOK) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.uniform1i(u(RP,'tex'),  0);
+  gl.uniform1f(u(RP,'time'), t);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  if (linearOK) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+})();
+</script>
+</body>
+</html>

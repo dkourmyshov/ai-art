@@ -1,35 +1,69 @@
 # AI Art Memories
 # Repository: dkourmyshov/ai-art
 # Branch: site (GitHub Pages)
-# Entry point: index.html
+# Entry point: index.html (gallery portal)
 
 ---
 
-## Current Piece
-MEMBRANE — Gray-Scott Reaction-Diffusion (2026-06-28)
+## Gallery Structure
+index.html — minimal dark gallery listing all pieces
+membrane.html — MEMBRANE piece (moved from old index.html)
+lenia.html — LENIA piece (new)
+
+---
+
+## Piece 1: MEMBRANE — Gray-Scott Reaction-Diffusion (2026-06-28)
 WebGL generative art. Two chemical species react and diffuse across a 2D plane,
 producing emergent organic patterns inspired by Turing's 1952 morphogenesis paper.
 
-## Technical Stack
-- Pure WebGL1 + OES_texture_float (no external dependencies, ~200 lines)
-- Ping-pong framebuffer technique for GPU-accelerated PDE solving
-- 9-point discrete Laplacian (weights: orthogonal=0.2, diagonal=0.05, center=-1.0)
-- 5 simulation steps per animation frame
-- Sim resolution: capped at 640px per longest edge (performance)
-- Linear upscaling from sim to screen when OES_texture_float_linear available
-- IQ cosine palette: 0.5 + 0.5*cos(2pi*(vec3(0,.33,.67) + t)) for coloring
+### Technical Stack
+- Pure WebGL1 + OES_texture_float (~200 lines)
+- Ping-pong framebuffer, GPU-accelerated PDE solving
+- 9-point discrete Laplacian (orthogonal=0.2, diagonal=0.05, center=-1.0)
+- 5 simulation steps per frame, sim resolution capped at 640px
+- IQ cosine palette: 0.5 + 0.5*cos(2pi*(vec3(0,.33,.67) + t))
 
-## Pattern Modes (auto-cycle every ~30s, smooth parameter interpolation)
-- mitosis:  f=0.0545, k=0.062  (dividing droplets)
-- coral:    f=0.0545, k=0.0595 (branching coral-like forms)
-- spirals:  f=0.034,  k=0.063  (rotating wave spirals)
-- maze:     f=0.030,  k=0.057  (labyrinthine channels)
-- spots:    f=0.039,  k=0.058  (stable dot lattice)
-- stripes:  f=0.046,  k=0.066  (banded / striped)
+### Pattern Modes (auto-cycle every ~30s)
+- mitosis:  f=0.0545, k=0.062
+- coral:    f=0.0545, k=0.0595
+- spirals:  f=0.034,  k=0.063
+- maze:     f=0.030,  k=0.057
+- spots:    f=0.039,  k=0.058
+- stripes:  f=0.046,  k=0.066
 
-## Interaction
-- Mouse/touch over canvas: seeds V chemical (U=0.5, V=0.9) at cursor position
-- Window resize: reinitializes simulation with fresh random seeds
+### Interaction
+- Mouse/touch: seeds V chemical (U=0.5, V=0.9) at cursor
+
+---
+
+## Piece 2: LENIA — Continuous Cellular Automata (2026-06-29)
+WebGL implementation of Bert Chan's Lenia (2018). A single continuous field [0,1]
+evolves under dx/dt = G(K*x), where K is an annular Gaussian kernel and G is a
+bell-curve growth function. Produces emergent organism-like patterns.
+
+### Technical Stack
+- Pure WebGL1 + OES_texture_float (~230 lines)
+- Ping-pong framebuffer, same architecture as MEMBRANE
+- 11×11 annular Gaussian kernel (ring peak at normalized radius 0.5, ~85 taps)
+- 2 simulation steps per frame, sim resolution capped at 512px
+- Bioluminescent palette: void→indigo→cyan→jade→white
+- Iridescent hue drift via col.gbr swizzle mix (slow oscillation)
+- Radial vignette + bloom on high-state cells
+
+### Organism Modes (auto-cycle every ~40s, reseed on switch)
+- bloom:   mu=0.200, sigma=0.040, dt=0.100
+- weave:   mu=0.150, sigma=0.022, dt=0.090
+- fronds:  mu=0.265, sigma=0.044, dt=0.100
+- crystal: mu=0.305, sigma=0.056, dt=0.110
+- pulse:   mu=0.183, sigma=0.033, dt=0.090
+
+### Interaction
+- Mouse/touch: seeds living material (~0.75) at cursor position
+- On mode change: full reseed with random circular blobs
+
+### Kernel detail
+K(r) ∝ exp(-((r/5 - 0.5)*4)² * 2)  — peaks at r≈2.5px, zero beyond r=5.5
+G(n) = 2*exp(-((n-mu)²)/(2*sigma²)) - 1  maps [0,1] → [-1,1]
 
 ---
 
@@ -40,20 +74,32 @@ Created the repository from scratch. Implemented MEMBRANE as the founding piece.
 Gray-Scott chosen for its deep connection to biological pattern formation,
 visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 
+### 2026-06-29 — Session 2
+- Added LENIA: Continuous Cellular Automata (Bert Chan, 2018).
+  Annular Gaussian kernel + bell-curve growth function in GLSL.
+  Bioluminescent palette with iridescent hue drift and bloom.
+- Converted index.html from MEMBRANE to a minimal gallery portal.
+- Moved MEMBRANE to membrane.html (added ← AI.ART back link).
+- Both pieces link back to gallery.
+- Inspiration sources: Lenia paper (Chan 2018), Physarum slime mold research,
+  net.art glitch aesthetic survey. Chose Lenia as most distinct from GS
+  and most GPU-friendly (field sim, no scatter step needed).
+
 ---
 
 ## Ideas for Future Sessions
-- [ ] Gallery index: multiple pieces accessible from a grid on index.html
 - [ ] Audio reactivity via Web Audio API (microphone or oscillator)
-- [ ] Try other PDE systems: FitzHugh-Nagumo, Brusselator, Schnakenberg
 - [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Glitch/datamosh post-processing pass (net.art aesthetic)
 - [ ] Shader-based typography layer dissolving into the flow
-- [ ] Neural cellular automata (Lenia) — smoother, more organic than Gray-Scott
+- [ ] Physarum slime mold — agent-based, needs WebGL2 or JS particle array
 - [ ] Dark/light palette toggle or multiple palette presets
-- [ ] Parameter explorer: click-drag UV space to morph patterns live
-- [ ] Add WebGL2 path (no extension needed for float textures)
 - [ ] Non-uniform initial seeds: Perlin noise or image-seeded
 - [ ] Voronoi stippling or chromatic aberration post-process
 - [ ] Anisotropic diffusion (direction-dependent spread)
 - [ ] 3D version: volumetric reaction-diffusion with raymarching
+- [ ] Add WebGL2 path (no extension needed for float textures)
+- [ ] Multi-channel Lenia (R/G/B as separate species interacting)
+- [ ] Lenia parameter space explorer: click-drag to morph mu/sigma live
+- [ ] Try FitzHugh-Nagumo, Brusselator, Schnakenberg PDEs
+- [ ] Tune Lenia modes against known organism parameter sets from Chan's paper
