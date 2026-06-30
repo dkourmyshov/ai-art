@@ -6,9 +6,10 @@
 ---
 
 ## Gallery Structure
-index.html — minimal dark gallery listing all pieces
-membrane.html — MEMBRANE piece (moved from old index.html)
-lenia.html — LENIA piece (new)
+index.html       — minimal dark gallery listing all pieces
+membrane.html    — MEMBRANE piece (moved from old index.html)
+lenia.html       — LENIA piece
+excitable.html   — EXCITABLE piece (new)
 
 ---
 
@@ -67,12 +68,56 @@ G(n) = 2*exp(-((n-mu)²)/(2*sigma²)) - 1  maps [0,1] → [-1,1]
 
 ---
 
+## Piece 3: EXCITABLE — FitzHugh-Nagumo Excitable Media (2026-06-30)
+WebGL implementation of the FitzHugh-Nagumo model (FitzHugh 1961, Nagumo 1962).
+Two coupled reaction-diffusion equations model excitable media — neurons, cardiac
+tissue, chemical oscillators. Produces rotating spiral waves, traveling pulses,
+turbulent breakup, and autonomous oscillations.
+
+### Technical Stack
+- Pure WebGL1 + OES_texture_float (~220 lines)
+- Ping-pong framebuffer, same architecture as MEMBRANE and LENIA
+- 9-point Laplacian on v only (w has zero diffusivity)
+- 3-5 simulation steps per frame depending on mode
+- Electrophysiology palette: indigo→purple→electric blue→cyan→white
+- Warm amber overlay for recovery tails (w high, v descending)
+
+### Equations
+- dv/dt = D·∇²v + v - v³/3 - w + I
+- dw/dt = ε·(v + a - b·w)
+
+### 5 Modes (auto-cycle every 38s)
+- spirals:    a=0.7, b=0.8, ε=0.08, I=0.50 — rotating spiral waves
+- pulse:      a=0.5, b=0.5, ε=0.04, I=0.20 — traveling excitation pulses
+- oscillator: a=0.8, b=0.6, ε=0.10, I=1.00 — autonomous oscillations
+- turbulent:  a=0.7, b=0.8, ε=0.16, I=0.90 — chaotic spiral breakup
+- slow wave:  a=0.9, b=0.9, ε=0.02, I=0.00 — broad refractory fronts
+
+### Interaction
+- Mouse/touch: stamps circular excitation (v=2.0) at cursor → triggers new spirals
+
+---
+
 ## Session Log
 
 ### 2026-06-28 — Session 1 (first run, empty repo)
 Created the repository from scratch. Implemented MEMBRANE as the founding piece.
 Gray-Scott chosen for its deep connection to biological pattern formation,
 visual beauty, and GPU-friendly ping-pong framebuffer implementation.
+
+### 2026-06-30 — Session 3
+- Added EXCITABLE: FitzHugh-Nagumo excitable media (FitzHugh 1961, Nagumo 1962).
+  Two coupled RD equations: fast activator v (voltage), slow inhibitor w (recovery).
+  dv/dt = D∇²v + v - v³/3 - w + I   and   dw/dt = ε(v + a - b·w)
+  Produces spiral waves, traveling pulses, turbulent breakup, autonomous oscillations.
+- Electrophysiology palette: deep indigo → deep purple → electric blue → cyan → white,
+  with warm amber overlay on recovery tails (w high, v descending).
+- 5 modes (38s cycle): SPIRALS, PULSE, OSCILLATOR, TURBULENT, SLOW WAVE.
+- Same WebGL1 + OES_texture_float ping-pong architecture as MEMBRANE and LENIA.
+- Mouse/touch: stamps a circular excitation (vn=2.0) at cursor → triggers new spirals.
+- EXCITABLE listed first in gallery (chronological reverse order).
+- Inspiration: FN neural/cardiac dynamics, scroll wave research, cardiac imaging palettes.
+  Physarum slime mold skipped (requires WebGL2 transform feedback or JS particle arrays).
 
 ### 2026-06-29 — Session 2
 - Added LENIA: Continuous Cellular Automata (Bert Chan, 2018).
@@ -84,6 +129,22 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - Inspiration sources: Lenia paper (Chan 2018), Physarum slime mold research,
   net.art glitch aesthetic survey. Chose Lenia as most distinct from GS
   and most GPU-friendly (field sim, no scatter step needed).
+
+---
+
+## EXCITABLE Technical Notes
+### Parameter space (FitzHugh-Nagumo)
+- SPIRALS:    a=0.7, b=0.8, ε=0.08, I=0.50, D=0.28, dt=0.05, 4 steps/frame
+- PULSE:      a=0.5, b=0.5, ε=0.04, I=0.20, D=0.25, dt=0.05, 4 steps/frame
+- OSCILLATOR: a=0.8, b=0.6, ε=0.10, I=1.00, D=0.32, dt=0.05, 4 steps/frame
+- TURBULENT:  a=0.7, b=0.8, ε=0.16, I=0.90, D=0.18, dt=0.04, 5 steps/frame
+- SLOW WAVE:  a=0.9, b=0.9, ε=0.02, I=0.00, D=0.42, dt=0.06, 3 steps/frame
+### Numerical notes
+- 9-point Laplacian on v only (w does not diffuse); orthogonal=0.20, diagonal=0.05
+- Diffusion stability: dt < dx²/(4D) satisfied for all modes
+- Initial conditions: random float field, v∈[-2.4,2.4], w∈[-1.2,1.2]
+- Toroidal (REPEAT) boundary conditions
+- SIM resolution: 512×512
 
 ---
 
@@ -101,5 +162,7 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] Add WebGL2 path (no extension needed for float textures)
 - [ ] Multi-channel Lenia (R/G/B as separate species interacting)
 - [ ] Lenia parameter space explorer: click-drag to morph mu/sigma live
-- [ ] Try FitzHugh-Nagumo, Brusselator, Schnakenberg PDEs
+- [ ] Brusselator or Schnakenberg PDE (next RD variant)
 - [ ] Tune Lenia modes against known organism parameter sets from Chan's paper
+- [ ] EXCITABLE: add 2D Hopf-bifurcation map; click to pick (a,b) from phase diagram
+- [ ] EXCITABLE: export frame or animate GIF on keypress

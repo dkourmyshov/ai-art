@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXCITABLE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">SPIRALS</span>
+  <span id="desc">ROTATING SPIRAL WAVES</span>
+</div>
+<script>
+/*  EXCITABLE — FitzHugh-Nagumo reaction-diffusion
+ *
+ *  dv/dt = D·∇²v + v - v³/3 - w + I   (v: fast activator / "voltage")
+ *  dw/dt = ε·(v + a - b·w)             (w: slow inhibitor / "recovery")
+ *
+ *  Models excitable media: neurons, cardiac tissue, chemical oscillators.
+ *  Produces spiral waves, traveling pulses, and turbulent breakup.
+ *  FitzHugh (1961), Nagumo et al. (1962).
+ */
+
+const MODES = [
+  { name:'SPIRALS',   desc:'ROTATING SPIRAL WAVES',     a:0.7, b:0.8, eps:0.08, I:0.50, D:0.28, dt:0.05, steps:4 },
+  { name:'PULSE',     desc:'TRAVELING EXCITATION',       a:0.5, b:0.5, eps:0.04, I:0.20, D:0.25, dt:0.05, steps:4 },
+  { name:'OSCILLATOR',desc:'AUTONOMOUS OSCILLATIONS',    a:0.8, b:0.6, eps:0.10, I:1.00, D:0.32, dt:0.05, steps:4 },
+  { name:'TURBULENT', desc:'CHAOTIC SPIRAL BREAKUP',     a:0.7, b:0.8, eps:0.16, I:0.90, D:0.18, dt:0.04, steps:5 },
+  { name:'SLOW WAVE', desc:'BROAD REFRACTORY FRONTS',    a:0.9, b:0.9, eps:0.02, I:0.00, D:0.42, dt:0.06, steps:3 },
+];
+
+const SIM  = 512;
+const MODE_MS = 38000;
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+// Reaction-diffusion step
+const SIM_FS = `
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2      uPx;          // 1/SIM per axis
+uniform float     uA, uB, uEps, uI, uD, uDt;
+uniform vec2      uSeed;
+uniform float     uSeeding;
+varying vec2 uv;
+
+void main(){
+  vec2 s = texture2D(uTex, uv).rg;
+  float v = s.r, w = s.g;
+
+  // 9-point Laplacian on v only (w does not diffuse)
+  float lap =
+    ( texture2D(uTex, uv+vec2(-uPx.x, 0.)).r
+    + texture2D(uTex, uv+vec2( uPx.x, 0.)).r
+    + texture2D(uTex, uv+vec2(0., -uPx.y)).r
+    + texture2D(uTex, uv+vec2(0.,  uPx.y)).r ) * 0.20
+  + ( texture2D(uTex, uv+vec2(-uPx.x,-uPx.y)).r
+    + texture2D(uTex, uv+vec2( uPx.x,-uPx.y)).r
+    + texture2D(uTex, uv+vec2(-uPx.x, uPx.y)).r
+    + texture2D(uTex, uv+vec2( uPx.x, uPx.y)).r ) * 0.05
+  - v;
+
+  float dv = uD * lap  +  v - (v*v*v)/3.0 - w + uI;
+  float dw = uEps * (v + uA - uB * w);
+
+  float vn = v + uDt * dv;
+  float wn = w + uDt * dw;
+
+  // Mouse: stamp a circular excitation
+  if (uSeeding > .5) {
+    float d = length(uv - uSeed);
+    if (d < 0.022) { vn = 2.0; }
+  }
+
+  gl_FragColor = vec4(vn, wn, 0., 1.);
+}
+`;
+
+// Render: map FN state to colour
+const DRAW_FS = `
+precision highp float;
+uniform sampler2D uTex;
+varying vec2 uv;
+
+vec3 fnPalette(float t) {
+  // t in [0,1]: 0 = deep rest/inhibited, 1 = peak excitation
+  // indigo → purple → electric blue → cyan → white
+  vec3 c0 = vec3(0.01, 0.00, 0.06);
+  vec3 c1 = vec3(0.18, 0.00, 0.42);
+  vec3 c2 = vec3(0.00, 0.12, 0.90);
+  vec3 c3 = vec3(0.00, 0.82, 0.92);
+  vec3 c4 = vec3(1.00, 1.00, 1.00);
+  vec3 col = c0;
+  col = mix(col, c1, smoothstep(0.00, 0.25, t));
+  col = mix(col, c2, smoothstep(0.25, 0.50, t));
+  col = mix(col, c3, smoothstep(0.50, 0.75, t));
+  col = mix(col, c4, smoothstep(0.75, 1.00, t));
+  return col;
+}
+
+void main(){
+  vec2 s = texture2D(uTex, uv).rg;
+  float v = s.r;
+  float w = s.g;
+
+  // v lives roughly in [-2.3, 2.3]; normalise to [0,1]
+  float t = clamp((v + 2.3) / 4.6, 0., 1.);
+  vec3 col = fnPalette(t);
+
+  // Recovery overlay: warm amber tint in the refractory wake (w high, v descending)
+  float wNorm   = clamp((w + 0.5) / 2.5, 0., 1.);
+  float recovery = wNorm * (1. - smoothstep(0.45, 0.70, t));
+  col = mix(col, vec3(0.90, 0.38, 0.04), recovery * 0.32);
+
+  // Soft vignette
+  vec2 q = uv * 2. - 1.;
+  col *= 1. - smoothstep(0.55, 1.35, dot(q,q));
+
+  gl_FragColor = vec4(col, 1.);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p); return p;
+}
+
+const pSim  = mkProg(VS, SIM_FS);
+const pDraw = mkProg(VS, DRAW_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function randomField() {
+  const d = new Float32Array(SIM * SIM * 4);
+  for (let i = 0; i < SIM * SIM; i++) {
+    d[i*4]   = (Math.random() * 2 - 1) * 2.4;  // v in [-2.4, 2.4]
+    d[i*4+1] = (Math.random() * 2 - 1) * 1.2;  // w in [-1.2, 1.2]
+    d[i*4+2] = 0; d[i*4+3] = 1;
+  }
+  return d;
+}
+
+let texA = mkTex(randomField()), texB = mkTex(null);
+let fbA  = mkFB(texA), fbB = mkFB(texB);
+
+/* ── simulation state ───────────────────────────────────────────────────── */
+
+let modeIdx   = 0;
+let modeStart = performance.now();
+let seedUV    = null;
+let isSeeding = false;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent     = m.desc;
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, randomField());
+}
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Cache uniform locations
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU  = locs(pSim,  ['uTex','uPx','uA','uB','uEps','uI','uD','uDt','uSeed','uSeeding']);
+const drawU = locs(pDraw, ['uTex']);
+
+function simStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(pSim);
+  bindQuad(pSim);
+  gl.viewport(0, 0, SIM, SIM);
+  gl.uniform2f(simU.uPx,  1/SIM, 1/SIM);
+  gl.uniform1f(simU.uA,   m.a);
+  gl.uniform1f(simU.uB,   m.b);
+  gl.uniform1f(simU.uEps, m.eps);
+  gl.uniform1f(simU.uI,   m.I);
+  gl.uniform1f(simU.uD,   m.D);
+  gl.uniform1f(simU.uDt,  m.dt);
+
+  for (let i = 0; i < m.steps; i++) {
+    gl.uniform1f(simU.uSeeding, (i === 0 && isSeeding) ? 1.0 : 0.0);
+    if (isSeeding && seedUV) gl.uniform2f(simU.uSeed, seedUV.x, seedUV.y);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbB);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(simU.uTex, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    [texA, texB] = [texB, texA];
+    [fbA,  fbB]  = [fbB,  fbA];
+  }
+  isSeeding = false;
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(pDraw);
+  bindQuad(pDraw);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(drawU.uTex, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function loop(now) {
+  if (now - modeStart > MODE_MS) {
+    modeStart = now;
+    applyMode(modeIdx + 1);
+  }
+  simStep();
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+
+/* ── interaction ────────────────────────────────────────────────────────── */
+
+function onPointer(e) {
+  const x =  (e.clientX ?? e.touches[0].clientX) / window.innerWidth;
+  const y = 1 - (e.clientY ?? e.touches[0].clientY) / window.innerHeight;
+  seedUV = { x, y };
+  isSeeding = true;
+}
+
+canvas.addEventListener('mousedown',  onPointer);
+canvas.addEventListener('mousemove',  e => { if (e.buttons) onPointer(e); });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onPointer(e); }, { passive: false });
+</script>
+</body>
+</html>
