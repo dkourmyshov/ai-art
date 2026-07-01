@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PHYSARUM — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">NETWORK</span>
+  <span id="desc">EFFICIENT TRANSPORT WEBS</span>
+</div>
+<script>
+/*  PHYSARUM — agent-based slime-mould transport network simulation
+ *
+ *  Each agent senses a trail field ahead-left / ahead-center / ahead-right,
+ *  turns toward the strongest signal, steps forward, and deposits pheromone.
+ *  The trail field diffuses and decays each frame. Two competing species
+ *  (warm/cold) sense their own trail and are repelled by the other's,
+ *  producing territorial network boundaries — the same rule set slime
+ *  mould uses to build near-optimal transport networks (Tero et al. 2010,
+ *  "Rules for Biologically Inspired Adaptive Network Design").
+ *
+ *  Positions/headings live in a float texture (ping-pong), updated by a
+ *  fragment shader. Deposits are rasterized with gl.POINTS whose vertex
+ *  shader reads each agent's position via a vertex texture fetch (VTF) —
+ *  no transform feedback / WebGL2 required.
+ */
+
+const MODES = [
+  { name:'NETWORK',   desc:'EFFICIENT TRANSPORT WEBS',      sensorAngle:25, sensorDist:11, rotAngle:28, step:1.4, deposit:0.040, decay:0.940, repulsion:0.08 },
+  { name:'TERRITORY', desc:'COMPETING COLONY BOUNDARIES',   sensorAngle:22, sensorDist:9,  rotAngle:32, step:1.3, deposit:0.050, decay:0.920, repulsion:0.65 },
+  { name:'COLONY',    desc:'SLOW BRANCHING GROWTH',         sensorAngle:45, sensorDist:20, rotAngle:16, step:1.0, deposit:0.022, decay:0.965, repulsion:0.05 },
+  { name:'SWARM',     desc:'TURBULENT FLOCKING STREAMS',    sensorAngle:12, sensorDist:7,  rotAngle:50, step:2.1, deposit:0.060, decay:0.900, repulsion:0.00 },
+  { name:'LICHEN',    desc:'DENSE FRACTAL MYCELIUM',        sensorAngle:32, sensorDist:14, rotAngle:20, step:0.9, deposit:0.014, decay:0.978, repulsion:0.20 },
+];
+
+const AGENTS_DIM = 384;          // 147456 agents
+const TRAIL_RES  = 512;          // trail field resolution — must be power-of-two: REPEAT wrap on NPOT textures is invalid in WebGL1 (silently samples black)
+const MODE_MS    = 35000;
+const DEG = Math.PI / 180;
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">Vertex texture fetch required</p>'; throw 0;
+}
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+// Agent update: sense trail, turn, step forward
+const AGENT_SIM_FS = `
+precision highp float;
+uniform sampler2D uAgentTex;
+uniform sampler2D uTrailTex;
+uniform float uSensorAngle, uSensorDist, uRotAngle, uStep, uRepulsion, uFrame;
+varying vec2 uv;
+
+float hash(vec2 p, float seed){
+  vec3 p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195) + seed);
+  p3 += dot(p3, p3.yzx + 19.19);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+float sense(vec2 pos, float heading, float ang, float species){
+  vec2 dir = vec2(cos(heading+ang), sin(heading+ang));
+  vec2 p = fract(pos + dir*uSensorDist);
+  vec2 t = texture2D(uTrailTex, p).rg;
+  float own   = mix(t.r, t.g, species);
+  float other = mix(t.g, t.r, species);
+  return own - uRepulsion*other;
+}
+
+void main(){
+  vec4 ag = texture2D(uAgentTex, uv);
+  vec2  pos     = ag.xy;
+  float heading = ag.z;
+  float species = ag.w;
+
+  float C = sense(pos, heading, 0.0,          species);
+  float L = sense(pos, heading, uSensorAngle,  species);
+  float R = sense(pos, heading, -uSensorAngle, species);
+
+  float turn;
+  if (C > L && C > R)      turn = 0.0;
+  else if (L > R)           turn = uRotAngle;
+  else if (R > L)           turn = -uRotAngle;
+  else                      turn = (hash(uv, uFrame) < 0.5) ? uRotAngle : -uRotAngle;
+
+  float newHeading = mod(heading + turn, 6.28318530718);
+  vec2  newPos = fract(pos + vec2(cos(newHeading), sin(newHeading)) * uStep);
+
+  gl_FragColor = vec4(newPos, newHeading, species);
+}
+`;
+
+// Deposit: rasterize agents as points, VTF reads position from agent texture
+const DEPOSIT_VS = `
+precision highp float;
+attribute vec2 aTexcoord;
+uniform sampler2D uAgentTex;
+varying float vSpecies;
+void main(){
+  vec4 ag = texture2D(uAgentTex, aTexcoord);
+  vSpecies = ag.w;
+  gl_Position = vec4(fract(ag.xy)*2.0-1.0, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}
+`;
+const DEPOSIT_FS = `
+precision highp float;
+varying float vSpecies;
+uniform float uDeposit;
+void main(){
+  float isB = step(0.5, vSpecies);
+  gl_FragColor = vec4(uDeposit*(1.0-isB), uDeposit*isB, 0.0, 0.0);
+}
+`;
+
+// Trail diffuse + decay (9-tap box blur)
+const DIFFUSE_FS = `
+precision highp float;
+uniform sampler2D uTrailTex;
+uniform vec2 uPx;
+uniform float uDecay;
+uniform vec2 uSeed;
+uniform float uSeeding;
+varying vec2 uv;
+void main(){
+  vec2 sum = vec2(0.0);
+  for (int dy=-1; dy<=1; dy++)
+  for (int dx=-1; dx<=1; dx++)
+    sum += texture2D(uTrailTex, uv + vec2(float(dx),float(dy))*uPx).rg;
+  vec2 result = (sum/9.0) * uDecay;
+
+  if (uSeeding > 0.5) {
+    float d = length(uv - uSeed);
+    if (d < 0.02) result += vec2(0.6, 0.6);
+  }
+  gl_FragColor = vec4(result, 0.0, 1.0);
+}
+`;
+
+// Render: two-species trail -> colour
+const DRAW_FS = `
+precision highp float;
+uniform sampler2D uTex;
+varying vec2 uv;
+void main(){
+  vec2 t = texture2D(uTex, uv).rg;
+  vec3 colA = vec3(1.00, 0.78, 0.12);   // warm amber — Physarum yellow
+  vec3 colB = vec3(0.85, 0.08, 0.40);   // crimson/magenta
+  float a = 1.0 - exp(-3.2*t.r);
+  float b = 1.0 - exp(-3.2*t.g);
+  vec3 col = colA*a + colB*b;
+  col += vec3(1.0, 0.42, 0.10) * min(a,b) * 0.25;  // hot glow at territory seams
+
+  vec2 q = uv*2.0-1.0;
+  col *= 1.0 - smoothstep(0.60, 1.40, dot(q,q));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const pAgentSim = mkProg(VS, AGENT_SIM_FS);
+const pDeposit  = mkProg(DEPOSIT_VS, DEPOSIT_FS);
+const pDiffuse  = mkProg(VS, DIFFUSE_FS);
+const pDraw     = mkProg(VS, DRAW_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+// per-agent texcoord grid, one vertex per agent, for VTF point rendering
+const N = AGENTS_DIM * AGENTS_DIM;
+const ptCoords = new Float32Array(N * 2);
+{
+  let k = 0;
+  for (let j = 0; j < AGENTS_DIM; j++)
+    for (let i = 0; i < AGENTS_DIM; i++) {
+      ptCoords[k++] = (i + 0.5) / AGENTS_DIM;
+      ptCoords[k++] = (j + 0.5) / AGENTS_DIM;
+    }
+}
+const ptBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+gl.bufferData(gl.ARRAY_BUFFER, ptCoords, gl.STATIC_DRAW);
+function bindPts(p) {
+  const loc = gl.getAttribLocation(p, 'aTexcoord');
+  gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(w, h, data, wrap) {
+  wrap = wrap || gl.CLAMP_TO_EDGE;
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function randomAgents() {
+  const d = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    d[i*4]   = Math.random();                 // x
+    d[i*4+1] = Math.random();                 // y
+    d[i*4+2] = Math.random() * Math.PI * 2;   // heading
+    d[i*4+3] = Math.random() < 0.5 ? 0 : 1;   // species
+  }
+  return d;
+}
+
+let agentA = mkTex(AGENTS_DIM, AGENTS_DIM, randomAgents());
+let agentB = mkTex(AGENTS_DIM, AGENTS_DIM, null);
+let agentFbA = mkFB(agentA), agentFbB = mkFB(agentB);
+
+const zeroTrail = new Float32Array(TRAIL_RES * TRAIL_RES * 4);
+let trailA = mkTex(TRAIL_RES, TRAIL_RES, zeroTrail, gl.REPEAT);
+let trailB = mkTex(TRAIL_RES, TRAIL_RES, zeroTrail, gl.REPEAT);
+let trailFbA = mkFB(trailA), trailFbB = mkFB(trailB);
+
+/* ── simulation state ───────────────────────────────────────────────────── */
+
+let modeIdx   = 0;
+let modeStart = performance.now();
+let uFrame    = 0;
+let seedUV    = null;
+let isSeeding = false;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent     = m.desc;
+
+  gl.bindTexture(gl.TEXTURE_2D, agentA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, AGENTS_DIM, AGENTS_DIM, 0, gl.RGBA, gl.FLOAT, randomAgents());
+  gl.bindTexture(gl.TEXTURE_2D, trailA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TRAIL_RES, TRAIL_RES, 0, gl.RGBA, gl.FLOAT, zeroTrail);
+  gl.bindTexture(gl.TEXTURE_2D, trailB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TRAIL_RES, TRAIL_RES, 0, gl.RGBA, gl.FLOAT, zeroTrail);
+}
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU     = locs(pAgentSim, ['uAgentTex','uTrailTex','uSensorAngle','uSensorDist','uRotAngle','uStep','uRepulsion','uFrame']);
+const depositU = locs(pDeposit,  ['uAgentTex','uDeposit']);
+const diffuseU = locs(pDiffuse,  ['uTrailTex','uPx','uDecay','uSeed','uSeeding']);
+const drawU    = locs(pDraw,     ['uTex']);
+
+function agentStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(pAgentSim);
+  bindQuad(pAgentSim);
+  gl.viewport(0, 0, AGENTS_DIM, AGENTS_DIM);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, agentFbB);
+
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(simU.uAgentTex, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, trailA); gl.uniform1i(simU.uTrailTex, 1);
+  gl.uniform1f(simU.uSensorAngle, m.sensorAngle * DEG);
+  gl.uniform1f(simU.uSensorDist,  m.sensorDist / TRAIL_RES);
+  gl.uniform1f(simU.uRotAngle,    m.rotAngle * DEG);
+  gl.uniform1f(simU.uStep,        m.step / TRAIL_RES);
+  gl.uniform1f(simU.uRepulsion,   m.repulsion);
+  gl.uniform1f(simU.uFrame,       uFrame);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  [agentA, agentB] = [agentB, agentA];
+  [agentFbA, agentFbB] = [agentFbB, agentFbA];
+}
+
+function depositStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(pDeposit);
+  bindPts(pDeposit);
+  gl.viewport(0, 0, TRAIL_RES, TRAIL_RES);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, trailFbA);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(depositU.uAgentTex, 0);
+  gl.uniform1f(depositU.uDeposit, m.deposit);
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, N);
+  gl.disable(gl.BLEND);
+}
+
+function diffuseStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(pDiffuse);
+  bindQuad(pDiffuse);
+  gl.viewport(0, 0, TRAIL_RES, TRAIL_RES);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, trailFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trailA); gl.uniform1i(diffuseU.uTrailTex, 0);
+  gl.uniform2f(diffuseU.uPx, 1/TRAIL_RES, 1/TRAIL_RES);
+  gl.uniform1f(diffuseU.uDecay, m.decay);
+  gl.uniform1f(diffuseU.uSeeding, isSeeding ? 1.0 : 0.0);
+  if (isSeeding && seedUV) gl.uniform2f(diffuseU.uSeed, seedUV.x, seedUV.y);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  isSeeding = false;
+
+  [trailA, trailB] = [trailB, trailA];
+  [trailFbA, trailFbB] = [trailFbB, trailFbA];
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(pDraw);
+  bindQuad(pDraw);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, trailA);
+  gl.uniform1i(drawU.uTex, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function loop(now) {
+  if (now - modeStart > MODE_MS) {
+    modeStart = now;
+    applyMode(modeIdx + 1);
+  }
+  uFrame += 1.0;
+  agentStep();
+  depositStep();
+  diffuseStep();
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction ────────────────────────────────────────────────────────── */
+
+function onPointer(e) {
+  const x =  (e.clientX ?? e.touches[0].clientX) / window.innerWidth;
+  const y = 1 - (e.clientY ?? e.touches[0].clientY) / window.innerHeight;
+  seedUV = { x, y };
+  isSeeding = true;
+}
+canvas.addEventListener('mousedown',  onPointer);
+canvas.addEventListener('mousemove',  e => { if (e.buttons) onPointer(e); });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onPointer(e); }, { passive: false });
+</script>
+</body>
+</html>

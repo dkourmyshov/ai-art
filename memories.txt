@@ -9,7 +9,8 @@
 index.html       — minimal dark gallery listing all pieces
 membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
-excitable.html   — EXCITABLE piece (new)
+excitable.html   — EXCITABLE piece
+physarum.html    — PHYSARUM piece (new)
 
 ---
 
@@ -98,7 +99,109 @@ turbulent breakup, and autonomous oscillations.
 
 ---
 
+## Piece 4: PHYSARUM — Slime-Mould Agent Simulation (2026-07-01)
+WebGL1 agent-based simulation of Physarum polycephalum transport-network
+formation (Jones 2010; Tero et al. 2010 "Rules for Biologically Inspired
+Adaptive Network Design" — the Tokyo-rail-network slime-mould study). First
+agent-based piece in the gallery — everything before it was a continuous PDE
+field (Gray-Scott / Lenia / FitzHugh-Nagumo). Distinct visual register:
+thin glowing branching networks on black, vs. the previous pieces' filled
+organic fields.
+
+### Technical Stack
+- Pure WebGL1 + OES_texture_float, no WebGL2 / transform feedback needed
+  (earlier sessions had flagged Physarum as "needs WebGL2" — untrue; a
+  gl.POINTS + vertex-texture-fetch (VTF) architecture works fine in WebGL1)
+- Agent state (x, y, heading, species) lives in a float texture, ping-ponged
+  by a fragment shader exactly like the other pieces' simulation textures
+- Deposits are rasterized with gl.POINTS whose VERTEX shader reads each
+  agent's position via texture2D (VTF) — no CPU readback, no scatter buffer
+- Trail field (two channels, one per species) is a second ping-ponged float
+  texture: deposit (additive blend) → diffuse (9-tap box blur) → decay
+- AGENTS_DIM=384 (147,456 agents), TRAIL_RES=512
+- Two competing species: each senses its own trail channel, is repelled by
+  the other's (`sensed = own - repulsion*other`) — produces territorial
+  boundaries between colonies, not just single-species webs
+- Palette: warm amber/yellow (real Physarum polycephalum's colour) vs.
+  crimson/magenta, with a hot glow blended in at contact seams
+
+### Sense/turn/move rule (classic Physarum algorithm)
+- Each agent samples trail intensity at 3 points: straight ahead (C), and
+  ±sensorAngle to either side (L, R), all at sensorDist from current position
+- If C is highest: keep heading. If L or R is highest: turn toward it by
+  rotAngle. If tied: turn a random direction (hash of texcoord + frame count)
+- Move forward by `step` along the new heading; position wraps via fract()
+
+### 5 Modes (auto-cycle every 35s, full reseed of agents + trail on switch)
+- NETWORK:   sensorAngle=25° sensorDist=11px rotAngle=28° repulsion=0.08 — clean transport webs
+- TERRITORY: sensorAngle=22° sensorDist=9px  rotAngle=32° repulsion=0.65 — competing colony boundaries
+- COLONY:    sensorAngle=45° sensorDist=20px rotAngle=16° repulsion=0.05 — slow wide branching
+- SWARM:     sensorAngle=12° sensorDist=7px  rotAngle=50° repulsion=0.00 — turbulent flocking streams
+- LICHEN:    sensorAngle=32° sensorDist=14px rotAngle=20° repulsion=0.20 — dense space-filling mycelium
+
+### Deposit tuning (mean-field equilibrium)
+Trail intensity converges to T_eq ≈ deposit·(agentsPerSpecies/texelCount) / (1-decay).
+With decay in 0.90–0.978 and ~73,728 agents/species over 262,144 texels, deposit
+must be tiny (0.014–0.06) or the field saturates solid within ~40 frames — this
+was the single biggest tuning trap. Target T_eq around 0.15–0.2 so trail-dense
+regions (where agents cluster via the positive feedback loop) stand out brightly
+above a dim, mostly-black ambient field. Don't reason about deposit amount in
+isolation — always check it against decay and agent density together.
+
+### Interaction
+- Mouse/touch: boosts both trail channels at cursor (like a food source),
+  drawing nearby agents toward it via the normal sensing rule
+
+### WebGL1 gotchas hit during this build (future sessions: check these first
+if a ping-pong sim renders solid black or shows no motion)
+1. **REPEAT wrap + non-power-of-two texture = silently broken.** WebGL1
+   requires CLAMP_TO_EDGE for any NPOT texture; REPEAT on NPOT makes the
+   texture "incomplete" and every sample returns black — with NO GL error.
+   TRAIL_RES=640 (chosen to match membrane.html's cap) broke this way, and
+   AGENTS_DIM=384 broke it a second time for the *agent* texture. Fix: only
+   use REPEAT where toroidal wrap is actually needed (the trail field) and
+   keep those textures power-of-two; leave everything else CLAMP_TO_EDGE.
+2. **gl.ARRAY_BUFFER is global, shared, mutable state — bind it explicitly
+   every time.** A `bindQuad()` helper that calls `vertexAttribPointer`
+   without first calling `gl.bindBuffer(ARRAY_BUFFER, quad)` silently
+   captures whatever buffer some *other* draw call last bound (here, the
+   points buffer from the deposit pass), so the "full-screen quad" render
+   degenerates into a handful of stray triangles covering almost none of
+   the target texture. This produced a bizarre symptom: the sim texture
+   alternated frame-to-frame between "genuinely updating" and "frozen at
+   its initial random seed," because the corrupted quad draw was a near
+   no-op that left the ping-pong texture untouched on the affected frames.
+   Every VS/FS pair that shares an attribute name across programs should
+   bind its own buffer inside its bind helper — never rely on ambient state.
+3. Headless/software-rendered testing (SwiftShader via Playwright) is slow
+   per-primitive but NOT the cause of blank renders — don't assume "it's
+   just slow," force a synchronous gl.readPixels() to check real buffer
+   contents before chasing a performance theory.
+
+---
+
 ## Session Log
+
+### 2026-07-01 — Session 4
+- Added PHYSARUM: agent-based slime-mould transport-network simulation
+  (Jones 2010, Tero et al. 2010). First agent-based piece — a deliberate
+  break from the three PDE-field pieces before it (Gray-Scott, Lenia,
+  FitzHugh-Nagumo), chosen after web research turned up working WebGL1
+  Physarum demos and confirmed the "needs WebGL2" assumption in the ideas
+  backlog was wrong. Uses gl.POINTS + vertex-texture-fetch to deposit
+  agent trails onto a ping-ponged float trail-field, no transform feedback.
+- Two competing species (amber vs. crimson) with mutual trail repulsion,
+  producing territorial network boundaries, not just single-colony webs.
+- 5 modes (35s cycle): NETWORK, TERRITORY, COLONY, SWARM, LICHEN.
+- Spent most of the session debugging a genuinely blank-black render —
+  root-caused to two separate WebGL1 footguns (NPOT+REPEAT texture
+  incompleteness, and an implicit/shared gl.ARRAY_BUFFER binding bug) —
+  see "WebGL1 gotchas" under the PHYSARUM technical notes above. Verified
+  the fix and all 5 modes visually via headless Playwright/SwiftShader
+  screenshots before shipping.
+- Inspiration: web search for "Physarum WebGL shader" (Klein, Ghassaei,
+  Whitaker's DotSwarm, Jones 2010 transport-network paper), and Genuary
+  2026 shader-art surveys for general net.art texture.
 
 ### 2026-06-28 — Session 1 (first run, empty repo)
 Created the repository from scratch. Implemented MEMBRANE as the founding piece.
@@ -153,7 +256,11 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Glitch/datamosh post-processing pass (net.art aesthetic)
 - [ ] Shader-based typography layer dissolving into the flow
-- [ ] Physarum slime mold — agent-based, needs WebGL2 or JS particle array
+- [ ] PHYSARUM: seed agents from a food-source point map instead of uniform
+      random, to test actual shortest-network-formation behaviour (Tero et
+      al.'s original Tokyo-rail experiment placed food at station locations)
+- [ ] PHYSARUM: a third neutral/mutualist species, or food sources that
+      agents are attracted to directly (not just to each other's trails)
 - [ ] Dark/light palette toggle or multiple palette presets
 - [ ] Non-uniform initial seeds: Perlin noise or image-seeded
 - [ ] Voronoi stippling or chromatic aberration post-process
