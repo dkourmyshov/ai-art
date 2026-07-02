@@ -10,7 +10,85 @@ index.html       — minimal dark gallery listing all pieces
 membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
 excitable.html   — EXCITABLE piece
-physarum.html    — PHYSARUM piece (new)
+physarum.html    — PHYSARUM piece
+quasicrystal.html — QUASICRYSTAL piece (new)
+
+---
+
+## Piece 5: QUASICRYSTAL — Wave-Interference Aperiodic Lattice (2026-07-02)
+Closed-form superposition of N plane waves evenly spaced by angle π/N. When N
+is not a multiple of 4 the field is aperiodic — a mathematical quasicrystal:
+long-range orientational order without translational periodicity, the
+structure Dan Shechtman discovered in an Al-Mn alloy in 1982 (forbidden
+fivefold diffraction symmetry, 2011 Nobel Prize in Chemistry). Same family of
+pattern produced today by laser interference lithography for photonic
+bandgap materials.
+
+### Why this piece is architecturally different
+Every prior piece (MEMBRANE, LENIA, EXCITABLE, PHYSARUM) is an iterative
+PDE/agent simulation requiring a ping-pong framebuffer and per-frame state
+history. QUASICRYSTAL has none of that: the field is a pure closed-form
+expression (sum of cosines) evaluated fresh per pixel per frame from
+`uTime` alone. No simulation texture, no framebuffers, single draw call.
+Deliberately chosen as a break from the "biological continuous field" run
+of the first four pieces — crystalline/mathematical register instead of
+organic — after web research turned up quasicrystal interference lithography
+as a good tonal fit for a "novel and unexpected" net.art piece.
+
+### Technical Stack
+- Pure WebGL1, no extensions required at all (no OES_texture_float — the
+  first piece in the gallery that needs none, since there's no float
+  texture state to carry between frames)
+- field(p) = (1/N)·Σ cos(p·dir_i·freq + phase_i), dir_i at angle i·π/N + slow
+  rotation drift; phase_i uses a golden-angle-ish increment (i*2.399963) so
+  the N waves desync from each other over time instead of pulsing in unison
+- Chromatic dispersion: R/G/B channels sample the field at freq·(1±disp),
+  producing prismatic fringing at bright ridges — literal optical accuracy
+  (different "wavelengths" refract at different frequencies), confined to
+  peak regions via a smoothstep mask so it doesn't wash out the troughs
+- Facet edge lines: thin bright contours at fract(field·lines) ridges,
+  masked to peaks only — reads as crystal facets catching light, not a
+  topographic contour map (see palette tuning trap below)
+- Palette: 3-stop smoothstep gradient (near-black trough → jewel mid-tone →
+  bright peak), NOT an IQ hue-rotating cosine palette — see trap below
+
+### Palette tuning trap (future sessions: read this before using IQ cosine
+palettes for anything with iso-contour edge lines)
+First attempt used the classic IQ cosine palette (a + b·cos(2π(c·t+d))) like
+MEMBRANE, driven by the raw field value. Combined with per-ridge contour
+lines at multiple fract() levels, this produced a loud rainbow topographic-
+map look (blue/green/yellow/orange bands) that didn't match this gallery's
+moody, void-dominant aesthetic (compare EXCITABLE's controlled indigo→
+purple→cyan→white ramp). Fixed by switching to a 3-stop smoothstep gradient
+per mode (near-black → single jewel hue → bright highlight) AND masking the
+edge lines / chromatic fringe to only the top ~30% of field intensity via
+smoothstep(0.35, 0.9, t), so most of the frame stays black and only ridges
+glow. Also had to push the black→jewel transition later (smoothstep(0.15,
+0.55,t) → smoothstep(0.38,0.68,t)) — the first version filled too much of
+the screen with midtone color instead of staying void-dominant. General
+lesson: when a shader value has many iso-contour crossings, a hue-rotating
+palette will read as a contour map; use a single-hue-per-mode gradient with
+highlights gated to peaks instead, verified via screenshot before shipping.
+
+### 5 Modes (auto-cycle every 32s, named after real quasicrystal symmetries)
+- PENTAGONAL:   N=5,  icy sapphire/ice-blue — Shechtman's original 1982 find
+- HEPTAGONAL:   N=7,  amber/gold
+- OCTAGONAL:    N=8,  emerald/jade
+- DECAGONAL:    N=10, rose/magenta — real Al-Ni-Co decagonal quasicrystals
+- DODECAGONAL:  N=12, violet with strong prismatic fringing (fringe=0.42,
+  vs 0.15-0.20 for the other modes) — the most complex tiling gets the most
+  visible chromatic dispersion, tying the effect to the concept
+
+### Interaction
+- Mouse/touch: drops a decaying ripple (circular wave, exp decay in both
+  age and distance) into the interference field at the click point — reads
+  as a lattice defect/excitation propagating outward. Up to 6 concurrent
+  ripples in a circular buffer (uRippleP/uRippleT uniform arrays); each
+  ripple's contribution is purely a function of elapsed time since it was
+  dropped, so no per-frame state/texture needed to age or clear them out.
+- Verified visually via headless Playwright screenshots: all 5 modes show
+  correct N-fold rotational structure, ripple click carves a visible dark
+  cavity with prismatic fringing at nearby ridges.
 
 ---
 
@@ -182,6 +260,31 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-02 — Session 5
+- Added QUASICRYSTAL: closed-form wave-interference aperiodic lattice
+  (Shechtman 1982 forbidden fivefold symmetry; laser interference
+  lithography for photonic bandgap materials). Deliberate architectural
+  and visual break from the previous four pieces, which are all iterative
+  PDE/agent simulations on a ping-pong framebuffer — this one is a single
+  closed-form fragment shader expression with no simulation state at all,
+  and no WebGL extensions required.
+- 5 modes named after real quasicrystal symmetries (pentagonal through
+  dodecagonal), each with a distinct single-hue jewel palette (sapphire,
+  amber, emerald, rose, violet) and per-mode chromatic dispersion strength.
+- Click/touch drops a decaying ripple into the lattice — implemented as a
+  pure function of elapsed time, no state tracking needed to fade it out.
+- Palette needed one iteration: first pass used an IQ hue-rotating cosine
+  palette which, combined with iso-contour facet lines, produced a loud
+  rainbow topographic-map look that clashed with the gallery's void-
+  dominant mood. Switched to a per-mode 3-stop smoothstep gradient with
+  highlights/fringe masked to peak regions only — see QUASICRYSTAL
+  technical notes above for the full trap writeup. Verified all 5 modes
+  and the ripple interaction via headless Playwright screenshots.
+- Inspiration: web research into quasicrystal interference lithography for
+  photonic bandgap materials, and general 2026 net.art/generative-art
+  aesthetic surveys, deliberately steering away from another biological
+  continuous-field piece toward a crystalline/mathematical register.
+
 ### 2026-07-01 — Session 4
 - Added PHYSARUM: agent-based slime-mould transport-network simulation
   (Jones 2010, Tero et al. 2010). First agent-based piece — a deliberate
@@ -273,3 +376,11 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] Tune Lenia modes against known organism parameter sets from Chan's paper
 - [ ] EXCITABLE: add 2D Hopf-bifurcation map; click to pick (a,b) from phase diagram
 - [ ] EXCITABLE: export frame or animate GIF on keypress
+- [ ] QUASICRYSTAL: true Penrose rhomb tiling (de Bruijn multigrid method)
+      as an alternate mode alongside the wave-superposition version
+- [ ] QUASICRYSTAL: 3D icosahedral quasicrystal cross-section (Shechtman's
+      actual Al-Mn structure is 3D icosahedral, not just a 2D wave field)
+- [ ] A non-simulation, closed-form piece pairs well with a "gallery tier"
+      distinction in the UI — consider tagging pieces as SIMULATION vs
+      FIELD/CLOSED-FORM in the index descriptions once there are a few more
+      of each, so visitors can tell the two registers apart at a glance
