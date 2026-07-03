@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHLADNI — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#audio{
+  position:fixed;top:1.4rem;right:1.6rem;
+  display:flex;gap:1.1rem;
+  font-family:'Courier New',monospace;
+}
+#audio button{
+  background:none;border:1px solid rgba(255,255,255,.14);
+  color:rgba(255,255,255,.3);font-family:inherit;
+  font-size:9px;letter-spacing:.24em;text-transform:uppercase;
+  padding:.5em .9em;cursor:pointer;transition:all .25s;
+}
+#audio button:hover{color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.4)}
+#audio button.on{color:#000;background:rgba(255,255,255,.82);border-color:rgba(255,255,255,.82)}
+#audioStatus{
+  position:fixed;top:3.3rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.2);max-width:14em;
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="audio">
+  <button id="btnTone">♪ TONE</button>
+  <button id="btnMic">◉ MIC</button>
+</div>
+<div id="audioStatus"></div>
+<div id="ui">
+  <span id="modeName">FUNDAMENTAL</span>
+  <span id="desc">ERNST CHLADNI · 1787</span>
+</div>
+<script>
+/*  CHLADNI — sand grains settling on the nodal lines of a vibrating plate
+ *
+ *  A square plate has resonant vibration modes; at any instant its surface
+ *  is deflected according to a standing-wave eigenmode. Sand scattered on
+ *  the plate is thrown off the moving antinodes and migrates to the still
+ *  nodal lines, tracing the mode's geometry — first documented by Robert
+ *  Hooke (1680) and Ernst Chladni (1787), later named "cymatics" by Hans
+ *  Jenny (1967).
+ *
+ *  Field (standard free-square-membrane approximation used throughout
+ *  digital cymatics art, not exact clamped-plate Kirchhoff eigenmodes):
+ *    f(x,y) = cos(nπx)cos(mπy) - cos(mπx)cos(nπy)
+ *  Grains don't ride a fixed image of this field — each grain is a live
+ *  particle that descends the gradient of f² (pulled off antinodes,
+ *  toward f=0) plus vibration jitter, so the pattern is *revealed*
+ *  through motion rather than painted directly. This is the first piece
+ *  in the gallery with no trail/diffusion buffer at all: position and
+ *  velocity for ~65k grains live in a single ping-ponged float texture,
+ *  read back via vertex-texture-fetch (VTF) and drawn straight to the
+ *  screen, the same VTF trick PHYSARUM used for agents but without its
+ *  deposit/diffuse trail passes.
+ *
+ *  First audio-reactive piece in the gallery: an optional TONE mode
+ *  plays an oscillator whose pitch glides with the plate's own mode
+ *  number (freq ∝ sqrt(m²+n²), the real relationship between a
+ *  membrane's resonant frequency and its mode indices) — the sound
+ *  IS the shape. An optional MIC mode instead drives the pattern from
+ *  whatever is actually happening in the room: dominant frequency
+ *  selects the mode, loudness feeds grain-scattering energy.
+ */
+
+const MODES = [
+  { name:'FUNDAMENTAL', desc:'ERNST CHLADNI · 1787',            m:1, n:3  },
+  { name:'CROSSWEAVE',  desc:'NODAL LINE INTERFERENCE',         m:2, n:5  },
+  { name:'ROSETTE',     desc:'HANS JENNY · CYMATICS · 1967',    m:3, n:6  },
+  { name:'LATTICE',     desc:'MODAL ANALYSIS · FEM EIGENMODES', m:4, n:7  },
+  { name:'MANDALA',     desc:'ACOUSTIC LEVITATION · MARZO 2015',m:5, n:8  },
+  { name:'TEMPEST',     desc:'HIGH-ORDER HARMONIC TURBULENCE',  m:6, n:11 },
+];
+
+const AGENTS_DIM  = 256;           // 65536 grains
+const MODE_HOLD_MS  = 30000;
+const MODE_TRANS_MS = 4500;
+const N_STRIKES = 4;
+const PLATE_FRAC = 0.78;           // plate square side as a fraction of min(canvas dim)
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">Vertex texture fetch required</p>'; throw 0;
+}
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+// Grain physics: descend the gradient of f(plate)^2 toward nodal lines,
+// plus ambient jitter (simulated vibration) and decaying strike impulses.
+const SIM_FS = `
+precision highp float;
+uniform sampler2D uAgentTex;
+uniform float uM, uN;
+uniform float uForce, uJitter, uDamping, uMaxV;
+uniform float uFrame, uTime;
+uniform vec2  uStrikeP[${N_STRIKES}];
+uniform float uStrikeT[${N_STRIKES}];
+varying vec2 uv;
+
+const float PI = 3.14159265359;
+
+float field(vec2 p, float m, float n){
+  return cos(n*PI*p.x)*cos(m*PI*p.y) - cos(m*PI*p.x)*cos(n*PI*p.y);
+}
+
+float hash(vec2 p, float seed){
+  vec3 p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195) + seed);
+  p3 += dot(p3, p3.yzx + 19.19);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+void main(){
+  vec4 ag  = texture2D(uAgentTex, uv);
+  vec2 pos = ag.xy;
+  vec2 vel = ag.zw;
+
+  float eps = 0.01;
+  float fx1 = field(pos + vec2(eps,0.0), uM, uN);
+  float fx2 = field(pos - vec2(eps,0.0), uM, uN);
+  float fy1 = field(pos + vec2(0.0,eps), uM, uN);
+  float fy2 = field(pos - vec2(0.0,eps), uM, uN);
+  vec2 grad = vec2(fx1*fx1 - fx2*fx2, fy1*fy1 - fy2*fy2) / (2.0*eps);
+
+  vec2 jit = vec2(hash(uv, uFrame)-0.5, hash(uv, uFrame+71.0)-0.5) * 2.0;
+
+  vel -= grad * uForce;
+  vel += jit * uJitter;
+
+  for (int i = 0; i < ${N_STRIKES}; i++){
+    float age = uTime - uStrikeT[i];
+    if (age > 0.0 && age < 2.5) {
+      vec2 d = pos - uStrikeP[i];
+      float r = length(d) + 1e-4;
+      vel += normalize(d) * exp(-age*2.6) * exp(-r*2.2) * 0.09;
+    }
+  }
+
+  vel *= uDamping;
+  float sp = length(vel);
+  if (sp > uMaxV) vel *= uMaxV/sp;
+
+  pos += vel;
+  if (pos.x >  1.0){ pos.x =  2.0-pos.x; vel.x *= -0.4; }
+  if (pos.x < -1.0){ pos.x = -2.0-pos.x; vel.x *= -0.4; }
+  if (pos.y >  1.0){ pos.y =  2.0-pos.y; vel.y *= -0.4; }
+  if (pos.y < -1.0){ pos.y = -2.0-pos.y; vel.y *= -0.4; }
+
+  gl_FragColor = vec4(pos, vel);
+}
+`;
+
+// Grain point rendering: VTF reads position from the agent texture,
+// mapped from plate-space [-1,1] into a centered square on screen.
+const GRAIN_VS = `
+precision highp float;
+attribute vec2 aTexcoord;
+uniform sampler2D uAgentTex;
+uniform vec2 uPlateScale;
+varying float vBright;
+void main(){
+  vec4 ag = texture2D(uAgentTex, aTexcoord);
+  gl_Position = vec4(ag.xy * uPlateScale, 0.0, 1.0);
+  vBright = 0.55 + 0.45*fract(sin(dot(aTexcoord, vec2(12.9898,78.233)))*43758.5453);
+  gl_PointSize = 1.6 + 0.5*vBright;
+}
+`;
+const GRAIN_FS = `
+precision highp float;
+varying float vBright;
+void main(){
+  vec2 c = gl_PointCoord*2.0 - 1.0;
+  float d = length(c);
+  float a = smoothstep(1.0, 0.0, d);
+  vec3 col = vec3(0.98, 0.94, 0.86) * vBright;
+  gl_FragColor = vec4(col*a, a*0.85);
+}
+`;
+
+// Plate background: brushed-metal square with a slow specular sheen,
+// black void outside — the plate is a discrete object, not an infinite field.
+const PLATE_FS = `
+precision highp float;
+uniform vec2 uRes;
+uniform vec2 uPlateHalfPx;
+uniform float uTime;
+uniform vec3 uTint;
+varying vec2 uv;
+void main(){
+  vec2 px = uv * uRes;
+  vec2 d  = px - uRes*0.5;
+  vec2 pn = d / uPlateHalfPx;
+  vec3 col = vec3(0.0);
+  if (abs(pn.x) < 1.0 && abs(pn.y) < 1.0){
+    vec3 base = vec3(0.045,0.048,0.055) + uTint*0.05;
+    float spec = pow(max(0.0, 1.0 - length(pn - vec2(sin(uTime*0.045)*0.5, -0.55*cos(uTime*0.03))) * 1.15), 4.0);
+    float edge = smoothstep(0.965, 1.0, max(abs(pn.x), abs(pn.y)));
+    col = base + spec*0.22*(uTint*0.6+0.4) + edge*0.20;
+  }
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const pSim   = mkProg(VS, SIM_FS);
+const pGrain = mkProg(GRAIN_VS, GRAIN_FS);
+const pPlate = mkProg(VS, PLATE_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+const N = AGENTS_DIM * AGENTS_DIM;
+const ptCoords = new Float32Array(N * 2);
+{
+  let k = 0;
+  for (let j = 0; j < AGENTS_DIM; j++)
+    for (let i = 0; i < AGENTS_DIM; i++) {
+      ptCoords[k++] = (i + 0.5) / AGENTS_DIM;
+      ptCoords[k++] = (j + 0.5) / AGENTS_DIM;
+    }
+}
+const ptBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+gl.bufferData(gl.ARRAY_BUFFER, ptCoords, gl.STATIC_DRAW);
+function bindPts(p) {
+  const loc = gl.getAttribLocation(p, 'aTexcoord');
+  gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(w, h, data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function randomAgents() {
+  const d = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    d[i*4]   = (Math.random()*2-1) * 0.96;   // x
+    d[i*4+1] = (Math.random()*2-1) * 0.96;   // y
+    d[i*4+2] = 0;                            // vx
+    d[i*4+3] = 0;                            // vy
+  }
+  return d;
+}
+
+let agentA = mkTex(AGENTS_DIM, AGENTS_DIM, randomAgents());
+let agentB = mkTex(AGENTS_DIM, AGENTS_DIM, null);
+let agentFbA = mkFB(agentA), agentFbB = mkFB(agentB);
+
+/* ── mode schedule ──────────────────────────────────────────────────────── */
+
+let modeIdx    = 0;
+let modeStart  = performance.now();
+let prevM = MODES[0].m, prevN = MODES[0].n;
+let curM  = MODES[0].m, curN  = MODES[0].n;
+
+function smoothstep(a,b,x){ const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); }
+
+function applyModeLabel(idx) {
+  const m = MODES[idx];
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent     = m.desc;
+}
+applyModeLabel(0);
+
+function advanceSchedule(now) {
+  const elapsed = now - modeStart;
+  if (elapsed > MODE_TRANS_MS + MODE_HOLD_MS) {
+    prevM = MODES[modeIdx].m; prevN = MODES[modeIdx].n;
+    modeIdx = (modeIdx + 1) % MODES.length;
+    modeStart = now;
+    applyModeLabel(modeIdx);
+  }
+  const t = smoothstep(0, MODE_TRANS_MS, now - modeStart);
+  curM = prevM + (MODES[modeIdx].m - prevM) * t;
+  curN = prevN + (MODES[modeIdx].n - prevN) * t;
+}
+
+/* ── audio ──────────────────────────────────────────────────────────────── */
+
+let audioCtx = null, osc = null, oscGain = null;
+let analyser = null, micStream = null, freqData = null, timeData = null;
+let toneOn = false, micOn = false;
+let micGoodM = curM, micGoodN = curN;
+
+const btnTone = document.getElementById('btnTone');
+const btnMic  = document.getElementById('btnMic');
+const statusEl = document.getElementById('audioStatus');
+
+function ensureCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function stopTone() {
+  toneOn = false;
+  btnTone.classList.remove('on');
+  if (osc) { try { osc.stop(); } catch(e){} osc.disconnect(); osc = null; }
+  if (oscGain) { oscGain.disconnect(); oscGain = null; }
+}
+function startTone() {
+  stopMic();
+  const ctx = ensureCtx();
+  osc = ctx.createOscillator();
+  oscGain = ctx.createGain();
+  osc.type = 'sine';
+  oscGain.gain.value = 0.0;
+  osc.connect(oscGain).connect(ctx.destination);
+  osc.frequency.value = freqForMode(curM, curN);
+  osc.start();
+  oscGain.gain.setTargetAtTime(0.06, ctx.currentTime, 0.4);
+  toneOn = true;
+  btnTone.classList.add('on');
+}
+
+function stopMic() {
+  micOn = false;
+  btnMic.classList.remove('on');
+  statusEl.textContent = '';
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  analyser = null;
+}
+async function startMic() {
+  stopTone();
+  const ctx = ensureCtx();
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    statusEl.textContent = 'microphone unavailable';
+    return;
+  }
+  const src = ctx.createMediaStreamSource(micStream);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.75;
+  src.connect(analyser);
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  timeData = new Uint8Array(analyser.fftSize);
+  micOn = true;
+  btnMic.classList.add('on');
+  statusEl.textContent = 'listening';
+  micGoodM = curM; micGoodN = curN;
+}
+
+function freqForMode(m, n) { return 55 * Math.sqrt(m*m + n*n); }
+
+let exciteEnergy = 0;
+
+function readMic() {
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  let sumSq = 0;
+  for (let i = 0; i < timeData.length; i++) { const v = (timeData[i]-128)/128; sumSq += v*v; }
+  const rms = Math.sqrt(sumSq / timeData.length);
+  exciteEnergy = Math.max(exciteEnergy, Math.min(1, rms * 6));
+
+  const sampleRate = audioCtx.sampleRate;
+  const loBin = Math.floor(80 / (sampleRate/2) * freqData.length);
+  const hiBin = Math.ceil(2000 / (sampleRate/2) * freqData.length);
+  let best = -1, bestV = 24; // ignore near-silence
+  for (let i = loBin; i <= hiBin && i < freqData.length; i++) {
+    if (freqData[i] > bestV) { bestV = freqData[i]; best = i; }
+  }
+  if (best >= 0) {
+    const freq = best * (sampleRate/2) / freqData.length;
+    const t = Math.max(0, Math.min(1, Math.log2(freq/80) / Math.log2(2000/80)));
+    const v = t * (MODES.length - 1);
+    const i0 = Math.floor(v), i1 = Math.min(i0+1, MODES.length-1), f = v - i0;
+    micGoodM = MODES[i0].m + (MODES[i1].m - MODES[i0].m) * f;
+    micGoodN = MODES[i0].n + (MODES[i1].n - MODES[i0].n) * f;
+    applyModeLabel(Math.round(v));
+  }
+  curM += (micGoodM - curM) * 0.04;
+  curN += (micGoodN - curN) * 0.04;
+}
+
+btnTone.addEventListener('click', () => { toneOn ? stopTone() : startTone(); });
+btnMic.addEventListener('click',  () => { micOn  ? stopMic()  : startMic();  });
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+let plateHalfPx = 0;
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  plateHalfPx = Math.min(canvas.width, canvas.height) * PLATE_FRAC * 0.5;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU   = locs(pSim,   ['uAgentTex','uM','uN','uForce','uJitter','uDamping','uMaxV','uFrame','uTime','uStrikeP','uStrikeT']);
+const grainU = locs(pGrain, ['uAgentTex','uPlateScale']);
+const plateU = locs(pPlate, ['uRes','uPlateHalfPx','uTime','uTint']);
+
+let uFrame = 0;
+const t0 = performance.now();
+
+const strikeP = new Float32Array(N_STRIKES * 2);
+const strikeT = new Float32Array(N_STRIKES).fill(-1000);
+let strikeIdx = 0;
+
+function simStep(tSec) {
+  gl.useProgram(pSim);
+  bindQuad(pSim);
+  gl.viewport(0, 0, AGENTS_DIM, AGENTS_DIM);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, agentFbB);
+
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(simU.uAgentTex, 0);
+  gl.uniform1f(simU.uM, curM);
+  gl.uniform1f(simU.uN, curN);
+  gl.uniform1f(simU.uForce,   0.00028);
+  gl.uniform1f(simU.uJitter,  0.0028 + exciteEnergy*0.05);
+  gl.uniform1f(simU.uDamping, 0.90);
+  gl.uniform1f(simU.uMaxV,    0.05);
+  gl.uniform1f(simU.uFrame, uFrame);
+  gl.uniform1f(simU.uTime,  tSec);
+  gl.uniform2fv(simU.uStrikeP, strikeP);
+  gl.uniform1fv(simU.uStrikeT, strikeT);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  [agentA, agentB] = [agentB, agentA];
+  [agentFbA, agentFbB] = [agentFbB, agentFbA];
+
+  exciteEnergy *= 0.93;
+}
+
+function drawFrame(tSec) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(pPlate);
+  bindQuad(pPlate);
+  gl.uniform2f(plateU.uRes, canvas.width, canvas.height);
+  gl.uniform2f(plateU.uPlateHalfPx, plateHalfPx, plateHalfPx);
+  gl.uniform1f(plateU.uTime, tSec);
+  const tint = micOn ? [0.35,0.55,0.65] : (toneOn ? [0.55,0.4,0.65] : [0.30,0.36,0.46]);
+  gl.uniform3f(plateU.uTint, tint[0], tint[1], tint[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  gl.useProgram(pGrain);
+  bindPts(pGrain);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(grainU.uAgentTex, 0);
+  gl.uniform2f(grainU.uPlateScale, plateHalfPx/(canvas.width/2), plateHalfPx/(canvas.height/2));
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, N);
+  gl.disable(gl.BLEND);
+}
+
+function loop(now) {
+  const tSec = (now - t0) / 1000;
+  if (micOn) {
+    readMic();
+  } else {
+    advanceSchedule(now);
+    exciteEnergy *= 0.985; // slower ambient decay when not mic-driven
+  }
+  if (toneOn && osc) {
+    osc.frequency.setTargetAtTime(freqForMode(curM, curN), audioCtx.currentTime, 0.15);
+  }
+  uFrame += 1.0;
+  simStep(tSec);
+  drawFrame(tSec);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: click/touch strikes the plate ────────────────────────── */
+
+function toPlateSpace(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left) * (canvas.width / rect.width);
+  const py = (clientY - rect.top)  * (canvas.height / rect.height);
+  const dx = px - canvas.width/2;
+  const dy = py - canvas.height/2;
+  return [ dx/plateHalfPx, -dy/plateHalfPx ];
+}
+
+function strike(clientX, clientY) {
+  const [x, y] = toPlateSpace(clientX, clientY);
+  strikeP[strikeIdx*2]   = x;
+  strikeP[strikeIdx*2+1] = y;
+  strikeT[strikeIdx]     = (performance.now() - t0) / 1000;
+  strikeIdx = (strikeIdx + 1) % N_STRIKES;
+  exciteEnergy = Math.min(1, exciteEnergy + 0.5);
+}
+
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  strike(x, y);
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>

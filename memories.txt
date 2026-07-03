@@ -11,7 +11,129 @@ membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
 excitable.html   — EXCITABLE piece
 physarum.html    — PHYSARUM piece
-quasicrystal.html — QUASICRYSTAL piece (new)
+quasicrystal.html — QUASICRYSTAL piece
+chladni.html     — CHLADNI piece (new)
+
+---
+
+## Piece 6: CHLADNI — Vibrating-Plate Nodal Patterns (2026-07-03)
+Sand grains on a square plate migrate off the moving antinodes and collect
+on the still nodal lines of the plate's current vibration mode — the
+phenomenon Robert Hooke first noticed in 1680 and Ernst Chladni published
+figures of in 1787, later named "cymatics" by Hans Jenny (1967). First
+audio-reactive piece in the gallery.
+
+### Why this piece is architecturally different
+Every prior piece either simulates a continuous field on a ping-pong
+framebuffer (MEMBRANE/LENIA/EXCITABLE) or a closed-form field with no
+state at all (QUASICRYSTAL), and PHYSARUM's agents deposit into a second
+ping-ponged trail field that itself diffuses and decays. CHLADNI has
+agents (grains) but NO trail/field buffer whatsoever: ~65k grains
+(256×256 float texture of x,y,vx,vy, ping-ponged, VTF-rendered exactly
+like PHYSARUM's ) are drawn directly to the visible framebuffer every
+frame. The "pattern" isn't stored anywhere — it only exists as the
+instantaneous spatial distribution of live particles. This is the
+simplest state model yet (one texture, no second buffer) despite having
+the most physically-motivated per-particle dynamics so far.
+
+### Field and grain physics
+- field(x,y) = cos(nπx)cos(mπy) − cos(mπx)cos(nπy), the standard
+  free-square-membrane approximation used throughout digital cymatics
+  art (NOT exact clamped-plate Kirchhoff eigenmodes with Bessel
+  functions — noted in-code as a knowingly-approximate model, same
+  honesty as LENIA's simplified kernel)
+- Grains do not sample a precomputed field texture — each grain
+  evaluates `field()` itself, 5× per frame (center ± epsilon in x and
+  y), to build a central-difference gradient of field², and descends it:
+  `vel -= grad(f²) * uForce`. This pulls grains off antinodes (f²
+  large) toward nodal lines (f²≈0) exactly like real sand being
+  vibrated off the moving parts of the plate — the pattern is *revealed
+  through motion*, not painted.
+- Ambient per-grain hash-noise jitter simulates the vibration itself
+  (without it grains freeze at the first local f²-minimum they hit,
+  including false minima off the true nodal set); `uDamping=0.90` bleeds
+  excess kinetic energy each frame; velocity is hard-clamped
+  (`uMaxV=0.05`) to keep the explicit-Euler integration stable against
+  the steep gradient spikes near high-order modes.
+- Reflective (not toroidal) boundary at the plate edge — a real plate is
+  a bounded object. Grains observably pile up along the rim over time;
+  this is an accepted emergent behavior (real shaken sand does collect
+  at a container's edge), reinforced rather than fought by rendering the
+  plate as a discrete bordered square object (see composition below),
+  not fought as a bug.
+
+### Composition: a bounded object, not a full-bleed field
+Every earlier piece fills the entire viewport with its field. CHLADNI
+instead renders a centered square "plate" (78% of the shorter viewport
+dimension) with pure black void outside it — a deliberate compositional
+break to match the subject: a Chladni plate is a physical instrument on
+a stand, not an infinite medium. Plate background is a near-static
+brushed-metal gradient with a slow specular sheen drifting across it and
+a bright rim stroke; it is intentionally NOT modulated by the field
+value, so the nodal pattern is legible ONLY through grain position, the
+way it actually is in a real experiment (the metal itself doesn't glow
+along the nodes — only the sand shows you where they are).
+
+### 6 Modes (m, n plate mode-numbers; 30s hold + 4.5s eased glide between)
+- FUNDAMENTAL: m=1, n=3  — Ernst Chladni, 1787
+- CROSSWEAVE:  m=2, n=5  — nodal line interference
+- ROSETTE:     m=3, n=6  — Hans Jenny, cymatics, 1967
+- LATTICE:     m=4, n=7  — FEM modal-analysis register
+- MANDALA:     m=5, n=8  — acoustic-levitation traps, Marzo 2015
+- TEMPEST:     m=6, n=11 — high-order harmonic turbulence
+Mode numbers are continuously interpolated (not hard-cut) during the
+4.5s transition, so the plate visibly passes through chaotic, scattered,
+"off-resonance" states between clean figures — true to how a real plate
+looks away from an exact resonant frequency, and a nice bonus: it means
+there's no special-case code needed to animate the transition, the same
+gradient-descent physics that produces the resting figure also produces
+the transient chaos for free.
+
+### Audio (first audio-reactive piece in the gallery)
+Two mutually-exclusive opt-in toggle buttons (top right), off by default
+so the piece is silent and permission-free until a user explicitly asks:
+- TONE: starts a sine oscillator whose frequency glides continuously as
+  `55 * sqrt(m² + n²)` — the real proportionality between a membrane's
+  resonant frequency and its mode indices — tracking the interpolated
+  (m,n) every frame via `setTargetAtTime`. The pitch and the shape change
+  together because they're driven by the same numbers; sound literally
+  *is* the shape here, not a separate reactive layer bolted on.
+- MIC: `getUserMedia` → `AnalyserNode` (fftSize 1024). RMS of the time-
+  domain buffer feeds grain-jitter "excitation" energy (louder = more
+  scatter); the dominant frequency bin in the 80–2000Hz band is mapped
+  log-scale onto the 6-mode list (continuous interpolation between
+  neighboring modes' m,n, smoothed 0.04/frame) so the plate reacts to
+  whatever sound is actually in the room. Falls back to holding the last
+  good (m,n) when the loudest bin is near noise floor, rather than
+  snapping to silence-noise. Toggling MIC off resets the auto-cycle
+  schedule's clock to "now" so it eases forward from the current state
+  instead of jumping to wherever the untouched schedule would have
+  reached.
+- Verified both toggles run without throwing under Playwright with
+  `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`
+  (mic path) and a plain click (tone path); real audible output wasn't
+  (and can't be) verified headless, only the absence of exceptions and
+  correct downstream state changes (button "on" styling, plate tint
+  shift, mode label updates from the fake mic's fake tone).
+
+### Interaction
+- Click/touch = strike the plate: pushes a decaying, spatially-localized
+  outward impulse into the grain velocities near the click point (4-slot
+  ring buffer of strike position/time, same pattern as QUASICRYSTAL's
+  ripple buffer — pure function of elapsed time, no per-strike state to
+  clean up) and adds a global burst of jitter energy. Grains audibly-
+  named "scatter" then resettle back onto the nodal lines over a few
+  seconds — verified visually via headless screenshots: a strike
+  visibly explodes the FUNDAMENTAL figure into a radial burst pattern
+  around the click point, then converges back to the original nodal
+  lines within ~6s.
+
+### Verification
+Headless Playwright + SwiftShader screenshots confirmed: correct nodal
+figures for FUNDAMENTAL and CROSSWEAVE (matching expected mode-number
+line counts), clean mode-transition crossfade, strike-then-resettle
+behavior, TONE/MIC button state and plate-tint changes, and a mobile
+portrait viewport (390×844) keeping the plate square and UI unclipped.
 
 ---
 
@@ -260,6 +382,44 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-03 — Session 6
+- Added CHLADNI: vibrating-plate nodal-line patterns (Hooke 1680, Chladni
+  1787, Jenny's "cymatics" 1967). Sand-grain particles (VTF-rendered
+  float texture, PHYSARUM's technique) descend the gradient of the
+  plate's mode-shape squared, settling on nodal lines — no trail/field
+  buffer at all, the simplest state model in the gallery despite being
+  the most physically-grounded per-particle rule set yet.
+- First audio-reactive piece: opt-in TONE (oscillator pitch glides with
+  sqrt(m²+n²), tied to the same mode numbers driving the visual — sound
+  and shape are the same underlying variable, not two synced layers) and
+  opt-in MIC (dominant frequency from a room's actual sound selects the
+  mode, loudness feeds grain-scatter energy). Both off by default so the
+  piece needs no permissions until explicitly requested.
+- First piece composed as a bounded object (a centered square "plate" in
+  a black void) rather than a full-bleed field, matching the subject —
+  a Chladni plate is a physical instrument, not an infinite medium.
+- Click/touch strikes the plate: localized decaying impulse scatters
+  nearby grains, which resettle back onto the nodal lines over a few
+  seconds — verified via headless screenshots (explode → reconverge).
+- Mode transitions interpolate the (m,n) mode numbers continuously
+  rather than hard-cutting, so the plate visibly passes through
+  chaotic "off-resonance" states between the 6 curated figures — this
+  fell out of the existing gradient-descent physics for free, no
+  separate transition-animation code needed.
+- Inspiration: web research into differential-growth line algorithms,
+  Chladni/cymatics simulation art, and 2026 net.art aesthetic surveys.
+  Chose cymatics over differential growth because it opens up audio
+  reactivity (idea #1 on the long-standing backlog, untouched since
+  session 1) with a physically honest justification — the visual IS a
+  sound made visible, not audio bolted onto an unrelated field — and
+  because "sand settling on a physical plate" is a sharper departure
+  from the gallery's five prior full-bleed continuous-field/agent-field
+  pieces than another line-growth-on-black-canvas piece would have been.
+- Verified all 6 modes' mode-name/description labels, the strike-and-
+  resettle interaction, and both audio toggles (including the mic path
+  with Playwright's fake-device flags) via headless Playwright
+  screenshots before shipping; no console errors in any tested path.
+
 ### 2026-07-02 — Session 5
 - Added QUASICRYSTAL: closed-form wave-interference aperiodic lattice
   (Shechtman 1982 forbidden fivefold symmetry; laser interference
@@ -355,7 +515,20 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 ---
 
 ## Ideas for Future Sessions
-- [ ] Audio reactivity via Web Audio API (microphone or oscillator)
+- [x] Audio reactivity via Web Audio API (microphone or oscillator) —
+      done in CHLADNI (session 6): TONE oscillator + MIC analyser modes
+- [ ] CHLADNI: true clamped-plate Kirchhoff eigenmodes (Bessel functions,
+      circular plate) as an alternate, more physically-exact mode
+- [ ] CHLADNI: let a sustained touch/finger act as a forced node (as in
+      real demos where a finger damps the plate at the touch point),
+      rather than only a transient scatter-impulse on tap
+- [ ] CHLADNI: drive TONE from a short musical sequence/chord instead of
+      a single sweeping sine, to see richer multi-mode superpositions
+- [ ] Differential growth / diff.-line algorithm (Hoff/inconvergent-style
+      2D morphogenesis) — researched this session, not used; would be a
+      good non-field, non-particle-swarm architecture (a single growing,
+      self-avoiding polyline) for a future piece
+- [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Glitch/datamosh post-processing pass (net.art aesthetic)
 - [ ] Shader-based typography layer dissolving into the flow
