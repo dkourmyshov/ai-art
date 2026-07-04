@@ -12,7 +12,134 @@ lenia.html       — LENIA piece
 excitable.html   — EXCITABLE piece
 physarum.html    — PHYSARUM piece
 quasicrystal.html — QUASICRYSTAL piece
-chladni.html     — CHLADNI piece (new)
+chladni.html     — CHLADNI piece
+gyrus.html       — GYRUS piece (new)
+
+---
+
+## Piece 7: GYRUS — Cortical Folding via Differential Growth (2026-07-04)
+A closed loop of ~100-550 nodes grows inside a fixed circular "skull"
+boundary. Immediate loop-neighbors are held apart by a short spring;
+ALL nearby nodes (not just loop-neighbors) repel each other across a
+slightly larger radius — that mismatch is the whole engine. Local
+crowding stretches some neighbor-edges past a threshold, and a
+stretched edge splits in two (a cell dividing). More curve keeps
+arriving than the boundary has room for, so the loop has nowhere to go
+but to fold — the mechanism proposed for real cortical gyrification
+(Tallinen, Chung, Biggins & Mahadevan, "On the growth and form of
+cortical convolutions," Nature Physics 2016). This is a 2D closed-curve
+toy version of that paper's 3D bilayer FEM model, an honest
+simplification in the same spirit as MEMBRANE's kernel or CHLADNI's
+mode shape.
+
+### Why this piece is architecturally different
+The gallery's first piece with no GPU simulation at all: plain
+Canvas2D, a few hundred/thousand JS objects, a spatial hash grid for
+neighbor queries. Every earlier piece is a WebGL field or VTF-rendered
+particle swarm; this is the "single growing self-avoiding polyline"
+idea from the long-standing differential-growth backlog entry
+(untouched since session 3), finally used, applied to a folding
+membrane rather than a coastline/leaf-margin (the usual differential-
+growth subject).
+
+### Five modes = real comparative-neuroanatomy GI points
+MOUSE (lissencephalic) → CAT → MACAQUE → HUMAN → DOLPHIN (bottlenose,
+whose cortex is *more* convoluted than a human's despite lacking a
+layered prefrontal cortex — the intended "novel and unexpected" fact
+this piece is built around). Modes vary repulsion radius; a smaller
+repulsion radius packs more folding into the same skull. GI (contour
+length / convex-hull perimeter, the real metric) is computed live from
+the running node positions every 8 frames and shown in the UI — not a
+hardcoded number. Figures are illustrative, not exact literature values.
+
+### Tuning traps hit this session (read before reusing this technique)
+1. **Numerical blowup from plain force*dt integration.** First version
+   moved nodes by raw `pos += force*DT` with no velocity damping or
+   step clamp — positions diverged to ~1e221 within a few seconds
+   (classic explicit-Euler instability once combined spring+repulsion+
+   confinement stiffness exceeds the stability bound for the timestep).
+   Fixed by giving every node a persistent velocity, damping it by 0.72
+   each step, and hard-clamping per-step displacement to half the
+   target edge length — same pattern CHLADNI already used for its
+   grains (`vel *= uDamping; clamp to uMaxV`), just not carried over.
+2. **A filled self-intersecting polygon reads as shattered glass.**
+   At the density this force model actually produces, the closed curve
+   self-crosses under simple pairwise repulsion (an honest limit of
+   this toy model — it doesn't do real segment-segment collision
+   avoidance). `ctx.fill(path, 'evenodd')` on a self-intersecting path
+   throws that up as ugly overlapping fragments. Switched to rendering
+   the tissue as a THICK round-jointed STROKE instead of a filled
+   polygon — the same self-crossings just read as tissue folding over
+   itself, not a bug. General lesson: a stroke tolerates topological
+   mess a fill cannot.
+3. **Growth rate must be paced against real time, not population
+   percentage.** `quota = population * 2%/frame` hit each mode's node
+   cap in ~2 real seconds regardless of cap size, giving no visible
+   "unfolding" — it just looked instantly tangled. Fixed with a
+   fixed-real-time growth budget (`(maxNodes - seedCount) /
+   GROWTH_FRAMES` nodes/frame, accumulated fractionally) so every mode
+   takes the same ~25s to reach its cap regardless of magnitude.
+4. **Small seed radius never expands to fill its confinement.**
+   Starting from a tiny seed circle (SEED_R=0.11 in a CONFINE_R=1.0
+   world) produces a small compact tangled clump that never grows
+   large enough to reach the boundary — repulsion prevents local
+   overlap but supplies no long-range "pressure" to inflate the whole
+   mass outward. Fixed by starting the seed loop already spanning most
+   of the confinement (SEED_R=0.55) so folding happens as local
+   wrinkling along an already-large loop — incidentally closer to real
+   fetal cortical development (already sheet-like before it folds) —
+   and every mode now visibly fills its skull instead of leaving a lot
+   of dead black space.
+5. **A soft confinement spring can be overwhelmed by crowding
+   pressure**, letting the mass spill past the intended boundary at
+   high node counts (observed clearly breaching the skull ring at
+   30s in an early build). Added a hard positional clamp (project back
+   onto the circle, zero the outward velocity component) as a genuine
+   wall on top of the soft spring — the physical skull cannot be
+   pushed through.
+6. **GI is a nonlinear, oversensitive dial once the hull reaches the
+   boundary.** An analytic maxNodes formula (target GI × boundary
+   circumference / edge length, assuming efficient packing) was wrong
+   by 3-8x in practice — once the loop's convex hull is already at the
+   confinement radius, any extra curve length has nowhere to go but
+   fold, so small node-count changes cause disproportionate GI swings.
+   Final per-mode maxNodes values (115/175/250/380/550) were found by
+   directly fast-forwarding the simulation (calling relax()/grow() in
+   a tight loop via page.evaluate, no real animation frames needed) and
+   reading back the actual settled GI — bisecting empirically was far
+   faster and more reliable than re-deriving the formula.
+
+### Interaction
+- Click/touch: a localized decaying outward "growth stimulus" (4-slot
+  ring buffer of position/time, the same pattern as QUASICRYSTAL's
+  ripple buffer and CHLADNI's strike buffer — a pure function of
+  elapsed time, no per-stimulus cleanup needed) bulges nearby tissue
+  outward for ~2.6s, prompting extra local folding near the touch
+  point — thematically a localized proliferative growth spurt, not a
+  generic "poke."
+
+### Verification
+Headless Playwright + Canvas2D (no WebGL/SwiftShader needed — first
+piece that doesn't touch WebGL at all) confirmed: stable node positions
+across all 5 modes over a full 42s hold with no numerical blowup, a
+strictly monotonic GI ladder across MOUSE→DOLPHIN (~1.7 → ~2.8 in the
+final tuning, order preserved run to run despite RNG jitter in node-
+insertion offsets), 60fps sustained even at DOLPHIN's ~550-node cap, a
+390×844 mobile portrait viewport keeping the skull circle centered and
+UI unclipped, and the click/touch growth-stimulus bulge visibly
+deforming the ribbon without throwing.
+
+### Inspiration
+Web research into 2026 generative-art/creative-coding trends surfaced
+differential growth again (Anders Hoff/inconvergent's differential-
+line, jasonwebb's 2d-differential-growth-experiments) alongside
+Genuary 2026 prompts ("one line," "unexpected path") — both pointing at
+a single growing self-avoiding polyline, an idea flagged back in
+session 3 as "researched, not used." Reframing it as cortical
+gyrification (real Tallinen et al. 2016 mechanism) rather than generic
+coral/leaf-margin growth gave it a physically-grounded story and, via
+comparative neuroanatomy, a genuinely surprising fact to build the mode
+list around (dolphins out-fold humans).
 
 ---
 
@@ -382,6 +509,46 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-04 — Session 7
+- Added GYRUS: differential-growth cortical folding (Tallinen et al.
+  2016). First piece with no GPU/WebGL at all — plain Canvas2D, a
+  spatial hash grid, a few hundred growing/repelling/spring-connected
+  nodes forming a single closed self-avoiding polyline. Finally used
+  the "single growing polyline" idea that's sat in the backlog since
+  session 3 (flagged then as "researched, not used").
+- 5 modes are real comparative-neuroanatomy gyrification-index points:
+  MOUSE (smooth) → CAT → MACAQUE → HUMAN → DOLPHIN, the last chosen
+  because bottlenose dolphins are genuinely more cortically folded than
+  humans — the "novel and unexpected" fact the piece is built to
+  demonstrate. GI is computed live from the running simulation
+  (contour length / convex-hull perimeter), not hardcoded.
+- Spent most of the session on physics/tuning traps rather than initial
+  build: numerical blowup from undamped force integration (fixed with
+  velocity damping + step clamp, same pattern CHLADNI already used but
+  not carried over), a filled self-intersecting polygon reading as
+  shattered glass (switched to a thick stroked ribbon, which tolerates
+  the same crossings gracefully), growth pacing (real-time budget
+  instead of population-percentage quota), a small seed circle never
+  expanding to fill its confinement (fixed by seeding a loop that
+  already spans most of the boundary), soft confinement getting
+  overwhelmed at high density (added a hard positional wall on top),
+  and an analytic GI-to-node-count formula that was wrong 3-8x in
+  practice (replaced with direct empirical calibration — fast-forwarding
+  the sim via page.evaluate and reading back settled GI, far faster
+  than re-deriving the formula by hand). Full writeup under the GYRUS
+  technical notes above — worth reading before building anything with
+  particle repulsion + insertion again.
+- Verified all 5 modes, the live GI readout, the click/touch growth-
+  stimulus interaction, 60fps at the densest mode, and a mobile
+  portrait viewport via headless Playwright — first piece verified
+  without any WebGL/SwiftShader path at all.
+- Inspiration: web research into differential growth (Hoff/inconvergent,
+  jasonwebb's experiments) and Genuary 2026 prompts ("one line,"
+  "unexpected path"), reframed away from the usual coral/leaf-margin
+  subject toward real cortical gyrification mechanics for a physically-
+  grounded story and a genuinely surprising comparative-neuroanatomy
+  fact to hang the mode list on.
+
 ### 2026-07-03 — Session 6
 - Added CHLADNI: vibrating-plate nodal-line patterns (Hooke 1680, Chladni
   1787, Jenny's "cymatics" 1967). Sand-grain particles (VTF-rendered
@@ -524,10 +691,19 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       rather than only a transient scatter-impulse on tap
 - [ ] CHLADNI: drive TONE from a short musical sequence/chord instead of
       a single sweeping sine, to see richer multi-mode superpositions
-- [ ] Differential growth / diff.-line algorithm (Hoff/inconvergent-style
-      2D morphogenesis) — researched this session, not used; would be a
-      good non-field, non-particle-swarm architecture (a single growing,
-      self-avoiding polyline) for a future piece
+- [x] Differential growth / diff.-line algorithm (Hoff/inconvergent-style
+      2D morphogenesis) — done in GYRUS (session 7), reframed as cortical
+      gyrification rather than generic coral/leaf-margin growth
+- [ ] GYRUS: real segment-segment intersection avoidance instead of pure
+      pairwise repulsion, so the ribbon never has to fold-over-itself as
+      an accepted approximation — expensive (needs a segment spatial
+      index) but would let fold density push higher without visual mess
+- [ ] GYRUS: two independent hemispheres (left/right loops) growing side
+      by side within a shared confinement, closer to a real coronal
+      brain cross-section than a single loop
+- [ ] GYRUS: sustained touch acting as a localized growth-rate multiplier
+      (a "tumor" zone) rather than a transient 2.6s bulge, so held
+      contact visibly outpaces the rest of the loop over many seconds
 - [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Export current frame as PNG (canvas.toDataURL)
 - [ ] Glitch/datamosh post-processing pass (net.art aesthetic)

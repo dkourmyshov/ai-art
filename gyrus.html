@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GYRUS — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">MOUSE</span>
+  <span id="desc">LISSENCEPHALIC · GI 1.00</span>
+</div>
+<script>
+/*  GYRUS — cortical folding by differential growth
+ *
+ *  A closed loop of nodes grows inside a fixed circular boundary (the
+ *  skull). Immediate neighbors are held apart by a short spring; ALL
+ *  nearby nodes (not just loop-neighbors) repel each other across a
+ *  slightly larger radius. That mismatch is the whole engine: local
+ *  crowding stretches some neighbor-edges past a threshold, and a
+ *  stretched edge is split in two (a cell dividing). More curve keeps
+ *  arriving than the fixed boundary has room for in its current shape,
+ *  so the loop has nowhere to go but to fold — literally the mechanism
+ *  proposed for real cortical gyrification: the cortical plate grows
+ *  faster in surface area than the confining skull, and buckles (Tallinen,
+ *  Chung, Biggins & Mahadevan, "On the growth and form of cortical
+ *  convolutions," Nature Physics 2016). This is a 2D closed-curve toy
+ *  version of that idea, not the paper's 3D bilayer FEM model — an
+ *  honest simplification, same spirit as this gallery's other
+ *  approximate physical models (MEMBRANE's kernel, CHLADNI's mode shape).
+ *
+ *  Architecturally this is the gallery's first piece with no GPU
+ *  simulation at all: plain Canvas2D, a few thousand JS objects, a
+ *  spatial hash grid for neighbor queries. Every earlier piece is a
+ *  WebGL field or VTF-rendered particle swarm; GYRUS is closer to the
+ *  "single growing self-avoiding polyline" idea from the differential-
+ *  growth backlog, applied to a genuinely different subject (a folding
+ *  membrane, not a coastline).
+ *
+ *  The five modes are real comparative-neuroanatomy points on the
+ *  gyrification-index (GI) scale — smooth lissencephalic brains (mice,
+ *  most rodents) through the human cortex to the bottlenose dolphin,
+ *  whose cortex is *more* convoluted than a human's despite it lacking
+ *  a layered prefrontal cortex like ours. GI here is the real metric
+ *  (total contour length / convex-hull perimeter), computed live from
+ *  the running simulation, not a hardcoded number.
+ */
+
+// The seed loop starts already spanning most of the skull (SEED_R below), so
+// folding happens as local wrinkling along an already-large loop rather than
+// needing the whole mass to inflate outward from a point — closer to how the
+// fetal cortex actually develops (already sheet-like before it folds), and it
+// keeps every mode visually filling its skull instead of shrinking to a small
+// blob surrounded by a lot of empty space when GI is low. maxNodes per mode
+// was found empirically (this system is nonlinear: once the loop's hull
+// reaches the skull, a small node-count increase buys a disproportionate
+// jump in fold density, since the extra length has nowhere to go but fold).
+// Illustrative GI figures, not exact literature values.
+const MODES = [
+  { name:'MOUSE',   desc:'LISSENCEPHALIC',              repR:0.078, maxNodes:115 },
+  { name:'CAT',     desc:'CARNIVORE CORTEX',             repR:0.054, maxNodes:175 },
+  { name:'MACAQUE', desc:'OLD WORLD PRIMATE',             repR:0.039, maxNodes:250 },
+  { name:'HUMAN',   desc:'HOMO SAPIENS',                  repR:0.028, maxNodes:380 },
+  { name:'DOLPHIN', desc:'TURSIOPS · MOST GYRIFIED KNOWN', repR:0.020, maxNodes:550 },
+];
+const MODE_HOLD_MS = 42000;
+
+const SPRING_K  = 40;
+const REPEL_K   = 110;
+const SMOOTH_K  = 4;
+const CONFINE_K = 55;
+const DT        = 0.05;
+const DAMPING   = 0.72;    // velocity damping, keeps the explicit-Euler step stable
+const CONFINE_R = 1.0;     // skull radius, in sim units
+const SEED_R    = 0.55;    // initial smooth loop radius, in sim units
+const GROWTH_FRAMES = 1500; // ~25s at 60fps to grow from seed to a mode's maxNodes
+const RELAX_SUBSTEPS = 3;  // relaxation steps per animation frame, growth checked once
+
+const STIM_SLOTS = 4, STIM_DURATION = 2.6;
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy, pxScale;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2; cy = H / 2;
+  pxScale = Math.min(W, H) * 0.40 / CONFINE_R;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── growth state ───────────────────────────────────────────────────────── */
+
+let nodes = [];
+let modeIdx = 0;
+let modeStart = performance.now();
+let repR, targetLen, maxEdgeLen, maxNodes;
+
+function seed(mode) {
+  repR       = mode.repR;
+  targetLen  = repR * 0.42;
+  maxEdgeLen = targetLen * 1.9;
+  const count = Math.max(24, Math.round(2 * Math.PI * SEED_R / targetLen));
+  maxNodes   = mode.maxNodes;
+  nodes = [];
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2;
+    nodes.push({ x: Math.cos(a) * SEED_R, y: Math.sin(a) * SEED_R, vx: 0, vy: 0 });
+  }
+  growthBudget = (maxNodes - count) / GROWTH_FRAMES;
+  growthAccum = 0;
+  document.getElementById('modeName').textContent = mode.name;
+  document.getElementById('desc').textContent = mode.desc + ' · GI 1.00';
+}
+let growthBudget = 0, growthAccum = 0;
+seed(MODES[0]);
+
+const stimP = new Float32Array(STIM_SLOTS * 2);
+const stimT = new Float32Array(STIM_SLOTS).fill(-1000);
+let stimIdx = 0;
+let simTime = 0;
+
+function buildGrid(cellSize) {
+  const grid = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    const gx = Math.floor(nodes[i].x / cellSize), gy = Math.floor(nodes[i].y / cellSize);
+    const key = gx * 100003 + gy;
+    let arr = grid.get(key);
+    if (!arr) { arr = []; grid.set(key, arr); }
+    arr.push(i);
+  }
+  return grid;
+}
+
+function relax() {
+  const n = nodes.length;
+  const grid = buildGrid(repR);
+  const fx = new Float64Array(n), fy = new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const ni = nodes[i];
+    const gx = Math.floor(ni.x / repR), gy = Math.floor(ni.y / repR);
+    for (let ddx = -1; ddx <= 1; ddx++) {
+      for (let ddy = -1; ddy <= 1; ddy++) {
+        const arr = grid.get((gx + ddx) * 100003 + (gy + ddy));
+        if (!arr) continue;
+        for (const j of arr) {
+          if (j === i) continue;
+          const nj = nodes[j];
+          const dx = ni.x - nj.x, dy = ni.y - nj.y;
+          const d2 = dx*dx + dy*dy;
+          if (d2 < repR*repR && d2 > 1e-9) {
+            const d = Math.sqrt(d2);
+            const f = (1 - d/repR) * REPEL_K;
+            fx[i] += dx/d * f; fy[i] += dy/d * f;
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    const prev = nodes[(i - 1 + n) % n], cur = nodes[i], next = nodes[(i + 1) % n];
+
+    let dx = cur.x - prev.x, dy = cur.y - prev.y, d = Math.hypot(dx, dy) || 1e-6;
+    let f = (d - targetLen) * SPRING_K;
+    fx[i] -= dx/d * f; fy[i] -= dy/d * f;
+
+    dx = cur.x - next.x; dy = cur.y - next.y; d = Math.hypot(dx, dy) || 1e-6;
+    f = (d - targetLen) * SPRING_K;
+    fx[i] -= dx/d * f; fy[i] -= dy/d * f;
+
+    const mx = (prev.x + next.x) / 2, my = (prev.y + next.y) / 2;
+    fx[i] += (mx - cur.x) * SMOOTH_K;
+    fy[i] += (my - cur.y) * SMOOTH_K;
+
+    const dist0 = Math.hypot(cur.x, cur.y);
+    if (dist0 > CONFINE_R) {
+      const over = dist0 - CONFINE_R;
+      fx[i] -= cur.x/dist0 * over * CONFINE_K;
+      fy[i] -= cur.y/dist0 * over * CONFINE_K;
+    }
+
+    for (let s = 0; s < STIM_SLOTS; s++) {
+      const age = simTime - stimT[s];
+      if (age > 0 && age < STIM_DURATION) {
+        const sx = cur.x - stimP[s*2], sy = cur.y - stimP[s*2+1];
+        const r = Math.hypot(sx, sy) + 1e-4;
+        const falloff = Math.exp(-r * 9) * Math.exp(-age * 1.1);
+        fx[i] += sx/r * falloff * 26;
+        fy[i] += sy/r * falloff * 26;
+      }
+    }
+  }
+
+  const maxStep = targetLen * 0.5;
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i];
+    let vx = (node.vx + fx[i] * DT) * DAMPING;
+    let vy = (node.vy + fy[i] * DT) * DAMPING;
+    const speed = Math.hypot(vx, vy);
+    if (speed > maxStep) { const s = maxStep / speed; vx *= s; vy *= s; }
+    node.vx = vx; node.vy = vy;
+    node.x += vx; node.y += vy;
+
+    // hard skull wall: the confinement spring above only discourages crossing
+    // it, and can be overwhelmed by crowding pressure; a real skull cannot be
+    // pushed through, so clamp position and kill the outward velocity component.
+    const dist = Math.hypot(node.x, node.y);
+    if (dist > CONFINE_R) {
+      const s = CONFINE_R / dist;
+      node.x *= s; node.y *= s;
+      const nx = node.x / CONFINE_R, ny = node.y / CONFINE_R;
+      const vDotN = node.vx * nx + node.vy * ny;
+      if (vDotN > 0) { node.vx -= vDotN * nx; node.vy -= vDotN * ny; }
+    }
+  }
+
+  simTime += DT;
+}
+
+function grow() {
+  if (nodes.length < maxNodes) {
+    growthAccum += growthBudget;
+    const allowance = Math.min(Math.floor(growthAccum), maxNodes - nodes.length);
+    if (allowance > 0) {
+      let inserted = 0;
+      const out = [];
+      for (let i = 0; i < nodes.length; i++) {
+        out.push(nodes[i]);
+        if (inserted < allowance) {
+          const a = nodes[i], b = nodes[(i + 1) % nodes.length];
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d > maxEdgeLen) {
+            out.push({
+              x: (a.x + b.x) / 2 + (Math.random() - 0.5) * targetLen * 0.15,
+              y: (a.y + b.y) / 2 + (Math.random() - 0.5) * targetLen * 0.15,
+              vx: 0, vy: 0,
+            });
+            inserted++;
+          }
+        }
+      }
+      nodes = out;
+      growthAccum -= inserted;
+    }
+  }
+}
+
+/* ── live GI (contour length / convex-hull perimeter) ──────────────────── */
+
+function convexHull(pts) {
+  const s = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower = [];
+  for (const p of s) {
+    while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper = [];
+  for (let i = s.length - 1; i >= 0; i--) {
+    const p = s[i];
+    while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+function polyPerimeter(poly) {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    s += Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  return s;
+}
+function currentGI() {
+  if (nodes.length < 4) return 1;
+  const contour = polyPerimeter(nodes);
+  const hull = convexHull(nodes);
+  const hullP = polyPerimeter(hull) || 1e-6;
+  return contour / hullP;
+}
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+const BUCKETS = 14;
+const SULCUS = [46, 34, 32], GYRUS_C = [232, 206, 182];
+
+function draw(gi) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const skullPx = CONFINE_R * pxScale;
+
+  // cerebrospinal-fluid glow just inside the skull line
+  ctx.save();
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = 'rgba(140,170,210,0.35)';
+  ctx.strokeStyle = 'rgba(150,180,220,0.10)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, skullPx * 0.985, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // skull ring
+  ctx.strokeStyle = 'rgba(226,220,204,0.20)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, skullPx, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const n = nodes.length;
+  if (n < 3) return;
+
+  // tissue rendered as a thick stroked ribbon, not a filled polygon: a fold this
+  // densely packed self-crosses under simple pairwise repulsion (an honest limit
+  // of this toy model), and a filled self-intersecting polygon reads as shattered
+  // glass under evenodd fill. A thick round-jointed stroke tolerates the same
+  // crossings gracefully — they read as tissue folding over itself, not a bug.
+  const ribbonPath = new Path2D();
+  ribbonPath.moveTo(cx + nodes[0].x * pxScale, cy + nodes[0].y * pxScale);
+  for (let i = 1; i < n; i++) ribbonPath.lineTo(cx + nodes[i].x * pxScale, cy + nodes[i].y * pxScale);
+  ribbonPath.closePath();
+  const grad = ctx.createRadialGradient(cx - skullPx*0.3, cy - skullPx*0.35, skullPx*0.1, cx, cy, skullPx*1.1);
+  grad.addColorStop(0, 'rgba(214,190,172,0.95)');
+  grad.addColorStop(1, 'rgba(150,124,112,0.95)');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = Math.max(3, targetLen * pxScale * 1.9);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke(ribbonPath);
+
+  // curvature-shaded highlight: bucketed so we pay ~BUCKETS stroke() calls, not n
+  const buckets = new Array(BUCKETS);
+  for (let i = 0; i < n; i++) {
+    const p = nodes[(i - 1 + n) % n], c = nodes[i], q = nodes[(i + 1) % n];
+    const v1x = c.x - p.x, v1y = c.y - p.y, l1 = Math.hypot(v1x, v1y) || 1e-6;
+    const v2x = q.x - c.x, v2y = q.y - c.y, l2 = Math.hypot(v2x, v2y) || 1e-6;
+    const curv = (v1x/l1 * v2y/l2) - (v1y/l1 * v2x/l2);
+    const t = Math.max(-1, Math.min(1, curv * 7));
+    const bIdx = Math.max(0, Math.min(BUCKETS - 1, Math.round((t + 1) / 2 * (BUCKETS - 1))));
+    let path = buckets[bIdx];
+    if (!path) path = buckets[bIdx] = new Path2D();
+    path.moveTo(cx + c.x * pxScale, cy + c.y * pxScale);
+    path.lineTo(cx + q.x * pxScale, cy + q.y * pxScale);
+  }
+  for (let b = 0; b < BUCKETS; b++) {
+    if (!buckets[b]) continue;
+    const tt = b / (BUCKETS - 1);
+    const r = SULCUS[0] + (GYRUS_C[0]-SULCUS[0])*tt, g = SULCUS[1] + (GYRUS_C[1]-SULCUS[1])*tt, bl = SULCUS[2] + (GYRUS_C[2]-SULCUS[2])*tt;
+    ctx.strokeStyle = `rgb(${r|0},${g|0},${bl|0})`;
+    ctx.lineWidth = Math.max(1.5, targetLen * pxScale * 1.1);
+    ctx.lineCap = 'round';
+    ctx.stroke(buckets[b]);
+  }
+
+  document.getElementById('desc').textContent = `${MODES[modeIdx].desc} · GI ${gi.toFixed(2)}`;
+}
+
+/* ── mode schedule ──────────────────────────────────────────────────────── */
+
+function advanceSchedule(now) {
+  if (now - modeStart > MODE_HOLD_MS) {
+    modeIdx = (modeIdx + 1) % MODES.length;
+    modeStart = now;
+    simTime = 0;
+    seed(MODES[modeIdx]);
+  }
+}
+
+let frameCount = 0;
+let lastGI = 1;
+
+function loop(now) {
+  advanceSchedule(now);
+  for (let s = 0; s < RELAX_SUBSTEPS; s++) relax();
+  grow();
+  frameCount++;
+  if (frameCount % 8 === 0) lastGI = currentGI();
+  draw(lastGI);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: touch/click applies a localized growth stimulus ───────── */
+
+function toSim(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left) * (canvas.width / rect.width);
+  const py = (clientY - rect.top) * (canvas.height / rect.height);
+  return [ (px - cx) / pxScale, (py - cy) / pxScale ];
+}
+
+function stimulate(clientX, clientY) {
+  const [x, y] = toSim(clientX, clientY);
+  stimP[stimIdx*2] = x; stimP[stimIdx*2+1] = y;
+  stimT[stimIdx] = simTime;
+  stimIdx = (stimIdx + 1) % STIM_SLOTS;
+}
+
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  stimulate(x, y);
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>
