@@ -13,7 +13,159 @@ excitable.html   — EXCITABLE piece
 physarum.html    — PHYSARUM piece
 quasicrystal.html — QUASICRYSTAL piece
 chladni.html     — CHLADNI piece
-gyrus.html       — GYRUS piece (new)
+gyrus.html       — GYRUS piece
+sandpile.html    — SANDPILE piece (new)
+
+---
+
+## Piece 8: SANDPILE — Abelian Sandpile / Self-Organized Criticality (2026-07-05)
+The Bak-Tang-Wiesenfeld sandpile (Phys. Rev. Lett., 1987): grains fall on
+a finite lattice; any site holding 4+ grains topples, giving one grain to
+each of its 4 neighbours; a toppled neighbour can itself go unstable, so
+a single grain can trigger a cascade of any size. The system tunes ITSELF
+to the edge of stability with no external parameter to adjust — the
+namesake example of self-organized criticality, now cited across
+earthquakes, forest fires, neuronal avalanches, and market crashes as
+instances of the same underlying mathematics.
+
+### Why this piece is architecturally different
+Every prior piece is a CONTINUOUS field (PDE diffusion, closed-form wave
+superposition, or a gradient-descending particle) — this is the first
+DISCRETE integer-threshold cellular automaton in the gallery. Same
+ping-pong float-texture architecture as MEMBRANE/LENIA/EXCITABLE (R
+channel = state, ping-ponged every pass), but the update rule is "if
+h>=4, topple" rather than a Laplacian or kernel convolution. Rendered
+with NEAREST filtering (no linear smoothing anywhere, unlike every other
+piece) so the lattice reads as flat quantized colour cells, matching
+Bak's original sandpile figures rather than this gallery's usual smooth
+continuous glow.
+
+### The single most important tuning insight: throughput is rate-limited
+by the CA rule itself, not by injection amount
+First attempt injected a tiny fractional trickle per relaxation pass
+(0.01 grains/pass) reasoning naively from "real BTW piles drive
+infinitely slowly." After 11 real seconds the pile was a ~15px dot —
+at that rate it would take literal hours to fill the frame. The fix
+required understanding the actual bottleneck: with "at most one topple
+per site per pass" (see below), a single source cell can only ever SHED
+exactly 4×dissip grains to its neighbours per relaxation pass, no matter
+how much is poured in — so total system throughput is hard-capped at
+(grains/pass/source × sources), and the only way to grow a satisfying
+fractal pattern within a ~30s mode hold is to push per-pass injection
+UP toward that cap (not fractionally below it) while cranking the
+number of relaxation passes per frame (RELAX_STEPS=24) so many passes
+of real toppling happen between rendered frames. Final tuning:
+srcRate=0.93/pass, pourRate=4.0/pass, 24 passes/frame — reaches a richly
+detailed, screen-filling fractal pattern in 25-30s. General lesson for
+any future threshold/capacity-limited automaton: work out the actual
+per-step throughput ceiling the update rule imposes before tuning the
+injection rate against a "feels realistic" intuition — the two can be
+orders of magnitude apart.
+
+### Capped-topple design (one topple per site per pass, not floor(h/4))
+A naive parallel-toppling shader computes `topples = floor(h/4)` and
+lets a single pass drain a tall stack completely in one shot, which is
+the standard trick for computing a sandpile's FINAL stable state fast.
+That trick was tried first and rejected for this piece: it lets one
+large injection (e.g. a held click) flood the entire visible pile in a
+single rendered frame, since a very tall stack can dump dozens of grains
+onto each neighbour at once. Replaced with `topple = h>=4 ? 1 : 0`,
+sending exactly one grain per topple regardless of how tall the stack
+is — a cell holding 40 grains needs 9 more passes to fully drain. This
+makes cascades visibly propagate outward one cell per relaxation pass,
+like a wavefront, instead of an instant flood — the correct choice for
+a piece meant to be watched, not just solved.
+
+### Activity channel doubles as the "cascade flash" and free noise filter
+G channel holds a decaying "just toppled" pulse (`act = act*0.82 +
+topple*0.95`, clamped to 3). Decaying PER PASS (not per frame) means
+that with 24 passes/frame, any activity from early passes in a frame
+has almost fully decayed (0.82^20 ≈ 0.02) by the time the LAST pass's
+result is rendered — so the screen only shows a bright flash where
+toppling happened in the last few passes before render, letting settled
+regions read as flat quantized colour instead of a permanent white
+wash. This fell out of the ping-pong architecture for free; no explicit
+temporal filtering was written.
+
+### Palette
+4-stop gradient keyed to grain count: void (h=0) → slate blue (1) → teal
+(2) → gold (3, right at the topple threshold) → hot orange/white (4+,
+transient mid-cascade only, since a site never rests above 3). The
+"just toppled" activity channel adds a warm white overlay on top,
+so actively cascading regions flash bright against the quantized
+resting palette — this pairing is what produces the correct
+"crystalline fractal disc with a hot cascading core" look matching real
+BTW sandpile identity-element images.
+
+### 5 Modes (34s hold; mode switch clears the lattice — a structural
+regime change, not a continuously-interpolable parameter like CHLADNI's
+(m,n), so reseed-on-switch follows LENIA/PHYSARUM's precedent instead)
+Same toppling shader throughout; only drive geometry / dissipation /
+boundary differ per mode — same "one engine, different constants"
+economy as CHLADNI's mode numbers or GYRUS's repulsion radii.
+- CLASSIC:   single point source, dissip=1.0 (conservative), open
+  boundary — Bak, Tang & Wiesenfeld's original 1987 test case
+- RICE PILE: 4 scattered point sources merging into one lattice — after
+  Frette et al., Nature 1996, the real long-grain-rice pile experiment
+  that demonstrated tunable criticality in an actual granular system
+- SEISMIC:   dissip=0.90 (each topple loses 10% of its grains as
+  friction) — after Olami, Feder & Christensen 1992's non-conservative
+  earthquake-fault variant; visibly smaller/denser than CLASSIC at the
+  same real-time budget since dissipated grains never reach the rim
+- NEURONAL:  8 randomly-scattered point sources, regenerated fresh each
+  time the mode is entered — after Beggs & Plenz 2003's cortical
+  neuronal avalanches, where SOC-like statistics emerge from distributed
+  spontaneous activity rather than one driven point; produces amoeba-
+  like merging blob clusters, visibly distinct from RICE PILE's 4 fixed
+  points
+- TOROIDAL:  periodic (wraparound) boundary instead of an open sink,
+  otherwise identical to CLASSIC — after Dhar 1990's formal result that
+  a sink is required for the stable/recurrent configuration set to form
+  the abelian group the model is named for; without one (a closed torus)
+  the system never truly settles. Visually near-identical to CLASSIC
+  until the pattern grows large enough to reach the wraparound edge
+  (didn't clearly happen within one 34s hold in testing at this piece's
+  fill rate — an honest limitation noted here for future tuning, e.g. a
+  faster fill rate specifically for this mode, rather than silently
+  claiming a divergence the current build doesn't reliably show)
+
+### Interaction
+Press-and-hold (mouse or touch) pours sand at the cursor at the same
+per-pass rate as the throughput cap (pourRate=4.0/pass), producing an
+immediate, visible local cascade distinct from the ambient drip source
+— verified via a held touchstart/touchend pair producing a second,
+separate blob away from the auto-driven pile.
+
+### Verification
+Headless Playwright + SwiftShader confirmed: no console/page errors,
+correct fractal growth over 5s/15s/30s in CLASSIC (matching real BTW
+sandpile "identity element" imagery — solid outer ring, intricate
+fractal mid-band, hot core), all 5 modes producing visibly distinct
+structures (RICE PILE's 4 merging disks, SEISMIC's smaller/denser
+disk from dissipation, NEURONAL's amoeba-like random blob clusters,
+TOROIDAL indistinguishable from CLASSIC at this fill rate — noted
+above), press-and-hold pour producing an independent splash blob on
+both mouse and touch input, a 390×844 mobile portrait viewport keeping
+the pattern centered and UI unclipped, and FPS in the same order as
+existing pieces under the same software-rendering harness (9.5 vs.
+9-14 for LENIA/CHLADNI/PHYSARUM) after tuning RELAX_STEPS down from an
+initial 32 to 24 passes/frame.
+
+### Inspiration
+Web research into 2026 generative-art trends surfaced curl-noise flow
+fields (already well-trodden by every piece in this gallery in spirit)
+and pointed toward looking further afield at self-organized criticality
+and dielectric-breakdown/Lichtenberg-figure models as under-used subjects
+in creative coding. Chose the Abelian sandpile over dielectric breakdown
+because its "novel and unexpected" fact — the SAME toppling mathematics
+has been used to model earthquakes, forest fires, neuronal avalanches,
+AND market crashes, four wildly different domains united by one simple
+threshold rule — gave the piece a stronger unifying hook than a single
+lightning-figure phenomenon, and because a discrete integer CA was a
+genuinely new architectural register for this gallery (every prior piece
+is continuous-valued), unlike dielectric breakdown which would have
+reused DLA-style particle aggregation already adjacent to PHYSARUM's
+agent-based register.
 
 ---
 
@@ -509,6 +661,56 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-05 — Session 8
+- Added SANDPILE: the Abelian sandpile model / self-organized criticality
+  (Bak, Tang & Wiesenfeld, 1987). First DISCRETE cellular automaton in
+  the gallery — every prior piece is a continuous field (PDE diffusion,
+  closed-form wave superposition, or a gradient-descending particle);
+  this is an integer threshold-toppling rule on the same ping-pong
+  float-texture architecture MEMBRANE/LENIA/EXCITABLE already use.
+- Biggest lesson of the session: the toppling rule itself imposes a hard
+  throughput ceiling (a source cell can only ever shed exactly
+  4×dissipation grains per relaxation pass, no matter how much is poured
+  in), so a naive "drive infinitely slowly" trickle (reasoning from how
+  real BTW sandpiles are studied) produced a pile that would have taken
+  literal hours to fill the frame. Fixed by pushing per-pass injection
+  UP toward the actual throughput cap instead of fractionally below it,
+  and cranking relaxation passes per frame (24/frame) so many toppling
+  steps happen between rendered frames — reaches a screen-filling
+  fractal pattern in 25-30s. Also switched from a `floor(h/4)`-per-pass
+  toppling rule (which lets one large injection flood the whole visible
+  pile in a single frame) to a capped "one topple per site per pass"
+  rule, so cascades visibly propagate outward like a wavefront instead
+  of instantly flooding — full write-up under the SANDPILE technical
+  notes above, worth reading before building any other threshold/
+  capacity-limited automaton.
+- 5 modes reuse the identical toppling shader with different drive
+  geometry/dissipation/boundary: CLASSIC (Bak-Tang-Wiesenfeld's original
+  single-point case), RICE PILE (Frette et al. 1996's real granular
+  experiment, 4 merging sources), SEISMIC (Olami-Feder-Christensen 1992's
+  lossy earthquake variant), NEURONAL (Beggs & Plenz 2003's cortical
+  avalanches, 8 randomly-scattered sources reseeded per mode entry), and
+  TOROIDAL (Dhar 1990's no-sink closed-lattice result via a periodic
+  boundary) — the last mode didn't visibly diverge from CLASSIC within
+  one 34s hold at the tuned fill rate, noted honestly rather than
+  claimed as a success.
+- Verified via headless Playwright/SwiftShader: no console errors, all
+  5 modes visually distinct (except TOROIDAL vs CLASSIC as noted), the
+  press-and-hold pour interaction producing an independent splash on
+  both mouse and touch, a mobile portrait viewport, and FPS in the same
+  ballpark as existing pieces after tuning relaxation-pass count down
+  from an over-eager first guess of 32/frame to 24/frame.
+- Inspiration: web research into 2026 generative-art trends (curl noise,
+  flow fields — territory this gallery has already covered in spirit)
+  pointed toward looking further afield; landed on self-organized
+  criticality over a dielectric-breakdown/Lichtenberg-figure alternative
+  because its unifying "novel and unexpected" fact — earthquakes, forest
+  fires, neuronal avalanches, and market crashes all modeled by the same
+  simple toppling rule — gave a stronger conceptual hook, and because a
+  discrete integer automaton was a genuinely new architectural register
+  for the gallery, where dielectric breakdown would have been closer in
+  kind to PHYSARUM's existing agent-based particle aggregation.
+
 ### 2026-07-04 — Session 7
 - Added GYRUS: differential-growth cortical folding (Tallinen et al.
   2016). First piece with no GPU/WebGL at all — plain Canvas2D, a
@@ -733,3 +935,24 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       distinction in the UI — consider tagging pieces as SIMULATION vs
       FIELD/CLOSED-FORM in the index descriptions once there are a few more
       of each, so visitors can tell the two registers apart at a glance
+- [ ] SANDPILE: tune TOROIDAL's fill rate faster than the other modes
+      specifically, so the periodic-boundary divergence from CLASSIC
+      (cascades wrapping around and never truly settling, per Dhar 1990)
+      actually becomes visible within one mode hold — it didn't reliably
+      show up in session-8 testing at the shared fill rate
+- [ ] SANDPILE: true power-law avalanche-size histogram as a live overlay
+      (would need a cheap per-frame topple-count readback) — the
+      "novel and unexpected" power-law fact is currently only implicit
+      in the visuals, not measured/displayed the way GYRUS shows live GI
+- [ ] SANDPILE: non-square lattice graphs (triangular/hexagonal adjacency,
+      or Dhar's actual arbitrary-graph formulation) instead of only the
+      square 4-neighbour lattice
+- [ ] Dielectric breakdown model / Lichtenberg figures (Niemeyer-
+      Pietronero-Weismann 1984) — researched this session as a runner-up
+      to SANDPILE, not used; a DLA-adjacent branching-discharge piece,
+      closer in kind to PHYSARUM's agent-based register than SANDPILE's
+      new discrete-CA one, worth returning to for its own sake later
+- [ ] Kuramoto oscillator synchronization (fireflies/pacemaker cells
+      spontaneously phase-locking) — another under-used real phenomenon
+      turned up alongside sandpiles/dielectric-breakdown in this
+      session's research, not yet used
