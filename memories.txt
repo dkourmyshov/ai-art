@@ -14,7 +14,190 @@ physarum.html    — PHYSARUM piece
 quasicrystal.html — QUASICRYSTAL piece
 chladni.html     — CHLADNI piece
 gyrus.html       — GYRUS piece
-sandpile.html    — SANDPILE piece (new)
+sandpile.html    — SANDPILE piece
+swarmalator.html — SWARMALATOR piece (new)
+
+---
+
+## Piece 9: SWARMALATOR — Oscillators That Sync and Swarm (2026-07-06)
+O'Keeffe, Hong & Strogatz, "Oscillators that sync and swarm" (Nature
+Communications 8, 1504, 2017): a minimal generalization of the Kuramoto
+model in which N point agents each carry BOTH a 2D position and a phase,
+and the two are coupled in both directions — phase similarity biases
+spatial attraction, and spatial proximity biases phase synchronization.
+Five parameter regimes (J, K) produce five qualitatively different
+collective states, observed in real sperm, Japanese tree frogs, and
+magnetic colloid suspensions.
+
+  dx_i/dt = (1/N) sum_j!=i [ dir_ij(1 + J cos(th_j-th_i)) - dir_ij/r_ij^2 ]
+  dth_i/dt = (K/N) sum_j!=i sin(th_j-th_i) / r_ij
+
+### Why this piece is architecturally different
+Every earlier piece couples its agents/field INDIRECTLY: PHYSARUM's agents
+only sense a shared trail field, CHLADNI's grains only descend a shared
+plate-mode gradient, MEMBRANE/LENIA/EXCITABLE diffuse through immediate
+neighbors via a Laplacian kernel. SWARMALATOR is the first with DIRECT
+all-pairs coupling — every agent's motion depends on every other agent's
+exact position and phase, every frame, with no mediating field at all.
+Implemented as a single fragment shader where each of AGENTS_DIM^2
+invocations loops over the ENTIRE population (a `for` loop bounded by a
+JS-templated compile-time constant, ${N_TOTAL}=1296, exactly like CHLADNI/
+QUASICRYSTAL bake N_STRIKES into their shader source), sampling every other
+texel of the same ping-ponged state texture — an O(N^2) simulation packed
+into one pass. VTF-rendered via gl.POINTS exactly like PHYSARUM/CHLADNI's
+agents, but with a fundamentally different interaction topology (dense
+graph, not field-mediated). AGENTS_DIM=36 (1296 agents, not the ~65k-150k
+of the field-mediated pieces) is the direct cost of O(N^2): correct choice
+verified to hold ~49fps under software rendering (SwiftShader) at this
+count — a much larger N would need either a coarser update rate or a
+spatial-hash/tree approximation to stay real-time.
+
+Also the first piece needing NO boundary condition of any kind — unlike
+PHYSARUM (toroidal wrap), CHLADNI (reflective plate edge), or GYRUS (hard
+confinement circle), the attraction/repulsion balance is self-confining:
+the swarm finds its own equilibrium size (empirically ~1.0 world-space
+radius for N=1296) from the physics alone, with no explicit geometric
+constraint written anywhere in the shader.
+
+### Phase IS hue — the same quantity drives the dynamics and the color
+theta maps directly to HSV hue. This isn't a cosmetic choice: it means
+synchronization is legible AS color coherence rather than needing a
+separate visualization layer — a single-hue disk literally IS the
+synchronized state, a smooth rainbow ring literally IS the phase-sorted
+state, confetti literally IS the incoherent state. No other piece in the
+gallery has this direct an identity between its core physical quantity
+and its rendered color.
+
+### Tuning traps hit this session (read before reusing all-pairs coupling)
+1. **A dense random seed detonates the repulsion term.** First attempt
+   seeded 1296 agents uniformly in a small random disk (r<0.35). The
+   1/r_ij^2 repulsion term spikes hard on any near-neighbor pair — with
+   1296 points crammed into a small disk, some pairs are always
+   pathologically close — launching a handful of agents outward in one
+   violent burst that then takes 15-20 real seconds to walk back in (the
+   same over-eager-force-integration trap GYRUS hit with unclamped spring
+   forces, just via a different force law). Fixed by seeding on a jittered
+   GRID at roughly the model's own equilibrium spacing (span=1.7 world
+   units over a 36x36 grid, ±0.6-cell jitter) instead of a small random
+   disk — this alone cut the settle-to-crystal time from ~20s+ (with a
+   large transient overshoot up to r=2.3 along the way) down to a clean,
+   monotonic settle finishing by ~t=15s with no overshoot past the final
+   radius. General lesson for any 1/r^2-type force: seed near the
+   force-balance density, not near the final *shape*.
+2. **Full J,K interpolation across mode switches doesn't work here, unlike
+   CHLADNI's (m,n).** First attempt continuously interpolated J,K between
+   modes (CHLADNI's precedent: no reseed, glide the parameters). This
+   fails structurally: STATIC SYNC (K=1) is an ABSORBING state — once
+   every phase converges to the exact same value, sin(th_j-th_i)=0 for
+   every single pair, permanently, since nothing in the dynamics can ever
+   re-introduce phase diversity by just changing K under an already-
+   uniform phase field. Every mode after STATIC SYNC inherited a totally
+   flat phase field and could never show ANY of its own structure (order
+   parameter stayed pinned at 1.00 through STATIC PHASE WAVE too). Fixed
+   by reseeding on every mode switch and snapping J,K directly — the same
+   "structural regime change, not a continuously-interpolable parameter"
+   reasoning SANDPILE already used for its 5 modes; CHLADNI's continuous
+   glide only works because its target FIELD changes shape with (m,n),
+   whereas an absorbing state in phase space poisons every later mode
+   regardless of what the field does next.
+3. **The phase-sorted "ring" states need MUCH more than one comfortable
+   mode-hold to self-organize from pure random phases.** O'Keeffe et al.'s
+   headline analytical result — that STATIC PHASE WAVE spontaneously sorts
+   phase by spatial angle (phi ~ theta) even from random initial phases —
+   is a real energy-minimization result, but for a finite N=1296 system
+   integrated with plain forward Euler, discovering that sort from
+   scratch is a huge combinatorial rearrangement that didn't visibly
+   complete within a 28-30s test (colors stayed visibly unsorted noise on
+   top of a perfectly good crystal lattice). Fixed with a per-mode
+   `phaseBias` seed parameter: phase is seeded as the agent's grid angle
+   from center plus jitter of amplitude pi*(1-phaseBias) (0 = pure random,
+   matching a full circle of noise; 1 = phase locked exactly to angle).
+   STATIC SYNC/STATIC ASYNC use phaseBias=0 (they don't need any spatial
+   correlation to reach their target state); STATIC PHASE WAVE/SPLINTERED
+   use 0.85 and ACTIVE uses 0.7 — enough of a head start that the ~30s
+   hold is spent *refining* a rough sort into a clean ring/scramble
+   instead of *discovering* the sort from nothing, the same role GYRUS's
+   oversized seed loop played for its confinement circle. This is an
+   initial-condition choice, not a shortcut around the dynamics — the
+   position/phase equations are untouched; only what they start from
+   changed.
+4. **SPLINTERED PHASE WAVE (K=-0.1) is barely distinguishable from STATIC
+   PHASE WAVE (K=0) in a still frame — an honest limitation, not a bug.**
+   Swept K in {-0.1,-0.2,-0.3,-0.45} against the same phaseBias=0.85 ring
+   seed, watching for the paper's described "fracturing into clusters":
+   none of these visibly fractured the ring shape within a 28s hold. A
+   direct measurement (RMS positional drift over a 2s window after a 25s
+   settle) confirmed the difference is real but is a MOTION difference,
+   not a shape difference: K=0 drifts 0.012/2s (essentially frozen), K=-0.1
+   drifts 0.028 (~2.3x more, matching the paper's own "quivers with small
+   oscillations" description), K=-0.3 drifts 0.035, and K=-0.75 (ACTIVE)
+   drifts 0.051 (~4.3x). The mode is scientifically correct as tuned — a
+   subtly trembling ring rather than a visually fractured one — but a
+   viewer glancing at a screenshot won't see it, only a viewer watching
+   the live piece for several seconds will. Noted here honestly rather
+   than cranking K up to force a more dramatic still image, which would
+   have meant abandoning the paper's actual example value.
+
+### Live order parameter readout
+R = |(1/N) sum_i e^(i*theta_i)|, the field's own standard synchronization
+metric, computed every 12 frames via gl.readPixels off the (tiny, 36x36)
+agent texture and displayed top-right — the same "show the real computed
+number, don't hardcode a label" precedent GYRUS set with its live GI
+readout. Requires WEBGL_color_buffer_float to read a float framebuffer;
+guarded with a try/catch that silently disables the readout (leaving the
+"—" placeholder) if unsupported, rather than throwing. Correctly reads
+~1.00 for STATIC SYNC, ~0.00-0.05 for every other mode — including STATIC
+PHASE WAVE, where R is expected to be near zero even in the "organized"
+ring state, since a full rainbow of phases spread evenly around a circle
+still sums to zero. R alone can't distinguish STATIC PHASE WAVE (organized
+ring) from STATIC ASYNC (disorganized confetti) or ACTIVE (turbulent) —
+all three read ~0 — so it's a companion to the visual, not a replacement.
+
+### 5 Modes (34s hold, full reseed + J,K snap on every switch)
+- STATIC SYNC:           J= 1.0, K= 1.0   — crystal-like disk, one hue
+- STATIC PHASE WAVE:     J= 1.0, K= 0.0   — rainbow ring, phase sorted by angle
+- SPLINTERED PHASE WAVE: J= 1.0, K=-0.1   — same ring, quivering (see trap 4)
+- ACTIVE PHASE WAVE:     J= 1.0, K=-0.75  — continuously churning confetti
+- STATIC ASYNC:          J=-1.0, K=-1.0   — static confetti disk, no rhythm
+
+### Interaction
+Click/touch drops a decaying "spark" (6-slot ring buffer of position/time,
+the same pure-function-of-elapsed-time pattern as QUASICRYSTAL's ripples/
+CHLADNI's strikes/GYRUS's growth stimulus) that both attracts nearby
+agents and pulls their phase toward a common value — a localized flash
+entraining its neighbors, the way one firefly's flash nudges nearby
+fireflies toward its own rhythm. Verified via a headless tap on a 390x844
+mobile viewport: order parameter visibly perturbed, nearby agents pulled
+toward the touch point.
+
+### Verification
+Headless Playwright + SwiftShader confirmed: ~49fps sustained (N=1296,
+O(N^2) coupling) with no console/page errors, no shader compile failures
+despite the 1296-iteration shader loop (a real risk on some ANGLE/D3D9
+backends that force full loop unrolling — untested on that specific
+backend, noted as an open risk for future sessions), STATIC SYNC reaching
+R=0.99-1.00 by ~25s, STATIC PHASE WAVE producing a genuine smooth rainbow
+ring by the same point, STATIC ASYNC/ACTIVE showing confetti-random hues
+(R~0), the click/touch spark visibly perturbing nearby agents on both
+desktop and a 390x844 mobile portrait viewport with touch events, and the
+live R readout tracking all of the above correctly.
+
+### Inspiration
+Web research into 2026 generative-art trends, following up on this
+gallery's own backlog ("Kuramoto oscillator synchronization... researched,
+not used" — flagged across two prior sessions researching SANDPILE and
+GYRUS). A search for Kuramoto visualization surfaced "swarmalators" —
+O'Keeffe, Hong & Strogatz's 2017 extension coupling the Kuramoto model to
+a swarming/flocking model — as a sharper, more novel target than plain
+Kuramoto synchronization alone: it's a genuinely two-way coupling (phase
+affects position AND position affects phase) rather than agents merely
+carrying a phase on top of independent movement, and it unifies this
+gallery's two prior registers (PHYSARUM's agent-based swarming, CHLADNI's
+oscillator-driven pattern) into one model neither piece individually
+covers. Chosen over a plain single-purpose Kuramoto piece specifically
+because the position/phase FEEDBACK loop gave it a genuinely new
+architectural requirement (direct all-pairs coupling) that no existing
+piece in the gallery had attempted.
 
 ---
 
@@ -661,6 +844,57 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-06 — Session 9
+- Added SWARMALATOR: O'Keeffe, Hong & Strogatz's 2017 swarmalator model
+  (oscillators that both sync AND swarm — phase and position coupled in
+  both directions). First piece with DIRECT all-pairs (O(N^2)) coupling
+  between agents — every prior agent-based/field piece mediates
+  interaction through a shared trail or field texture; here every
+  fragment-shader invocation loops over the entire 1296-agent population
+  by sampling every other texel of the same state texture. Also the first
+  piece needing no boundary condition at all — attraction/repulsion is
+  self-confining.
+- Biggest lessons of the session (full write-ups under the SWARMALATOR
+  technical notes above): (1) a dense random seed detonates the 1/r^2
+  repulsion term into a violent transient — fixed by seeding on a jittered
+  grid at the model's own equilibrium spacing, the same "seed near the
+  target density" lesson as GYRUS but for a different force law; (2)
+  continuously interpolating J,K across mode switches (CHLADNI's
+  precedent) doesn't work here because full synchronization is an
+  ABSORBING state that permanently flattens phase diversity for every
+  later mode — switched to full reseed + J,K snap per switch, SANDPILE's
+  "structural regime change" reasoning; (3) the phase-sorted "rainbow
+  ring" state is a real but slow-to-discover energy minimum from pure
+  random phases — fixed with a per-mode phaseBias seed parameter that
+  gives position/phase a head start to refine rather than discover from
+  scratch; (4) swept K from -0.1 to -0.45 trying to make SPLINTERED
+  PHASE WAVE visibly fracture the ring and it never did within a 30s
+  hold — measured directly and confirmed the paper's own description is
+  right, it's a quiver/motion difference (~2.3x more positional drift
+  than the static ring), not a shape difference, and left it at the
+  paper's own example value rather than force a more dramatic still image.
+- Phase maps directly to hue, so synchronization reads as color coherence
+  with no separate visualization layer needed. A live order-parameter
+  readout (R = |mean(e^i*theta)|) is computed every 12 frames via
+  gl.readPixels and shown top-right, GYRUS's "show the real computed
+  number" precedent, with an honest caveat that R alone can't distinguish
+  an organized ring from a disorganized confetti state (both read ~0).
+- Verified via headless Playwright/SwiftShader: ~49fps at N=1296 despite
+  O(N^2) coupling, all 5 modes producing correct textbook states (crystal
+  sync, rainbow ring, quivering ring, churning confetti, static confetti),
+  no console errors, the click/touch synchronizing "spark" interaction on
+  both desktop and a 390x844 mobile portrait viewport with real touch
+  events, and the live R readout tracking each mode correctly.
+- Inspiration: followed up on this gallery's own backlog item ("Kuramoto
+  oscillator synchronization... researched, not used," flagged across two
+  prior sessions). Searching further from plain Kuramoto surfaced
+  "swarmalators" — a genuinely two-way position/phase coupling rather than
+  phase merely riding on top of independent movement — as a sharper target
+  that unifies PHYSARUM's agent-swarming register and CHLADNI's
+  oscillator-pattern register into one model neither piece had covered,
+  and that requires an architecturally new direct all-pairs coupling no
+  existing piece had attempted.
+
 ### 2026-07-05 — Session 8
 - Added SANDPILE: the Abelian sandpile model / self-organized criticality
   (Bak, Tang & Wiesenfeld, 1987). First DISCRETE cellular automaton in
@@ -952,7 +1186,21 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       to SANDPILE, not used; a DLA-adjacent branching-discharge piece,
       closer in kind to PHYSARUM's agent-based register than SANDPILE's
       new discrete-CA one, worth returning to for its own sake later
-- [ ] Kuramoto oscillator synchronization (fireflies/pacemaker cells
-      spontaneously phase-locking) — another under-used real phenomenon
-      turned up alongside sandpiles/dielectric-breakdown in this
-      session's research, not yet used
+- [x] Kuramoto oscillator synchronization — done in SWARMALATOR (session 9),
+      generalized to the swarmalator model (position AND phase coupled)
+      rather than plain Kuramoto with static agents
+- [ ] SWARMALATOR: a spatial hash / neighbor-list approximation instead of
+      true O(N^2) all-pairs coupling, to push agent count past ~1300
+      while staying real-time — the direct cost of this session's exact
+      all-pairs implementation
+- [ ] SWARMALATOR: distributed natural frequencies (omega_i drawn from a
+      Lorentzian, per O'Keeffe et al.'s extension) instead of identical
+      omega=0 for all agents — the paper notes this alone turns STATIC
+      PHASE WAVE into ACTIVE PHASE WAVE even without touching K, a second
+      independent route to the same state this session only reached via K
+- [ ] SWARMALATOR: verify the 1296-iteration shader loop actually compiles
+      without pathological unroll time on a D3D9-era ANGLE backend —
+      untested this session, only verified on SwiftShader/native GL paths
+- [ ] SWARMALATOR: two swarmalator populations with cross-species phase
+      coupling (mutual attraction/repulsion by group), echoing PHYSARUM's
+      two-species territorial dynamics but for the sync-and-swarm model

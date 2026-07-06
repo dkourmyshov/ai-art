@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SWARMALATOR — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order"><span>R = </span><span class="val" id="orderVal">—</span></div>
+<div id="ui">
+  <span id="modeName">STATIC SYNC</span>
+  <span id="desc">O'KEEFFE, HONG &amp; STROGATZ · 2017</span>
+</div>
+<script>
+/*  SWARMALATOR — oscillators that sync AND swarm
+ *
+ *  Every earlier piece in this gallery couples its agents/field INDIRECTLY:
+ *  PHYSARUM's agents only sense a shared trail field, CHLADNI's grains only
+ *  descend a shared plate-mode gradient, MEMBRANE/LENIA/EXCITABLE diffuse
+ *  through immediate neighbors via a Laplacian kernel. This piece is the
+ *  first with DIRECT all-pairs coupling: every swarmalator's motion depends
+ *  on every other swarmalator's exact position and phase, every frame, with
+ *  no mediating field at all. Each of the AGENTS_DIM^2 fragment-shader
+ *  invocations loops over the entire agent population by sampling every
+ *  other texel of the same ping-ponged state texture — an O(N^2) simulation
+ *  packed into a single fragment shader pass, VTF-rendered exactly like
+ *  PHYSARUM/CHLADNI's agents but with a fundamentally different interaction
+ *  topology (dense graph, not field-mediated).
+ *
+ *  Model (O'Keeffe, Hong & Strogatz, "Oscillators that sync and swarm",
+ *  Nature Communications 8, 1504, 2017 — a minimal generalization of the
+ *  Kuramoto model in which phase and position are coupled both ways):
+ *
+ *    dx_i/dt = (1/N) sum_{j!=i} [ dir_ij (1 + J cos(th_j-th_i)) - dir_ij/r_ij^2 ]
+ *    dth_i/dt = (K/N) sum_{j!=i} sin(th_j - th_i) / r_ij
+ *
+ *  Position dynamics are a constant-magnitude, phase-gated ATTRACTION
+ *  ("like sees like" when J>0 — swarmalators of similar phase pull harder
+ *  toward each other) balanced against an inverse-square REPULSION that
+ *  keeps the swarm from collapsing to a point. Phase dynamics are a
+ *  standard Kuramoto coupling (synchronize when K>0, anti-synchronize when
+ *  K<0), but weighted by 1/r_ij — nearby swarmalators influence each
+ *  other's rhythm far more than distant ones, exactly like real fireflies,
+ *  who only see (and entrain to) their nearest flashing neighbors.
+ *
+ *  No boundary condition of any kind is needed — unlike PHYSARUM (toroidal
+ *  wrap), CHLADNI (reflective plate edge), or GYRUS (hard confinement
+ *  circle), the attraction/repulsion balance is self-confining: the swarm
+ *  finds its own equilibrium size from the physics alone, the first piece
+ *  in the gallery where geometry needs no explicit constraint at all.
+ *
+ *  Phase theta is mapped directly to hue — the same quantity driving the
+ *  dynamics literally *is* the color, so synchronization is legible as
+ *  color coherence: a single-hue disk (synchronized), a rainbow ring
+ *  (phase sorted by position), or a shattering, quivering confetti of
+ *  color (unsynchronized / actively mixing).
+ */
+
+const N_PULSES = 6;
+const AGENTS_DIM = 36;          // 1296 swarmalators — O(N^2) coupling, not O(N)
+const N_TOTAL = AGENTS_DIM * AGENTS_DIM;
+const MODE_HOLD_MS = 34000;   // needs ~20-25s to settle from a reseed, rest is dwell time
+
+// Five collective states of the swarmalator model, keyed by (J,K) alone —
+// same "one engine, different constants" economy as CHLADNI's mode numbers.
+const MODES = [
+  { name:'STATIC SYNC',           desc:"O'KEEFFE, HONG & STROGATZ · 2017", J: 1.0,  K: 1.0,   phaseBias: 0.0  },
+  { name:'STATIC PHASE WAVE',     desc:'PHASE SORTED BY POSITION · K=0',   J: 1.0,  K: 0.0,   phaseBias: 0.85 },
+  { name:'SPLINTERED PHASE WAVE', desc:'FRACTURING INTO CLUSTERS',         J: 1.0,  K: -0.1,  phaseBias: 0.85 },
+  { name:'ACTIVE PHASE WAVE',     desc:'PERPETUAL SHEAR · NEVER SETTLES',  J: 1.0,  K: -0.75, phaseBias: 0.7  },
+  { name:'STATIC ASYNC',          desc:'INCOHERENT SWARM · NO RHYTHM',     J: -1.0, K: -1.0,  phaseBias: 0.0  },
+];
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">Vertex texture fetch required</p>'; throw 0;
+}
+const colorBufferFloatExt = gl.getExtension('WEBGL_color_buffer_float');
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+const SIM_FS = `
+precision highp float;
+uniform sampler2D uAgentTex;
+uniform float uJ, uK, uDt;
+uniform vec2  uDim;
+uniform float uTime;
+uniform vec2  uPulseP[${N_PULSES}];
+uniform float uPulseT[${N_PULSES}];
+varying vec2 uv;
+
+const float TWO_PI = 6.28318530718;
+
+vec2 idxToUV(float idx){
+  float x = mod(idx, uDim.x);
+  float y = floor(idx / uDim.x);
+  return (vec2(x, y) + 0.5) / uDim;
+}
+
+void main(){
+  vec4 me = texture2D(uAgentTex, uv);
+  vec2 pos = me.xy;
+  float th = me.z;
+
+  vec2 pxy = uv * uDim - 0.5;
+  float myIdx = floor(pxy.y + 0.5) * uDim.x + floor(pxy.x + 0.5);
+
+  vec2 dx = vec2(0.0);
+  float dth = 0.0;
+
+  for (int j = 0; j < ${N_TOTAL}; j++){
+    float jf = float(j);
+    if (abs(jf - myIdx) < 0.5) continue;
+    vec4 other = texture2D(uAgentTex, idxToUV(jf));
+    vec2 d = other.xy - pos;
+    float r = max(length(d), 0.03);
+    vec2 dir = d / r;
+    float dthij = other.z - th;
+    dx  += dir * (1.0 + uJ * cos(dthij)) - dir / (r * r);
+    dth += sin(dthij) / r * uK;
+  }
+
+  float invN = 1.0 / float(${N_TOTAL} - 1);
+  dx  *= invN;
+  dth *= invN;
+
+  for (int p = 0; p < ${N_PULSES}; p++){
+    float age = uTime - uPulseT[p];
+    if (age > 0.0 && age < 3.0){
+      vec2 d = uPulseP[p] - pos;
+      float r = length(d) + 1e-4;
+      float w = exp(-age * 1.2) * exp(-r * r * 6.0);
+      dx  += normalize(d) * w * 1.4;
+      dth += sin(0.0 - th) * w * 4.0;
+    }
+  }
+
+  float dxlen = length(dx);
+  if (dxlen > 6.0) dx *= 6.0 / dxlen;
+  dth = clamp(dth, -12.0, 12.0);
+
+  pos += dx * uDt;
+  th  = mod(th + dth * uDt, TWO_PI);
+
+  gl_FragColor = vec4(pos, th, 0.0);
+}
+`;
+
+const GRAIN_VS = `
+precision highp float;
+attribute vec2 aTexcoord;
+uniform sampler2D uAgentTex;
+uniform vec2 uScale;
+varying vec3 vColor;
+const float PI = 3.14159265359;
+vec3 hsv2rgb(vec3 c){
+  vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+void main(){
+  vec4 ag = texture2D(uAgentTex, aTexcoord);
+  gl_Position = vec4(ag.xy * uScale, 0.0, 1.0);
+  float hue = mod(ag.z, 2.0*PI) / (2.0*PI);
+  vColor = hsv2rgb(vec3(hue, 0.68, 1.0));
+  gl_PointSize = 6.0;
+}
+`;
+const GRAIN_FS = `
+precision highp float;
+varying vec3 vColor;
+void main(){
+  vec2 c = gl_PointCoord*2.0 - 1.0;
+  float d = length(c);
+  float a = smoothstep(1.0, 0.0, d);
+  gl_FragColor = vec4(vColor * a, a * 0.85);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const pSim   = mkProg(VS, SIM_FS);
+const pGrain = mkProg(GRAIN_VS, GRAIN_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+const ptCoords = new Float32Array(N_TOTAL * 2);
+{
+  let k = 0;
+  for (let j = 0; j < AGENTS_DIM; j++)
+    for (let i = 0; i < AGENTS_DIM; i++) {
+      ptCoords[k++] = (i + 0.5) / AGENTS_DIM;
+      ptCoords[k++] = (j + 0.5) / AGENTS_DIM;
+    }
+}
+const ptBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+gl.bufferData(gl.ARRAY_BUFFER, ptCoords, gl.STATIC_DRAW);
+function bindPts(p) {
+  const loc = gl.getAttribLocation(p, 'aTexcoord');
+  gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(w, h, data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+// A dense random disk starts most agent pairs far too close together: the
+// 1/r^2 repulsion term spikes hard on near-neighbor pairs, launching a few
+// swarmalators outward in one violent burst that takes many seconds to walk
+// back in (the same over-eager-integration trap GYRUS hit with unclamped
+// spring forces). Seeding on a jittered grid at roughly the model's own
+// equilibrium spacing avoids the burst almost entirely — the swarm looks
+// organized within the first second instead of exploding and recollapsing.
+// phaseBias in [0,1]: 0 = phase independent of position (needed for STATIC
+// SYNC/ASYNC, which don't rely on any spatial-phase correlation), 1 = phase
+// exactly equal to the seed's angle from center. The phase-wave family of
+// states is an energy-MINIMIZING configuration that sorts phase by spatial
+// angle (O'Keeffe et al.'s central analytical result), but for a plain
+// random seed that sort is a huge combinatorial rearrangement of 1296
+// agents — reaching it from scratch takes far longer than one comfortable
+// mode-hold. Seeding with a partial head-start correlation (still jittered,
+// not handed the answer outright) lets the position/phase dynamics spend
+// their ~30s *refining* a rough sort into a clean ring/fracture/swirl
+// instead of *discovering* the sort — the same role GYRUS's oversized seed
+// loop played for its confinement circle.
+function seedAgents(phaseBias) {
+  phaseBias = phaseBias || 0;
+  const d = new Float32Array(N_TOTAL * 4);
+  const span = 1.7; // world-space side length of the seed grid
+  const cell = span / AGENTS_DIM;
+  const jitterAmp = Math.PI * (1 - phaseBias);
+  let k = 0;
+  for (let j = 0; j < AGENTS_DIM; j++) {
+    for (let i = 0; i < AGENTS_DIM; i++, k++) {
+      const gx = (i + 0.5) / AGENTS_DIM * span - span/2;
+      const gy = (j + 0.5) / AGENTS_DIM * span - span/2;
+      const ringAngle = Math.atan2(gy, gx);
+      d[k*4]   = gx + (Math.random()-0.5) * cell * 0.6;
+      d[k*4+1] = gy + (Math.random()-0.5) * cell * 0.6;
+      d[k*4+2] = ringAngle + (Math.random()*2-1) * jitterAmp;
+      d[k*4+3] = 0;
+    }
+  }
+  return d;
+}
+
+let agentA = mkTex(AGENTS_DIM, AGENTS_DIM, seedAgents(MODES[0].phaseBias));
+let agentB = mkTex(AGENTS_DIM, AGENTS_DIM, null);
+let agentFbA = mkFB(agentA), agentFbB = mkFB(agentB);
+
+/* ── mode schedule ──────────────────────────────────────────────────────── */
+// Unlike CHLADNI's (m,n), J and K cannot be continuously interpolated across
+// a mode switch: STATIC SYNC (K=1) is an ABSORBING state — once every phase
+// converges to the same value, sin(th_j-th_i) is exactly zero for every pair
+// forever after, so no later K<0 mode can ever re-diversify the phases by
+// just changing K under it. A full reseed on every switch is required, the
+// same structural-regime-change reasoning SANDPILE used for its 5 modes.
+
+let modeIdx   = 0;
+let modeStart = performance.now();
+let curJ = MODES[0].J, curK = MODES[0].K;
+
+function applyMode(idx) {
+  modeIdx = idx;
+  const m = MODES[modeIdx];
+  curJ = m.J; curK = m.K;
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent     = m.desc;
+  gl.bindTexture(gl.TEXTURE_2D, agentA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, AGENTS_DIM, AGENTS_DIM, 0, gl.RGBA, gl.FLOAT, seedAgents(m.phaseBias));
+}
+applyMode(0);
+
+function advanceSchedule(now) {
+  if (now - modeStart > MODE_HOLD_MS) {
+    modeStart = now;
+    applyMode((modeIdx + 1) % MODES.length);
+  }
+}
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+// Swarmalators need no boundary condition — the attraction/repulsion balance
+// is self-confining. RENDER_HALF_FRAC is purely a camera choice: how much of
+// the half-min-dimension one world-space unit should span on screen.
+const RENDER_HALF_FRAC = 0.38;
+let halfPx = 0, scaleX = 0, scaleY = 0;
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  halfPx = Math.min(canvas.width, canvas.height) * RENDER_HALF_FRAC;
+  scaleX = halfPx / (canvas.width / 2);
+  scaleY = halfPx / (canvas.height / 2);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU   = locs(pSim,   ['uAgentTex','uJ','uK','uDt','uDim','uTime','uPulseP','uPulseT']);
+const grainU = locs(pGrain, ['uAgentTex','uScale']);
+
+const t0 = performance.now();
+
+const pulseP = new Float32Array(N_PULSES * 2);
+const pulseT = new Float32Array(N_PULSES).fill(-1000);
+let pulseIdx = 0;
+
+function simStep(tSec) {
+  gl.useProgram(pSim);
+  bindQuad(pSim);
+  gl.viewport(0, 0, AGENTS_DIM, AGENTS_DIM);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, agentFbB);
+
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(simU.uAgentTex, 0);
+  gl.uniform1f(simU.uJ, curJ);
+  gl.uniform1f(simU.uK, curK);
+  gl.uniform1f(simU.uDt, 0.012);
+  gl.uniform2f(simU.uDim, AGENTS_DIM, AGENTS_DIM);
+  gl.uniform1f(simU.uTime, tSec);
+  gl.uniform2fv(simU.uPulseP, pulseP);
+  gl.uniform1fv(simU.uPulseT, pulseT);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  [agentA, agentB] = [agentB, agentA];
+  [agentFbA, agentFbB] = [agentFbB, agentFbA];
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0,0,0,1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(pGrain);
+  bindPts(pGrain);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentA); gl.uniform1i(grainU.uAgentTex, 0);
+  gl.uniform2f(grainU.uScale, scaleX, scaleY);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, N_TOTAL);
+  gl.disable(gl.BLEND);
+}
+
+/* ── live synchronization order parameter: r = |(1/N) sum e^{i*theta}| ──── */
+
+const orderVal = document.getElementById('orderVal');
+const readBuf = new Float32Array(N_TOTAL * 4);
+let orderReadOk = colorBufferFloatExt !== null;
+let frameCount = 0;
+
+function readOrderParam() {
+  if (!orderReadOk) return;
+  try {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, agentFbA);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { orderReadOk = false; return; }
+    gl.readPixels(0, 0, AGENTS_DIM, AGENTS_DIM, gl.RGBA, gl.FLOAT, readBuf);
+  } catch (e) { orderReadOk = false; return; }
+  let sx = 0, sy = 0;
+  for (let i = 0; i < N_TOTAL; i++) {
+    const th = readBuf[i*4+2];
+    sx += Math.cos(th); sy += Math.sin(th);
+  }
+  const r = Math.sqrt(sx*sx + sy*sy) / N_TOTAL;
+  orderVal.textContent = r.toFixed(2);
+}
+
+function loop(now) {
+  const tSec = (now - t0) / 1000;
+  advanceSchedule(now);
+  simStep(tSec);
+  drawFrame();
+  frameCount++;
+  if (frameCount % 12 === 0) readOrderParam();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: click/touch drops a synchronizing "spark" ───────────────
+ * Attracts nearby swarmalators and pulls their phase toward a common value —
+ * a localized flash entraining its neighbors, the way one firefly's flash
+ * nudges the ones nearby toward its own rhythm. */
+
+function toWorldSpace(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left) * (canvas.width / rect.width);
+  const py = (clientY - rect.top)  * (canvas.height / rect.height);
+  const dx = px - canvas.width/2;
+  const dy = py - canvas.height/2;
+  return [ dx / halfPx, -dy / halfPx ];
+}
+
+function spark(clientX, clientY) {
+  const [x, y] = toWorldSpace(clientX, clientY);
+  pulseP[pulseIdx*2]   = x;
+  pulseP[pulseIdx*2+1] = y;
+  pulseT[pulseIdx]     = (performance.now() - t0) / 1000;
+  pulseIdx = (pulseIdx + 1) % N_PULSES;
+}
+
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  spark(x, y);
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>
