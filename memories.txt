@@ -15,7 +15,193 @@ quasicrystal.html — QUASICRYSTAL piece
 chladni.html     — CHLADNI piece
 gyrus.html       — GYRUS piece
 sandpile.html    — SANDPILE piece
-swarmalator.html — SWARMALATOR piece (new)
+swarmalator.html — SWARMALATOR piece
+ising.html       — ISING piece (new)
+
+---
+
+## Piece 10: ISING — Lattice Spins & Phase Transitions (2026-07-07)
+The 2D square-lattice Ising model: every site holds a spin s=+/-1;
+neighbours prefer to align (coupling J); the whole lattice sits in a
+thermal bath at temperature T. Ernst Ising solved the 1D chain in his
+1924 thesis and found no phase transition there; the 2D version he's
+named for DOES have one, and Lars Onsager solved it exactly in closed
+form in 1944 (Tc = 2/ln(1+sqrt2) ~= 2.269 for J=kB=1) — one of the most
+celebrated exact results in statistical mechanics, and a genuinely
+"novel and unexpected" fact: almost no other critical phenomenon in
+physics has its critical temperature AND critical exponents known
+exactly rather than estimated numerically or measured.
+
+### Why this piece is architecturally different
+Every earlier piece in the gallery is DETERMINISTIC given its random
+seed — a PDE Laplacian (MEMBRANE/LENIA/EXCITABLE), an integer toppling
+threshold (SANDPILE), a closed-form wave sum (QUASICRYSTAL), a gradient
+descent (CHLADNI), a force law (GYRUS/SWARMALATOR). ISING is the first
+STOCHASTIC update rule: whether a spin flips is decided by a Metropolis
+(1953) Boltzmann-weighted coin flip against the local energy change,
+not by any smooth or threshold function of the state. It's also the
+first piece that needs a CHECKERBOARD (red-black) sublattice
+decomposition instead of one synchronous update pass — see the tuning
+trap below, a genuinely new GPU-simulation technique for this gallery,
+not a variation on an existing one.
+
+State lives in a ping-ponged float texture exactly like MEMBRANE/LENIA/
+EXCITABLE/SANDPILE (R = spin, G = a decaying "just flipped" flash for a
+visible flicker on active cells), but each full lattice sweep is now TWO
+draw calls, not one: pass 1 updates only sites where (x+y) is even,
+reading the odd sites (untouched this pass) as fixed neighbours; pass 2
+updates the odd sites reading the just-written even sites. Multiple
+full sweeps run per rendered frame (5 for most modes, 9 for CRITICAL),
+the same "many simulation steps per rendered frame" economy SANDPILE's
+RELAX_STEPS and MEMBRANE's step count already established.
+
+### Tuning traps hit this session (read before reusing checkerboard
+Monte Carlo or sin()-based GLSL hashes)
+1. **Domain-wall pinning on a periodic torus stalls the obvious order
+   parameter at ~0 even when the lattice is visibly, locally, strongly
+   ordered.** First build of FERROMAGNET (T=1.6, well below Tc) quenched
+   from random noise and, over many real seconds, settled into just TWO
+   giant domains covering roughly half the screen each — genuinely
+   correct coarsening — but |mean(spin)| stayed pinned near 0.01
+   indefinitely, because a flat domain wall wrapped across a periodic
+   boundary has zero curvature, and curvature is what drives domain
+   growth (Allen-Cahn dynamics); with no curvature there's no force left
+   to make the wall move on and merge the two domains into one. Real
+   experimental ferromagnets solve exactly this by "field-cooling"
+   through Tc under a weak external field, which is also the honest fix
+   used here: a small uniform symmetry-breaking field (extH=0.06, tiny
+   next to the +/-4 neighbour-sum scale) added to the local energy for
+   FERROMAGNET, and the same field alternated by lattice parity
+   (extHStag) for ANTIFERROMAGNET (which has the identical problem one
+   level up — two degenerate, equally-valid checkerboard sublattice
+   assignments, competing domains of each). Not a fudge: it's the
+   textbook resolution to "which direction does the spontaneous
+   magnetization pick," applied here for the same reason real magnets
+   need it.
+2. **A sin()-based GLSL hash fed a seed that grows for the whole page's
+   lifetime silently stops being random after enough real time passes —
+   the single biggest bug this session, and the least visible.** The
+   Metropolis accept/reject draw used `hash(dot(p, big_constant_vec))`
+   with p offset by `seed*13.17` where `seed` incremented by a fixed
+   amount every single draw call with no wraparound. In a short test
+   (~20s) this looked fine; running the SAME PARAMAGNET mode (T=4.5, far
+   above Tc, should read M~0.00-0.01 forever) for a single uninterrupted
+   20-second span reproducibly drifted to M=0.35-1.00 — the lattice
+   spontaneously "deciding" on a majority spin with no physical
+   mechanism that could cause it. Root cause: sin() of a large argument
+   loses angle-reduction precision in float32 (there aren't enough
+   mantissa bits to resolve a phase mod 2*pi once the argument reaches
+   the tens of thousands), so the "pseudo-random" output degrades into a
+   biased, semi-repeating sequence — a well-known but easy-to-miss GLSL
+   hash pitfall that only shows up after sustained runtime, exactly the
+   kind of bug a short manual test won't catch but an "infinite loop"
+   art piece left open on a browser tab will. Confirmed by forcing an
+   all-uniform initial state under PARAMAGNET dynamics (correctly
+   re-randomized to ~50/50 near-instantly, ruling out a physics bug) and
+   by comparing a single continuous 20s wait (reliably broken) against
+   five interleaved 3s waits over the same real span (reliably fine,
+   because the extra JS round-trips reduced total accumulated frames and
+   kept the seed small by accident) — the discrepancy between those two
+   otherwise-equivalent tests was what pointed at "unbounded seed," not
+   the physics. Fixed by wrapping the seed with `% 479` before every
+   upload and folding it into the hash as a third small vector component
+   instead of a large multiplied offset, keeping the hash's dot-product
+   argument in the same safe few-hundred-to-low-thousands range this
+   gallery's other position-based hashes already use successfully.
+   General lesson for any shader RNG meant to run indefinitely: audit
+   what happens to the seed after an hour of continuous play, not just
+   after the first screenshot.
+
+### Live order parameter, and why one readout isn't enough
+Plain mean magnetization M=|mean(s)| correctly reads ~0.97 for
+FERROMAGNET and ~0.00-0.01 for PARAMAGNET/SPIN GLASS, but is WRONG for
+ANTIFERROMAGNET: a perfect Neel checkerboard has exactly as many up as
+down spins, so raw M reads ~0 even in the fully ordered state — the
+same "the obvious readout can't see this state" lesson SWARMALATOR's
+order parameter R hit for its phase-sorted ring (R~0 for both the
+organized ring AND disorganized confetti). Fixed with the standard
+staggered magnetization M(stag)=|mean(s_i * (-1)^(x+y))|, which reads
+~0.97 for a clean Neel lattice; the UI swaps which label/formula it
+shows per mode rather than silently displaying a number known to be
+uninformative for that mode. CRITICAL reads a genuinely fluctuating
+~0.2-0.4 (real finite-size critical fluctuation, not a bug — at Tc the
+correlation length is comparable to the lattice size itself, so a
+320x200 lattice's instantaneous M wanders far more than the ~1/sqrt(N)
+one might naively expect).
+
+### Palette
+Distinct per-mode duotone (dark "down" void, glowing "up" highlight)
+doubles as a diagnostic: FERROMAGNET's warm amber vs. near-black reads
+as one dominant giant blob with rare thermal-defect flecks; CRITICAL's
+cream/violet shows clusters at every scale simultaneously coexisting
+(true "critical opalescence," verified via screenshot — islands within
+islands from single pixels up to quarter-screen blobs); PARAMAGNET's
+cyan/navy is fine uncorrelated salt-and-pepper noise; ANTIFERROMAGNET's
+magenta/teal resolves the checkerboard sublattice pattern down to
+single pixels at zoom (reads as a moire dither at screen scale — the
+correct visual signature of Neel order); SPIN GLASS's green/plum shows
+fine-grained disagreement at every point on the lattice with no large
+clusters ever forming, visibly distinct from CRITICAL's multiscale
+clustering — frustration caps the coherence length regardless of how
+low T goes, the intended "novel and unexpected" contrast (a magnet that
+can never fully make up its mind, even at its coldest).
+
+### 5 Modes (32s hold; full reseed on every switch — same "structural
+regime change" reasoning SANDPILE/SWARMALATOR already established,
+since T/J-sign/bond-disorder are qualitatively different states, not a
+continuously-interpolable parameter like CHLADNI's (m,n))
+- FERROMAGNET:     J=+1, T=1.6 (< Tc), weak uniform field — Curie point
+- CRITICAL:        J=+1, T=Tc=2.269 exactly — Onsager's exact 1944 value
+- PARAMAGNET:       J=+1, T=4.5 (> Tc) — thermal disorder
+- ANTIFERROMAGNET: J=-1, T=1.6, weak staggered field — Neel order, 1936.
+  Square-lattice antiferromagnets are NOT frustrated (the lattice is
+  bipartite, so flipping every spin on one sublattice maps this mode
+  exactly onto FERROMAGNET) — a clean contrast against the genuine
+  frustration below.
+- SPIN GLASS: random +/-1 bond sign per edge (Edwards-Anderson),
+  T=1.0 — quenched disorder fixed once per page load (a per-session
+  random offset folds into the bond hash), never re-randomized on
+  re-entering the mode since real quenched disorder doesn't change.
+  Frustration means no configuration can satisfy every bond at once, so
+  the lattice never settles into any large-scale order at any T.
+
+### Interaction
+Click/touch drops a localized decaying external field (6-slot ring
+buffer of position/time, this gallery's standard "pure function of
+elapsed time" pattern from QUASICRYSTAL's ripples through SWARMALATOR's
+spark) that nucleates a +1 domain at the touch point. Whether it grows
+or dissolves is real physics, not scripted: verified via headless
+screenshot on PARAMAGNET (above Tc) showing a clear nucleus appear at
+the click point then visibly dissolve back into noise within ~4s.
+
+### Verification
+Headless Playwright + SwiftShader confirmed: ~21fps (comparable to
+SANDPILE/LENIA/CHLADNI under the same software-rendering harness), no
+console/page errors, all 5 modes producing correct, visually distinct
+textbook states (verified via direct pixel histogram readback, not just
+the on-screen order-parameter label) — FERROMAGNET M=0.97, CRITICAL
+M~0.35 with genuine multiscale clustering, PARAMAGNET M~0.01 stable
+across a 2-minute continuous run (after the sin-hash fix), ANTIFERRO
+M(stag)=0.97, SPIN GLASS M~0.00 with fine-grained never-coarsening
+texture — the click/touch nucleation-then-dissolution behavior on
+desktop, and a 390x844 mobile portrait viewport with real touch events
+keeping the UI unclipped.
+
+### Inspiration
+This session's web research followed up on SANDPILE's own self-organized
+criticality (session 8) by searching for other routes to the same
+scale-invariant critical mathematics, surfacing the Ising model's
+externally-tuned phase transition as a sharp conceptual counterpoint:
+SANDPILE tunes ITSELF to criticality with no external knob at all, while
+ISING must be dialed to Tc by hand from outside — two opposite routes to
+literally the same scale-invariant physics, a stronger hook than a
+same-register variant would have given. Chosen over a dielectric-
+breakdown/Lichtenberg-figure piece (this gallery's own long-standing
+backlog item, researched again this session and again passed over) since
+Ising's stochastic Metropolis update was a genuinely new architectural
+register — every existing agent/field piece is deterministic given its
+seed — where dielectric breakdown would have been closer in kind to
+PHYSARUM/SANDPILE's existing deterministic-aggregation registers.
 
 ---
 
@@ -844,6 +1030,63 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-07 — Session 10
+- Added ISING: the 2D lattice-spin Ising model (Ising 1924, exactly
+  solved by Onsager 1944). First piece with a STOCHASTIC update rule —
+  every earlier piece is deterministic given its seed (PDE, threshold
+  CA, closed-form field, force law); this one decides each spin flip
+  with a Metropolis Boltzmann-weighted coin flip. Also the first piece
+  needing a checkerboard (red-black) sublattice decomposition instead
+  of one synchronous update pass, a genuinely new GPU-simulation
+  technique for this gallery.
+- Two real bugs this session, both full write-ups under the ISING
+  technical notes above: (1) FERROMAGNET/ANTIFERROMAGNET quenched from
+  random noise on a periodic torus settled into a couple of giant,
+  genuinely well-ordered domains whose flat shared wall has zero
+  curvature and so barely moves — the naive mean-magnetization readout
+  stayed pinned near 0 forever despite correct local physics, fixed
+  with a small symmetry-breaking field exactly the way real magnets are
+  "field-cooled" through Tc; (2) a sin()-based GLSL hash fed a seed that
+  grew for the page's entire lifetime silently stopped being random
+  after enough sustained real time passed (float32 can't resolve a
+  phase mod 2*pi once the argument reaches the tens of thousands),
+  making PARAMAGNET (T well above Tc, should read M~0 forever)
+  reproducibly drift to a spurious majority spin over a single
+  uninterrupted 20-second run — invisible to a short test, confirmed by
+  contrasting one long continuous wait against several short
+  interleaved ones, fixed by wrapping the seed into the same
+  few-hundred-value range this gallery's other position-based hashes
+  already use safely. General lesson: for a shader RNG in a piece meant
+  to play indefinitely, audit what happens to the seed after sustained
+  runtime, not just after the first screenshot.
+- 5 modes reuse the identical Metropolis rule with different coupling
+  sign, bond disorder, and temperature: FERROMAGNET (Curie point, T<Tc),
+  CRITICAL (Onsager's exact Tc, showing genuine multiscale clustering —
+  islands within islands, verified via pixel histogram and screenshot),
+  PARAMAGNET (T>Tc, fine uncorrelated noise), ANTIFERROMAGNET (Neel
+  order — provably NOT frustrated on a bipartite square lattice, a
+  clean contrast against SPIN GLASS's genuine Edwards-Anderson
+  frustration via random +/-1 bond signs, which never coarsens into any
+  large-scale order at any temperature). A live order-parameter readout
+  swaps between plain and staggered magnetization per mode, since plain
+  M is provably blind to Neel order (same "obvious readout can't see
+  this state" lesson SWARMALATOR's R hit for its phase-wave ring).
+- Verified via headless Playwright/SwiftShader: ~21fps, no console
+  errors, all 5 modes visually and numerically distinct (direct pixel
+  readback, not just the on-screen label), PARAMAGNET stable near M~0
+  across a 2-minute continuous run after the hash fix, click/touch
+  nucleating a domain that visibly dissolves above Tc, and a 390x844
+  mobile portrait viewport with real touch events.
+- Inspiration: followed up on this gallery's own SANDPILE (session 8,
+  self-organized criticality) by searching for other routes to the same
+  scale-invariant mathematics; Ising's externally-tuned phase transition
+  makes a sharp conceptual counterpoint (self-tuning vs. hand-tuned
+  routes to identical critical physics) and its stochastic Metropolis
+  update was a genuinely new architectural register no existing piece
+  had used. Dielectric breakdown / Lichtenberg figures were researched
+  again this session (a backlog item since session 8) and passed over
+  again in favor of the architecturally fresher stochastic register.
+
 ### 2026-07-06 — Session 9
 - Added SWARMALATOR: O'Keeffe, Hong & Strogatz's 2017 swarmalator model
   (oscillators that both sync AND swarm — phase and position coupled in
@@ -1182,10 +1425,12 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       or Dhar's actual arbitrary-graph formulation) instead of only the
       square 4-neighbour lattice
 - [ ] Dielectric breakdown model / Lichtenberg figures (Niemeyer-
-      Pietronero-Weismann 1984) — researched this session as a runner-up
-      to SANDPILE, not used; a DLA-adjacent branching-discharge piece,
-      closer in kind to PHYSARUM's agent-based register than SANDPILE's
-      new discrete-CA one, worth returning to for its own sake later
+      Pietronero-Weismann 1984) — researched as a runner-up in session 8
+      (to SANDPILE) AND again in session 10 (to ISING), passed over both
+      times for being closer in kind to PHYSARUM/SANDPILE's existing
+      deterministic-aggregation registers; still worth returning to for
+      its own sake, but stop re-researching it as a runner-up each
+      session — just build it next time it's on the table
 - [x] Kuramoto oscillator synchronization — done in SWARMALATOR (session 9),
       generalized to the swarmalator model (position AND phase coupled)
       rather than plain Kuramoto with static agents
@@ -1204,3 +1449,21 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] SWARMALATOR: two swarmalator populations with cross-species phase
       coupling (mutual attraction/repulsion by group), echoing PHYSARUM's
       two-species territorial dynamics but for the sync-and-swarm model
+- [x] Ising model / lattice phase transitions — done in ISING (session 10),
+      first stochastic (Metropolis Monte Carlo) update rule in the gallery
+- [ ] ISING: a live susceptibility or specific-heat readout (variance of M
+      or energy over a rolling window) alongside the order parameter —
+      would show the actual divergence at Tc that CRITICAL only implies
+      visually, the same "measure the real phenomenon, don't just imply
+      it" gap flagged for SANDPILE's power-law histogram
+- [ ] ISING: a triangular-lattice antiferromagnet mode — genuinely
+      frustrated (unlike the square-lattice ANTIFERROMAGNET this session,
+      which provably maps onto FERROMAGNET) without needing quenched
+      random disorder like SPIN GLASS; would sit conceptually between the
+      two existing modes
+- [ ] ISING: 3D cubic lattice (Tc has no exact closed form there, only
+      high-precision numerical estimates) — would make an explicit
+      contrast with 2D's exactly-solved Onsager result
+- [ ] ISING: an interactive temperature slider instead of only the 5 fixed
+      auto-cycled modes, so a visitor can walk the transition themselves
+      rather than only watching the 5 curated points get visited
