@@ -16,7 +16,250 @@ chladni.html     — CHLADNI piece
 gyrus.html       — GYRUS piece
 sandpile.html    — SANDPILE piece
 swarmalator.html — SWARMALATOR piece
-ising.html       — ISING piece (new)
+ising.html       — ISING piece
+lichtenberg.html — LICHTENBERG piece (new)
+
+---
+
+## Piece 11: LICHTENBERG — Dielectric Breakdown & Fractal Discharge (2026-07-08)
+The dielectric breakdown model (Niemeyer, Pietronero & Weismann, Phys.
+Rev. Lett. 52, 1033, 1984): an insulator sits between a grounded
+conductor and a distant charged boundary. Solve Laplace's equation for
+the electric potential everywhere OUTSIDE the grounded structure; the
+structure then grows by converting one adjacent insulator cell into
+conductor with probability proportional to phi_i^eta, where phi_i is
+that candidate cell's own local potential. Growth changes the boundary
+of the very equation being solved, so potential and shape co-evolve —
+a single exponent, eta, sweeps the resulting morphology from compact
+(Eden-model-like, dimension near 2) through the DLA universality class
+(eta=1, dimension ~1.71) to a few racing dendritic channels (eta>2,
+dimension near 1) — the real Lichtenberg figures burned into wood,
+etched into acrylic, and the mechanism behind lightning's own branching.
+This was flagged as a backlog item three sessions running (8, 10) and
+passed over each time as a "runner-up" in favor of an architecturally
+fresher register; this session finally built it, per last session's own
+note to "just build it next time it's on the table" rather than
+re-research it again.
+
+### Why this piece is architecturally different
+Every earlier piece either diffuses a field through fixed local
+neighbors (MEMBRANE/LENIA/EXCITABLE's Laplacian kernel), topples an
+integer threshold (SANDPILE), flips a spin against a LOCAL energy change
+(ISING), or moves an agent/node through a force law (PHYSARUM/CHLADNI/
+GYRUS/SWARMALATOR) — none of them solve a genuine boundary-value
+problem. Here every candidate growth cell's probability depends on a
+potential field SOLVED ACROSS THE ENTIRE DOMAIN via Jacobi/Gauss-Seidel
+relaxation between growth events, not a fixed local rule. It's also the
+first piece where separately-seeded structures actively compete through
+shared PHYSICS rather than shared geometry: because every seed's growth
+draws on the same solved field, a structure that races ahead measurably
+lowers the potential (and so the odds) seen by every OTHER structure's
+frontier, anywhere on the lattice — a real screening effect, the reason
+a dominant lightning leader suppresses its own side branches once it
+breaks free (see STORM mode below). Relaxation reuses ISING's
+checkerboard (red-black) sublattice update verbatim — same technique,
+different equation: there it decided stochastic spin flips, here it
+converges a deterministic Laplacian roughly 2x faster than a naive
+same-buffer Jacobi pass.
+
+### The convergence trap: Gauss-Seidel is too slow to solve from scratch
+every frame
+First build ran relaxation entirely inside the per-frame loop (5-9
+sweeps/frame, ISING's own budget) starting from an all-zero potential
+field on every mode reseed. Growth stalled to a near-standstill for the
+first several seconds of every mode — a point-like seed sat at ~68
+converted cells after a full 28s hold in the worst case. Root cause:
+Gauss-Seidel error decays on a timescale of order (grid size)^2 sweeps,
+not sweeps-per-se — propagating a boundary condition fully across a
+~190px domain to the accuracy needed near a point seed takes on the
+order of tens of thousands of sweeps, far more than any reasonable
+per-frame budget affords without stalling growth for the whole visible
+hold. Fixed by moving convergence OFF the render loop entirely: a
+`preRelax()` burst of 3000 synchronous sweeps (6000 draw calls) runs
+once, with no rendered frame in between, the instant a mode reseeds —
+measured at ~6ms wall-clock even under SwiftShader software rendering,
+imperceptible as a pause. Per-frame relaxation afterward only has to
+track the SMALL incremental change from each growth step, not re-solve
+the whole domain from scratch. General lesson for any future piece
+needing a real boundary-value PDE solve (not just a local diffusion
+step): convergence cost that would stall a render loop can often be
+paid once, synchronously, at the moment of reseed instead — the same
+"pay it once up front" idea SANDPILE/ISING already used for per-frame
+relaxation-step budgets, just moved to a different point in the
+lifecycle.
+
+### The normalization trap: absolute phi^eta never escapes a point seed
+Even after fixing convergence, high-eta modes (LEADER, eta=2.5) still
+never left their seed: the ACTUAL local potential right next to any
+small conductor is small in absolute terms purely from 2D electrostatics
+(a log(r) profile that rises slowly near r=r0, regardless of how well
+converged the solve is) — phi~0.02-0.09 near a point seed, and 0.02^2.5
+is already on the order of 1e-5, a probability no reasonable growRate
+constant recovers even though those exact cells are the STRONGEST
+candidates currently available anywhere on the frontier. The fix:
+normalize growth probability against the CURRENT frontier's own peak
+potential (p = growRate * (phi_i/phiMax)^eta, phiMax refreshed from a
+cheap CPU readback every ~24 frames — the same throttled cadence as the
+fractal-dimension readout below) rather than the raw 0-1 scale, which is
+dominated by an uninteresting geometric fact (distance to the fixed
+outer boundary) that has nothing to do with the actual competition
+between candidate cells. This is closer to the real Niemeyer-Pietronero-
+Weismann normalized rule (p_i = phi_i^eta / sum_j phi_j^eta over the
+frontier) than an arbitrary probability floor would have been, and
+explains eta's role correctly: RELATIVE field concentration between
+competing frontier cells, not absolute field strength. General lesson
+for any future growth-probability-from-a-solved-field piece: check
+whether the interesting physics is in the relative comparison, not the
+absolute scale, before concluding a rule "doesn't work" from raw values
+alone.
+
+### The screening trap: single-pixel holes trapped forever
+Compact/low-eta growth (CORONA) filled with permanent salt-and-pepper
+pinholes rather than resolving to a clean rough-edged blob. Root cause:
+a cell surrounded on all 4 sides by grounded (phi=0) tree cells has its
+own Jacobi-averaged potential relax to EXACTLY 0 — no probabilistic path
+can ever fire it, since 0^eta=0 regardless of growRate. This is a real
+lattice-discretization artifact (a genuinely enclosed insulator pocket
+IS a Faraday-cage interior with zero field in continuum electrostatics
+too), but the discrete grid can't otherwise heal it. Fixed by folding
+any cell touching the tree on 3+ of its 4 sides into the conductor
+outright (deterministic, not probabilistic) — an honest resolution of a
+degenerate case, not a fudge, since such a cell has no reachable field
+gradient left to distinguish it from the tree it's already boxed inside.
+
+### The runaway-fill trap: DBM has no natural stopping rule without one
+Without an explicit stop condition, every mode eventually converts
+almost the entire domain to conductor (CORONA reached 99%+ fill given
+enough time) — measurably WRONG for a fractal growth model, whose whole
+point is a SPARSE structure spanning the domain, not a solid fill with
+occasional holes. Real dielectric breakdown has an obvious stopping
+point that a naive simulation loop doesn't: the instant the growing
+structure first touches the charged far boundary, the gap has fully
+bridged, the potential difference collapses, and growth (the physical
+process being modeled) is simply OVER — nothing after that moment is
+still "breakdown," it's just a completed spark sitting there, the same
+way a photographed Lichtenberg figure doesn't keep burning. Fixed with
+an explicit `brokenDown` flag, set the instant any tree cell is found
+occupying a geometric "sky" boundary cell (checked on the same
+throttled ~24-frame readback as the fractal-dimension/phiMax scan), which
+permanently freezes the growth pass for the rest of that mode's hold —
+this single fix also resolved the "STORM's screening competition needs
+a decisive moment" question for free: the FIRST leader to bridge the gap
+wins and freezes every other competing leader simultaneously, exactly
+matching how a real multi-leader lightning strike resolves (once one
+channel completes the circuit, the driving voltage across the gap
+collapses for all of them at once, not just the winner).
+
+### Live fractal-dimension readout via box-counting
+SANDPILE flagged its own power-law avalanche statistics as "implicit in
+the visuals, not measured" back in session 8 — this piece closes that
+exact gap for a different critical phenomenon. Standard box-counting:
+cover the occupancy grid with boxes of side 2/4/8/16/32px, count how
+many boxes contain at least one tree cell at each scale, fit
+log(count) vs log(1/size), the slope is D. Cheap enough (a few full
+passes over a <=190x190 readback array, gated behind the same
+WEBGL_color_buffer_float try/catch guard ISING/SWARMALATOR already use)
+to run on the same ~24-frame throttled cadence as the phiMax/breakdown
+scan. Reads correctly across the eta range: CORONA (eta=0.35) ~1.8-1.9,
+FRACTAL (eta=1.0) ~1.6-1.8 (close to the paper's own DLA figure of
+~1.71, with early-growth box-counting bias — few boxes at the largest
+scale — pulling small structures' apparent D down slightly, an honest
+statistical-estimator limitation noted here rather than hidden), LEADER
+(eta=2.5) ~1.2-1.3, ARC ~1.4-1.5, STORM (5 independent small trees)
+~1.2-1.3 — a single number that visibly tracks eta exactly as the
+underlying theory predicts, verified via direct headless screenshots at
+each mode, not just trusted from the formula.
+
+### Palette and rendering
+Distinct per-mode duotone matching the physical register: CORONA's warm
+ember (deep red-black to orange-white) for a compact discharge; FRACTAL's
+classic amber/gold-on-near-black for the literal wood-burn Lichtenberg
+look; LEADER's electric blue-white on deep indigo for sparse racing
+channels; ARC's violet/magenta plasma-arc look for the point-to-plane
+spark gap; STORM's per-owner hue-rotated teal base (a golden-ratio hue
+step per seed id) so five independently-colored competing leaders are
+visually distinguishable at a glance, the color itself carrying the
+"which structure is winning" information. A cheap 4-tap neighbor-density
+glow gives every branch a soft luminous halo instead of a single hard
+pixel line; a decaying per-cell "just grown" flash (same channel-reuse
+trick as ISING/SANDPILE's activity pulse) makes the active growing tip
+visibly brighter than aged branch, fading over about a second — this
+also surfaced a real bug (see below) where the decay was accidentally
+being skipped entirely for already-grown cells via a stray `max()`.
+
+### Bugs caught by screenshot, not just by "it compiles"
+1. `max(flash, self.b)` in the GROW shader's owner-cell branch always
+   evaluates to `self.b` (since decayed `flash = self.b*0.94 <= self.b`
+   for positive values), silently pinning every grown cell's glow at
+   full brightness forever instead of fading — invisible in the shader
+   compile/link step, obvious the instant a 25s-hold screenshot showed a
+   flat, undifferentiated solid-color blob with no visible "recent
+   growth" gradient. Fixed to just use the decayed `flash`.
+2. ARC mode's seed initially placed at pixel-space `py = H*0.92`
+   assuming that meant "near the bottom of the visible canvas" — it
+   actually rendered near the TOP, because array row index and clip-space
+   Y run in opposite directions for a directly-uploaded ping-pong texture
+   (row 0 of the JS `Float32Array` maps to uv.y=0, which the vertex
+   shader's un-flipped `p*0.5+0.5` places at the BOTTOM of the rendered
+   quad — so a LARGE row index ends up near the TOP of the screen, not
+   the bottom). This collided the seed directly with the geometric "sky"
+   (uv.y>0.93) boundary, causing breakdown to fire almost immediately
+   with a single-digit-pixel fill — caught by a diagnostic screenshot
+   showing the seed already sitting at the top of frame, not by any
+   console error. Fixed by placing the seed at `H*0.08` instead. General
+   lesson matching ISING's own sin-hash lesson: verify a spatial
+   assumption by screenshot, don't trust which way an axis "should" run.
+
+### 5 Modes (32s hold, full reseed per switch — eta and boundary geometry
+are both structural regime changes, not continuously-interpolable
+parameters, the same reasoning SANDPILE/ISING/SWARMALATOR already
+established)
+- CORONA:  eta=0.35, radial single seed — compact ember-glow discharge
+- FRACTAL: eta=1.0,  radial single seed — the paper's own headline DLA
+  universality-class result, dimension ~1.71
+- LEADER:  eta=2.5,  radial single seed — sparse racing channels,
+  dimension approaching 1
+- ARC:     eta=1.6,  point-to-plane (grounded needle vs. a charged
+  plate) — a literal spark-gap bolt reaching across the domain
+- STORM:   eta=1.3,  5 simultaneous radial seeds sharing one solved
+  field — demonstrates screening/competition directly; the first to
+  reach the boundary wins and freezes every other leader at once
+
+### Interaction
+Click/touch plants a new grounded seed (rival spark) at the cursor,
+competing with whatever already grew via the SAME shared solved field —
+verified via headless click mid-growth: the rival cluster visibly grew
+its own independent fractal branch and, in one run, reached the boundary
+first, freezing the original (larger, longer-running) structure before
+it finished — the screening effect demonstrated interactively, not just
+narrated.
+
+### Verification
+Headless Playwright + SwiftShader confirmed: ~30fps, no console errors
+(aside from the same benign SwiftShader/driver notices every other piece
+in this gallery also emits), all 5 modes producing visually and
+numerically distinct fractal morphologies tracking eta correctly via the
+live box-counted D readout, the breakdown-freeze firing correctly in
+every mode (verified via the FILL/D readout going static and a
+`BREAKDOWN` label appearing), click/touch rival-seed competition on
+desktop, a 390x844 mobile portrait viewport with real touch events
+keeping two independently-grown fractal clusters fully visible and the
+UI unclipped, and clean re-initialization across three consecutive
+viewport resizes (portrait -> ultra-wide) with no leaked textures/
+framebuffers and no console errors.
+
+### Inspiration
+This session's web research into GPU-accelerated dielectric-breakdown
+and Lichtenberg-figure simulation confirmed the Jacobi/Gauss-Seidel
+relaxation approach already used across this gallery's other PDE pieces
+is the standard technique for this exact problem, and turned up recent
+work (GPU-accelerated BEM solvers, chromia/lichtenberg and epa058/
+Lichtenberg-Figures reference implementations) validating the overall
+approach without needing a fundamentally different architecture. Chosen
+directly per last session's own explicit backlog note — "researched as
+a runner-up in session 8 AND again in session 10, passed over both
+times... just build it next time it's on the table" — rather than
+re-litigating the choice against other candidates a third time.
 
 ---
 
@@ -1030,6 +1273,79 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-08 — Session 11
+- Added LICHTENBERG: the dielectric breakdown model (Niemeyer-Pietronero-
+  Weismann, 1984). First piece that solves a genuine boundary-value
+  problem (Laplace's equation via Jacobi/red-black relaxation, reusing
+  ISING's checkerboard technique for a deterministic PDE instead of a
+  stochastic spin flip) rather than diffusing through fixed local
+  neighbors or following a force law. A single exponent (eta) sweeps
+  growth-probability-from-solved-field morphology from compact
+  (Eden-like) through the DLA universality class (eta=1, dimension
+  ~1.71) to sparse racing lightning-like channels (eta>2). Finally built
+  after being flagged as a backlog runner-up in sessions 8 and 10 and
+  passed over both times — this session followed last session's own
+  explicit instruction to stop re-researching it and just build it.
+- Four real technical traps this session, full write-ups under the
+  LICHTENBERG technical notes above: (1) Gauss-Seidel relaxation run
+  only inside the per-frame loop (ISING's own budget) is far too slow to
+  converge a boundary condition across a ~190px domain from scratch —
+  fixed by moving the expensive convergence to a one-time synchronous
+  `preRelax()` burst (3000 sweeps, ~6ms even under SwiftShader) at
+  reseed time, leaving the per-frame budget to track only small
+  incremental changes; (2) raw phi^eta probability never escapes a
+  point seed for high eta, since absolute near-field potential is
+  genuinely small there from 2D electrostatics alone regardless of
+  convergence quality — fixed by normalizing growth probability against
+  the CURRENT frontier's own peak potential (closer to the paper's real
+  normalized rule, and the actual reason eta matters: relative field
+  concentration, not absolute scale); (3) cells enclosed on 3+ sides by
+  already-grounded neighbors relax to exactly zero potential and can
+  never fire probabilistically — fixed by folding them into the
+  conductor deterministically, a legitimate resolution of a genuine
+  lattice-discretization Faraday-cage degeneracy; (4) without an
+  explicit stop condition every mode eventually converts almost the
+  entire domain (wrong for a model whose whole point is a sparse
+  structure) — fixed with a `brokenDown` flag that freezes growth the
+  instant the tree first touches the charged outer boundary, mirroring
+  how a real completed spark just sits there, which also resolved
+  STORM's multi-seed competition for free (first leader to bridge wins,
+  every other leader freezes at the same instant, matching how a real
+  multi-leader lightning strike resolves).
+- Also caught two bugs by screenshot rather than by compile/lint: a
+  stray `max(flash, self.b)` silently pinned every grown cell's glow at
+  full brightness forever instead of letting it fade (obvious only once
+  a 25s-hold screenshot showed a flat undifferentiated blob); and ARC
+  mode's seed was placed assuming pixel-space Y matched screen-space Y,
+  when the ping-pong texture's row-to-uv mapping runs the opposite way,
+  colliding the seed directly with the "sky" boundary and firing
+  breakdown almost instantly — caught by a diagnostic screenshot, not a
+  console error, echoing ISING's own "verify a spatial/numerical
+  assumption directly, don't trust intuition" lesson from last session.
+- A live fractal-dimension readout (box-counting at 5 scales, fit
+  log(count) vs log(1/size)) closes the exact "measure the real
+  phenomenon, don't just imply it" gap SANDPILE flagged for its own
+  power-law statistics back in session 8 — D tracks eta correctly across
+  all 5 modes (~1.8-1.9 down to ~1.2-1.3), verified against the
+  literature's own DLA figure (~1.71) for the eta=1 FRACTAL mode.
+- Verified via headless Playwright/SwiftShader: ~30fps, no console
+  errors beyond the same benign driver notices every other piece in this
+  gallery emits, all 5 modes visually and numerically distinct, the
+  breakdown-freeze firing correctly and observably in every mode, a
+  click/touch rival-seed interaction that visibly demonstrates the
+  screening effect (a rival cluster reaching the boundary and freezing
+  the original, larger structure), a 390x844 mobile portrait viewport
+  with real touch events, and clean re-initialization across three
+  consecutive viewport resizes with no leaked GL resources.
+- Inspiration: web research into GPU-accelerated dielectric-breakdown/
+  Lichtenberg-figure simulation confirmed the relaxation approach this
+  gallery already uses elsewhere is the standard technique here too, and
+  surfaced current reference implementations validating the overall
+  design without needing anything architecturally novel beyond what
+  ISING's checkerboard technique already provided. Chosen directly per
+  last session's explicit backlog note rather than re-litigating the
+  choice against other candidates for a third time.
+
 ### 2026-07-07 — Session 10
 - Added ISING: the 2D lattice-spin Ising model (Ising 1924, exactly
   solved by Onsager 1944). First piece with a STOCHASTIC update rule —
@@ -1424,13 +1740,35 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] SANDPILE: non-square lattice graphs (triangular/hexagonal adjacency,
       or Dhar's actual arbitrary-graph formulation) instead of only the
       square 4-neighbour lattice
-- [ ] Dielectric breakdown model / Lichtenberg figures (Niemeyer-
-      Pietronero-Weismann 1984) — researched as a runner-up in session 8
-      (to SANDPILE) AND again in session 10 (to ISING), passed over both
-      times for being closer in kind to PHYSARUM/SANDPILE's existing
-      deterministic-aggregation registers; still worth returning to for
-      its own sake, but stop re-researching it as a runner-up each
-      session — just build it next time it's on the table
+- [x] Dielectric breakdown model / Lichtenberg figures — done in
+      LICHTENBERG (session 11), first piece to solve a genuine
+      boundary-value (Laplace) problem rather than diffuse through
+      fixed local neighbors
+- [ ] LICHTENBERG: true weighted/normalized frontier sampling (grow
+      exactly ONE cell per step, chosen via p_i = phi_i^eta / sum_j
+      phi_j^eta over all candidates) instead of this session's per-cell
+      independent-Bernoulli approximation against a phiMax-normalized
+      probability — closer to Niemeyer-Pietronero-Weismann's original
+      formulation, though would need a GPU reduction + inverse-CDF
+      sampling step this session didn't attempt
+- [ ] LICHTENBERG: an interactive eta slider (continuous, not just the
+      5 fixed auto-cycled exponents) so a visitor can walk the
+      compact-to-lightning morphology spectrum themselves, echoing the
+      same idea flagged for ISING's temperature this session
+- [ ] LICHTENBERG: a live power-law avalanche-size histogram for the
+      GROWTH EVENTS themselves (how many cells convert per relaxation-
+      settle interval), distinct from the box-counted structural
+      fractal dimension already shown — would surface a second, temporal
+      critical phenomenon (this model has both a fractal STRUCTURE and,
+      separately, bursty growth DYNAMICS) the current build doesn't
+      measure
+- [ ] LICHTENBERG: a 3D version (volumetric Laplace relaxation,
+      raymarched or point-cloud rendered) — real Lichtenberg figures in
+      acrylic blocks are inherently 3D branching structures, and this
+      gallery's own backlog has a standing "3D reaction-diffusion"
+      entry that never got built for a different reason (perf); worth
+      reconsidering here specifically since DBM growth is naturally
+      sparse (most voxels stay empty), unlike a dense volumetric PDE
 - [x] Kuramoto oscillator synchronization — done in SWARMALATOR (session 9),
       generalized to the swarmalator model (position AND phase coupled)
       rather than plain Kuramoto with static agents

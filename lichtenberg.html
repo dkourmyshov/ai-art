@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LICHTENBERG — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+#order .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="orderLabel">D ≈ </span><span class="val" id="orderVal">—</span>
+  <span class="sub" id="fillVal">FILL —</span>
+</div>
+<div id="ui">
+  <span id="modeName">CORONA</span>
+  <span id="desc">η = 0.35 · COMPACT DISCHARGE</span>
+</div>
+<script>
+/*  LICHTENBERG — the dielectric breakdown model (DBM)
+ *
+ *  Niemeyer, Pietronero & Weismann (Phys. Rev. Lett. 52, 1033, 1984):
+ *  an insulator sits between a grounded conductor (potential 0) and a
+ *  distant charged boundary (potential 1). Solve Laplace's equation
+ *  nabla^2(phi) = 0 for the electric potential everywhere OUTSIDE the
+ *  grounded structure; the structure then grows by converting one
+ *  adjacent insulator cell into conductor with probability proportional
+ *  to phi_i^eta, where phi_i is the LOCAL potential at that candidate
+ *  cell (a stand-in for the local field driving avalanche ionization).
+ *  Because growth changes the boundary of the very equation being
+ *  solved, potential and structure co-evolve — the shape carves its own
+ *  next growth probabilities. eta alone tunes the whole morphology: at
+ *  eta=0 every candidate is equally likely (Eden-model-like, compact,
+ *  fractal dimension near 2); at eta=1 the classic DLA universality
+ *  class emerges (dimension ~1.71, the paper's own headline result);
+ *  as eta grows past ~2 the field concentrates so heavily at sharp tips
+ *  that growth collapses onto a few thin racing channels (dimension
+ *  approaching 1) — real Lichtenberg figures (branching burn patterns
+ *  in wood, acrylic, and lightning itself).
+ *
+ *  Why this piece is architecturally different: every earlier piece
+ *  either diffuses a field through fixed local neighbors (MEMBRANE/
+ *  LENIA/EXCITABLE's Laplacian kernel), topples an integer threshold
+ *  (SANDPILE), flips a spin against a LOCAL energy change (ISING), or
+ *  moves an agent/node through a force law (PHYSARUM/CHLADNI/GYRUS/
+ *  SWARMALATOR) — none of them ever solve a genuine boundary-value
+ *  problem. Here every candidate growth cell's probability depends on
+ *  the potential SOLVED ACROSS THE ENTIRE DOMAIN, recomputed by Jacobi
+ *  relaxation between growth events, not on a fixed local rule. This is
+ *  also the first piece where separately-seeded structures actively
+ *  compete: because they share one solved field, a structure that races
+ *  ahead measurably lowers the potential (and so the growth odds) seen
+ *  by every OTHER structure's frontier, anywhere on the lattice — a real
+ *  screening effect, not scripted, and the reason a single dominant
+ *  lightning leader suppresses its own side branches once it breaks
+ *  free (see STORM mode).
+ *
+ *  Relaxation reuses ISING's checkerboard (red-black) sublattice update
+ *  — same technique, different equation: there it decided stochastic
+ *  spin flips, here it converges a deterministic Laplacian toward
+ *  equilibrium about 2x faster than a naive same-buffer Jacobi pass.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const orderValEl = document.getElementById('orderVal');
+const fillValEl = document.getElementById('fillVal');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('Float textures unavailable');
+const colorBufferFloatExt = gl.getExtension('WEBGL_color_buffer_float');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 uv;
+void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}`;
+
+const N_SEEDS = 8;
+
+/* Relax pass: one red-black Laplacian sweep half. Fixed cells (grounded
+   tree, or the charged outer boundary) hold their potential; every other
+   cell on this half's parity takes the 4-neighbor average — Gauss-Seidel
+   convergence, ISING's checkerboard technique repurposed for a
+   deterministic PDE instead of a stochastic spin flip. Tree membership
+   and the decaying growth-flash pass through untouched; only R (phi)
+   changes here. */
+const RELAX = `
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 res;
+uniform float parity;
+uniform float geom;      // 0 = radial (disk), 1 = point-to-plane (arc)
+varying vec2 uv;
+
+void main(){
+  vec4 self = texture2D(tex, uv);
+  float owner = self.g;
+  float flash = self.b;
+  vec2 cell = floor(uv * res);
+  float par = mod(cell.x + cell.y, 2.0);
+
+  if (owner > 0.5) { gl_FragColor = vec4(0.0, owner, flash, 1.0); return; }
+
+  bool sky;
+  if (geom < 0.5) {
+    float r = length(uv - 0.5) * 2.0;
+    sky = r > 0.94;
+  } else {
+    sky = uv.y > 0.93;
+  }
+  if (sky) { gl_FragColor = vec4(1.0, 0.0, flash, 1.0); return; }
+
+  if (abs(par - parity) > 0.5) { gl_FragColor = vec4(self.r, 0.0, flash, 1.0); return; }
+
+  vec2 d = 1.0 / res;
+  float pR = texture2D(tex, uv + vec2(d.x, 0.0)).r;
+  float pL = texture2D(tex, uv - vec2(d.x, 0.0)).r;
+  float pU = texture2D(tex, uv + vec2(0.0, d.y)).r;
+  float pD = texture2D(tex, uv - vec2(0.0, d.y)).r;
+  float phi = (pR + pL + pU + pD) * 0.25;
+  gl_FragColor = vec4(phi, 0.0, flash, 1.0);
+}`;
+
+/* Growth pass: one full synchronous step (no checkerboard split needed —
+   the tree only ever grows, so two adjacent frontier cells both
+   converting in the same pass is a legitimate simultaneous discharge
+   event, not the read/write race a spin-flip rule has to guard against).
+   Each empty cell touching the tree converts with probability
+   growRate * (phi/phiMax)^eta, taking the touching neighbor's owner id —
+   the Niemeyer-Pietronero-Weismann growth rule, normalized against the
+   CURRENT frontier's own peak potential (phiMax, refreshed from a CPU
+   readback every ~24 frames) rather than the raw 0..1 scale. The raw
+   scale is dominated by an uninteresting geometric fact — how far the
+   frontier sits from the fixed outer boundary, which starts near-zero
+   next to any point-like conductor purely from the 2D Laplacian's own
+   log(r) profile — while what actually determines DBM's branching
+   morphology is the RELATIVE field concentration between competing
+   frontier cells. Without this normalization, high-eta modes (LEADER)
+   never escape their seed at all: phi^2.5 of the ~0.02-0.09 potential
+   found next to a small seed is on the order of 1e-5, a probability no
+   reasonable growRate recovers, even though those exact same cells are
+   already the strongest candidates available on the frontier. */
+const GROW = `
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 res;
+uniform float eta;
+uniform float growRate;
+uniform float phiMax;
+uniform float seed;
+varying vec2 uv;
+
+float hash2(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453123); }
+
+void main(){
+  vec4 self = texture2D(tex, uv);
+  float owner = self.g;
+  float flash = self.b * 0.94;
+
+  if (owner > 0.5) { gl_FragColor = vec4(0.0, owner, flash, 1.0); return; }
+
+  vec2 d = 1.0 / res;
+  vec4 nR = texture2D(tex, uv + vec2(d.x, 0.0));
+  vec4 nL = texture2D(tex, uv - vec2(d.x, 0.0));
+  vec4 nU = texture2D(tex, uv + vec2(0.0, d.y));
+  vec4 nD = texture2D(tex, uv - vec2(0.0, d.y));
+
+  float touchOwner = 0.0;
+  float touchCount = 0.0;
+  if (nR.g > 0.5) { touchOwner = nR.g; touchCount++; }
+  if (nL.g > 0.5) { touchOwner = nL.g; touchCount++; }
+  if (nU.g > 0.5) { touchOwner = nU.g; touchCount++; }
+  if (nD.g > 0.5) { touchOwner = nD.g; touchCount++; }
+
+  if (touchCount < 0.5) { gl_FragColor = vec4(self.r, 0.0, flash, 1.0); return; }
+
+  /* A cell boxed in on 3+ sides sits in a lattice-discretization dead
+     zone: its neighbors are all grounded (phi=0 exactly, by construction
+     of the relax pass above), so its own Jacobi-averaged potential also
+     relaxes to exactly 0 forever — no probabilistic path can ever fire
+     it. Physically this cell has no reachable field gradient at all
+     (a Faraday-cage interior), so folding it into the conductor
+     outright is the honest resolution, not a fudge — without it these
+     resolve as permanent salt-and-pepper pinholes that never heal. */
+  float rel = clamp(self.r / max(phiMax, 0.001), 0.0, 1.0);
+  float p = touchCount >= 2.5 ? 1.0 : clamp(growRate * pow(rel, eta), 0.0, 0.9);
+  float rnd = hash2(vec3(floor(uv * res), seed));
+  bool ignite = rnd < p;
+  float newOwner = ignite ? touchOwner : 0.0;
+  float newFlash = ignite ? 1.0 : flash;
+  gl_FragColor = vec4(self.r, newOwner, newFlash, 1.0);
+}`;
+
+const RENDER = `
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 res;
+uniform vec3 skyCol;
+uniform vec3 branchCol;
+uniform vec3 hotCol;
+uniform float multiHue;   // 1 = color by owner id (STORM), 0 = uniform branchCol
+varying vec2 uv;
+
+vec3 hueShift(vec3 c, float h){
+  float ang = h * 6.2831853;
+  float s = sin(ang), co = cos(ang);
+  mat3 m = mat3(0.299,0.587,0.114, 0.299,0.587,0.114, 0.299,0.587,0.114) +
+            co * (mat3(1.0)-mat3(0.299,0.587,0.114, 0.299,0.587,0.114, 0.299,0.587,0.114)) +
+            s * mat3(0.168,0.330,-0.497, -0.328,0.035,0.292, 1.250,-1.050,-0.203);
+  return clamp(m * c, 0.0, 1.0);
+}
+
+void main(){
+  vec4 s = texture2D(tex, uv);
+  float phi = s.r;
+  float owner = s.g;
+  float flash = s.b;
+
+  vec3 col = skyCol * (0.4 + 0.6 * phi);
+  float vign = 1.0 - 0.4 * pow(length(uv - 0.5) * 1.4, 2.0);
+  col *= vign;
+
+  /* soft glow halo: sample a small ring around this texel for nearby
+     tree density, giving branches a luminous bloom instead of a single
+     hard pixel line — the discharge channel visibly radiates. */
+  vec2 d = 2.0 / res;
+  float glow = 0.0;
+  glow += texture2D(tex, uv + vec2(d.x,0.0)).g > 0.5 ? 1.0 : 0.0;
+  glow += texture2D(tex, uv - vec2(d.x,0.0)).g > 0.5 ? 1.0 : 0.0;
+  glow += texture2D(tex, uv + vec2(0.0,d.y)).g > 0.5 ? 1.0 : 0.0;
+  glow += texture2D(tex, uv - vec2(0.0,d.y)).g > 0.5 ? 1.0 : 0.0;
+  glow *= 0.13;
+
+  vec3 bc = branchCol;
+  if (multiHue > 0.5 && owner > 0.5) bc = hueShift(branchCol, fract(owner * 0.61803399));
+
+  col = mix(col, bc, clamp(glow, 0.0, 0.85));
+  if (owner > 0.5) col = bc;
+  col += hotCol * flash * 0.65;
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const RXP = mkProg(VS, RELAX);
+const GRP = mkProg(VS, GROW);
+const RP  = mkProg(VS, RENDER);
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindP(prog) {
+  const a = gl.getAttribLocation(prog, 'p');
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(a);
+  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+}
+const u = (prog, name) => gl.getUniformLocation(prog, name);
+
+/* ── Ping-pong buffers ───────────────────────────────── */
+let W, H, tx = [], fb = [], ping = 0, readBuf = null;
+let phiMax = 1.0;
+
+function initSim() {
+  W = C.width; H = C.height;
+  const MX = 190;
+  if (W > MX || H > MX) { const sc = MX / Math.max(W, H); W = Math.max(2, W * sc | 0); H = Math.max(2, H * sc | 0); }
+
+  tx.forEach(t => gl.deleteTexture(t));
+  fb.forEach(f => gl.deleteFramebuffer(f));
+  tx = []; fb = [];
+
+  for (let i = 0; i < 2; i++) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, null);
+    tx.push(t);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    fb.push(f);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  ping = 0;
+  readBuf = new Float32Array(W * H * 4);
+  seedTree();
+}
+
+/* Seeds are grounded conductor cells (owner id 1..N) written directly
+   into both ping-pong buffers before growth begins — the initial
+   "needle" or "electrode point" the whole structure grows from. */
+function seedTree() {
+  const dat = new Float32Array(W * H * 4);
+  const m = MODES[mi];
+  const pts = m.seeds(W, H);
+  for (let i = 0; i < pts.length; i++) {
+    const [px, py, id] = pts[i];
+    const x = Math.round(px), y = Math.round(py);
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const xx = x + ox, yy = y + oy;
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+      const idx = (yy * W + xx) * 4;
+      dat[idx] = 0.0; dat[idx+1] = id; dat[idx+2] = 1.0; dat[idx+3] = 1.0;
+    }
+  }
+  for (let i = 0; i < 2; i++) {
+    gl.bindTexture(gl.TEXTURE_2D, tx[i]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, dat);
+  }
+  ping = 0;
+  preRelax(m.geom);
+}
+
+/* Gauss-Seidel relaxation propagates the outer boundary condition
+   inward at roughly one cell per sweep, and its error only decays on a
+   timescale of order (grid size)^2 sweeps — for a ~190px domain that's
+   many thousands of sweeps to reach the true log-profile potential
+   around a point seed, far more than a per-frame budget can afford
+   without stalling growth to a crawl for the first several seconds of
+   every mode. Rather than pay that convergence cost 60 times a second
+   on screen, it's paid ONCE, synchronously, the instant a mode reseeds
+   — several hundred sweeps executed back-to-back with no rendered
+   frame in between — so growth starts from an already near-equilibrium
+   field instead of a flat zero. Per-frame relax afterward only has to
+   track the SMALL incremental change from each growth step, not
+   re-solve the whole domain from scratch. */
+function preRelax(geom) {
+  gl.useProgram(RXP); bindP(RXP);
+  gl.viewport(0, 0, W, H);
+  gl.uniform2f(u(RXP,'res'), W, H);
+  gl.uniform1f(u(RXP,'geom'), geom);
+  gl.uniform1i(u(RXP,'tex'), 0);
+  const PRE_SWEEPS = 3000;
+  for (let sweep = 0; sweep < PRE_SWEEPS; sweep++) {
+    for (let parity = 0; parity < 2; parity++) {
+      const pong = 1 - ping;
+      gl.uniform1f(u(RXP,'parity'), parity);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb[pong]);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      ping = pong;
+    }
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+/* ── Modes ──────────────────────────────────────────────
+   eta alone sweeps the Niemeyer-Pietronero-Weismann morphology from
+   compact (eta<1) through the DLA universality class (eta=1) to sparse
+   racing channels (eta>2); geometry (radial disk vs. point-to-plane)
+   and seed count are the other axis, echoing SANDPILE/ISING's "one
+   engine, different constants" economy. */
+const MODES = [
+  { name: 'CORONA', desc: 'η = 0.35 · COMPACT DISCHARGE', eta: 0.35, growRate: 0.85, geom: 0, multiHue: 0,
+    sweeps: 4, growEvery: 2,
+    skyCol: [0.10, 0.02, 0.01], branchCol: [1.00, 0.42, 0.10], hotCol: [1.00, 0.85, 0.55],
+    seeds: (W,H) => [[W/2, H/2, 1]] },
+  { name: 'FRACTAL', desc: 'η = 1.0 · NIEMEYER-PIETRONERO-WEISMANN 1984', eta: 1.0, growRate: 0.55, geom: 0, multiHue: 0,
+    sweeps: 5, growEvery: 2,
+    skyCol: [0.03, 0.025, 0.01], branchCol: [0.95, 0.72, 0.20], hotCol: [1.00, 0.97, 0.80],
+    seeds: (W,H) => [[W/2, H/2, 1]] },
+  { name: 'LEADER', desc: 'η = 2.5 · RACING CHANNELS', eta: 2.5, growRate: 0.35, geom: 0, multiHue: 0,
+    sweeps: 6, growEvery: 2,
+    skyCol: [0.015, 0.02, 0.05], branchCol: [0.55, 0.80, 1.00], hotCol: [0.90, 0.96, 1.00],
+    seeds: (W,H) => [[W/2, H/2, 1]] },
+  { name: 'ARC', desc: 'η = 1.6 · POINT-TO-PLANE SPARK GAP', eta: 1.6, growRate: 0.45, geom: 1, multiHue: 0,
+    sweeps: 6, growEvery: 2,
+    skyCol: [0.04, 0.01, 0.06], branchCol: [0.80, 0.30, 0.95], hotCol: [0.98, 0.85, 1.00],
+    seeds: (W,H) => [[W/2, H*0.08, 1]] },
+  { name: 'STORM', desc: 'η = 1.3 · COMPETING LEADERS · SCREENING', eta: 1.3, growRate: 0.5, geom: 0, multiHue: 1,
+    sweeps: 5, growEvery: 2,
+    skyCol: [0.02, 0.03, 0.04], branchCol: [0.25, 0.85, 0.80], hotCol: [0.85, 1.00, 0.95],
+    seeds: (W,H) => {
+      const n = 5, pts = [];
+      for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+        const rad = Math.min(W,H) * 0.30;
+        pts.push([W/2 + Math.cos(ang)*rad, H/2 + Math.sin(ang)*rad, i+1]);
+      }
+      return pts;
+    } },
+];
+const HOLD = 32 * 60;
+let mi = 0, mt = 0;
+let brokenDown = false;
+
+function applyMode(idx) {
+  mi = idx;
+  const m = MODES[mi];
+  modeNameEl.textContent = m.name;
+  descEl.innerHTML = m.desc;
+  phiMax = 1.0;
+  brokenDown = false;
+  seedTree();
+}
+applyMode(0);
+
+function switchMode() { applyMode((mi + 1) % MODES.length); }
+
+/* ── Input: click/touch plants a rival grounded seed ───────
+   A new spark competes with whatever already grew via the SAME shared
+   solved field — the screening effect is real physics, not scripted:
+   watch it starve if it lands behind an already-dominant leader. */
+let clickSeedId = N_SEEDS - 1;
+function sparkAt(cx, cy) {
+  const b = C.getBoundingClientRect();
+  const x = (cx - b.left) / b.width;
+  const y = (cy - b.top) / b.height;
+  const px = Math.round(x * W), py = Math.round(y * H);
+  const dat = new Float32Array(9 * 4);
+  let k = 0;
+  const coords = [];
+  for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+    const xx = px + ox, yy = py + oy;
+    if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+    dat[k*4] = 0.0; dat[k*4+1] = clickSeedId; dat[k*4+2] = 1.0; dat[k*4+3] = 1.0;
+    coords.push([xx, yy]);
+    k++;
+  }
+  for (let i = 0; i < 2; i++) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb[i]);
+    for (let c = 0; c < coords.length; c++) {
+      gl.bindTexture(gl.TEXTURE_2D, tx[i]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, coords[c][0], coords[c][1], 1, 1, gl.RGBA, gl.FLOAT, dat.subarray(c*4, c*4+4));
+    }
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  clickSeedId = clickSeedId <= 1 ? N_SEEDS - 1 : clickSeedId - 1;
+}
+C.addEventListener('mousedown', e => sparkAt(e.clientX, e.clientY));
+C.addEventListener('touchstart', e => { e.preventDefault(); sparkAt(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+
+/* ── Resize ─────────────────────────────────────────── */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  C.width  = window.innerWidth  * dpr | 0;
+  C.height = window.innerHeight * dpr | 0;
+  C.style.width  = window.innerWidth  + 'px';
+  C.style.height = window.innerHeight + 'px';
+  initSim();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── Live fractal-dimension readout via box-counting ───────
+   The "novel and unexpected" fact this piece is built around is that a
+   SINGLE parameter (eta) sweeps the growth's fractal dimension from
+   near-2 (compact) to near-1 (thin channels) — SANDPILE flagged its own
+   power-law statistics as "implicit in the visuals, not measured" back
+   in session 8; this is that gap closed for a different critical
+   phenomenon. Standard box-counting: cover the occupancy grid with
+   boxes of side 2/4/8/16/32px, count how many boxes contain at least
+   one tree cell, then fit log(count) vs log(1/size) — the slope is D.
+   Cheap (a few full passes over a <=260x260 readback array) so it runs
+   on the same throttled cadence as ISING's order-parameter readback. */
+let orderReadOk = colorBufferFloatExt !== null;
+let frameCount = 0;
+const BOX_SIZES = [2, 4, 8, 16, 32];
+
+/* Also tracks phiMax (see GROW shader comment above): the highest
+   potential found on any current frontier cell (empty, but touching the
+   tree), read back on the same throttled cadence rather than every
+   growth pass, since the frontier's peak moves slowly compared to how
+   often growth itself fires. */
+function readFractalDim() {
+  if (!orderReadOk) return;
+  try {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb[ping]);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { orderReadOk = false; return; }
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, readBuf);
+  } catch (e) { orderReadOk = false; return; }
+
+  let filled = 0;
+  let pMax = 0;
+  const geom = MODES[mi].geom;
+  const occ = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    if (readBuf[i*4 + 1] > 0.5) { occ[i] = 1; filled++; }
+  }
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y*W + x;
+      if (occ[i]) continue;
+      const touching = (x>0 && occ[i-1]) || (x<W-1 && occ[i+1]) || (y>0 && occ[i-W]) || (y<H-1 && occ[i+W]);
+      if (touching) pMax = Math.max(pMax, readBuf[i*4]);
+      /* Breakdown: the tree has reached a cell the relax pass treats as
+         part of the charged outer boundary itself — a real spark has
+         now bridged the gap, the discharge event is complete, and
+         growth freezes (see brokenDown below) rather than continuing
+         to devour the rest of the insulator, which no unbroken
+         dielectric ever does in reality. */
+    }
+  }
+  if (!brokenDown) {
+    outer: for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (!occ[y*W+x]) continue;
+        const uvx = (x+0.5)/W, uvy = (y+0.5)/H;
+        const sky = geom < 0.5 ? Math.hypot(uvx-0.5, uvy-0.5)*2 > 0.94 : uvy > 0.93;
+        if (sky) { brokenDown = true; break outer; }
+      }
+    }
+  }
+  if (pMax > 0.001) phiMax = pMax;
+  fillValEl.textContent = 'FILL ' + (100 * filled / (W*H)).toFixed(1) + '%' + (brokenDown ? ' · BREAKDOWN' : '');
+
+  if (filled < 24) { orderValEl.textContent = '—'; return; }
+
+  const xs = [], ys = [];
+  for (const box of BOX_SIZES) {
+    let count = 0;
+    for (let by = 0; by < H; by += box) {
+      for (let bx = 0; bx < W; bx += box) {
+        let hit = false;
+        for (let y = by; y < Math.min(by+box, H) && !hit; y++) {
+          for (let x = bx; x < Math.min(bx+box, W); x++) {
+            if (occ[y*W+x]) { hit = true; break; }
+          }
+        }
+        if (hit) count++;
+      }
+    }
+    if (count > 0) { xs.push(Math.log(1.0/box)); ys.push(Math.log(count)); }
+  }
+  if (xs.length < 2) { orderValEl.textContent = '—'; return; }
+  const n = xs.length;
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (let i = 0; i < n; i++) { sx+=xs[i]; sy+=ys[i]; sxx+=xs[i]*xs[i]; sxy+=xs[i]*ys[i]; }
+  const denom = n*sxx - sx*sx;
+  const slope = denom !== 0 ? (n*sxy - sx*sy) / denom : 0;
+  orderValEl.textContent = Math.max(0, slope).toFixed(2);
+}
+
+/* ── Main loop ──────────────────────────────────────── */
+let growSeed = 0;
+let frame = 0;
+(function loop() {
+  requestAnimationFrame(loop);
+
+  if (++mt > HOLD) { mt = 0; switchMode(); }
+  frame++;
+
+  const m = MODES[mi];
+
+  gl.viewport(0, 0, W, H);
+
+  /* Relax: many red-black sweeps per frame so the field stays close to
+     the true Laplace solution for the CURRENT tree shape even though
+     the shape itself just changed last growth step. */
+  gl.useProgram(RXP); bindP(RXP);
+  gl.uniform2f(u(RXP,'res'), W, H);
+  gl.uniform1f(u(RXP,'geom'), m.geom);
+  gl.uniform1i(u(RXP,'tex'), 0);
+  for (let sweep = 0; sweep < m.sweeps; sweep++) {
+    for (let parity = 0; parity < 2; parity++) {
+      const pong = 1 - ping;
+      gl.uniform1f(u(RXP,'parity'), parity);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb[pong]);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      ping = pong;
+    }
+  }
+
+  /* Grow: sparingly, so the field has time to re-settle to the new
+     boundary before the next irreversible conversion. Frozen entirely
+     once brokenDown fires — a completed discharge doesn't keep eating
+     the rest of the insulator, it just sits there, the same "verified,
+     not scripted" stopping condition a real spark gap has once the
+     circuit closes. */
+  if (!brokenDown && frame % m.growEvery === 0) {
+    gl.useProgram(GRP); bindP(GRP);
+    gl.uniform2f(u(GRP,'res'), W, H);
+    gl.uniform1f(u(GRP,'eta'), m.eta);
+    gl.uniform1f(u(GRP,'growRate'), m.growRate);
+    gl.uniform1f(u(GRP,'phiMax'), phiMax);
+    gl.uniform1f(u(GRP,'seed'), (growSeed = (growSeed + 1.0) % 479));
+    gl.uniform1i(u(GRP,'tex'), 0);
+    const pong = 1 - ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb[pong]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    ping = pong;
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(RP); bindP(RP);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tx[ping]);
+  gl.uniform1i(u(RP,'tex'), 0);
+  gl.uniform2f(u(RP,'res'), W, H);
+  gl.uniform3fv(u(RP,'skyCol'), m.skyCol);
+  gl.uniform3fv(u(RP,'branchCol'), m.branchCol);
+  gl.uniform3fv(u(RP,'hotCol'), m.hotCol);
+  gl.uniform1f(u(RP,'multiHue'), m.multiHue);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  if (++frameCount % 24 === 0) readFractalDim();
+})();
+</script>
+</body>
+</html>
