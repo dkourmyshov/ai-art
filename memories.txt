@@ -17,7 +17,209 @@ gyrus.html       — GYRUS piece
 sandpile.html    — SANDPILE piece
 swarmalator.html — SWARMALATOR piece
 ising.html       — ISING piece
-lichtenberg.html — LICHTENBERG piece (new)
+lichtenberg.html — LICHTENBERG piece
+attractor.html   — ATTRACTOR piece (new)
+
+---
+
+## Piece 12: ATTRACTOR — Strange Attractors & Sensitive Dependence (2026-07-09)
+Five classic 2D chaotic maps, each point (x,y) fed back through a fixed
+nonlinear formula once per frame forever: CLIFFORD/Pickover (popularized
+c.1990: x'=sin(ay)+c*cos(ax), y'=sin(bx)+d*cos(by)), DE JONG (Peter de
+Jong, Computer Recreations, Sci. Am. July 1987: x'=sin(ay)-cos(bx),
+y'=sin(cx)-cos(dy)), SVENSSON (Johnny Svensson's de Jong variant:
+x'=d*sin(ax)-sin(by), y'=c*cos(ax)+cos(by)), IKEDA (Kensuke Ikeda, 1979 —
+a real physical model of light circulating in a nonlinear-medium ring
+cavity: t=0.4-6/(1+x^2+y^2), x'=1+u(x cos t - y sin t), y'=u(x sin t + y
+cos t)), and HOPALONG/MARTIN (Barry Martin, Aston University, nicknamed
+by A.K. Dewdney and popularized in his "Wallpaper for the Mind",
+Scientific American, Sept. 1986: x'=y-sign(x)*sqrt(|bx-c|), y'=a-x).
+Ruelle & Takens coined the term "strange attractor" in 1971 for exactly
+this phenomenon: a bounded, fractal, non-periodic set a dissipative
+system settles onto regardless of where it started, while any two
+nearby starting points on it separate exponentially forever after —
+order (a fixed invariant shape) and disorder (unpredictability) holding
+simultaneously, the "novel and unexpected" hook this session's web
+research kept surfacing independent of which specific map it looked at.
+
+### Why this piece is architecturally different
+Every earlier piece in this gallery couples its simulated units to one
+another — PHYSARUM's agents share a pheromone field, SWARMALATOR's
+oscillators couple all-to-all, ISING's spins flip against local
+neighbors' energy, LICHTENBERG's growth cells share one solved potential
+field, MEMBRANE/LENIA/EXCITABLE diffuse through a Laplacian kernel. Here
+there is NO coupling of any kind: each of ~147,000 points is a fully
+independent copy of the exact same formula, unaware any other point
+exists — the simplest possible per-fragment update this gallery has ever
+run (read only the texel's own value, no neighbor sampling, no VTF-summed
+population loop). And yet, with zero communication between them, they
+collectively trace out one single, intricate, self-similar structure —
+the attractor's invariant measure emerges purely from the geometry of one
+equation's phase space, not from any interaction. It's also the first
+piece where the live measured quantity needs no GPU pixel readback at
+all: ISING's M, SWARMALATOR's R, and LICHTENBERG's D all read back an
+actual simulated field, but the largest Lyapunov exponent here is tracked
+via a tiny separate two-point "shadow" trajectory computed entirely in
+JS (the classic Benettin et al. renormalization method: a reference point
+and a shadow point epsilon apart both iterate the same map every frame;
+the running average of log(separation/epsilon), renormalizing the shadow
+back to epsilon after every step, converges to lambda) — fully decoupled
+from the ~147k points the GPU actually draws. A positive lambda is
+chaos's own fingerprint, and reads positive for every mode (see the
+Hopalong trap below for why that took a second attempt).
+
+### Rendering: PHYSARUM's own technique, reused for a different quantity
+Positions live in a ping-ponged float texture exactly like every other
+piece, splatted via gl.POINTS (VTF read of position, PHYSARUM's exact
+method) additively into a decaying accumulation buffer with the same
+"persistent-structure channel + fast-decay flash channel" and the same
+1-exp(-k*x) tonemap PHYSARUM established for its pheromone trails —
+reused here for density of independent trajectories instead. The
+accumulation buffer is recreated on resize at a capped resolution that
+always matches the canvas's own aspect ratio (unlike PHYSARUM's fixed
+512x512 trail buffer, which physarum's own toroidal abstract pattern
+tolerates being non-uniformly stretched to fill any window — an
+attractor's recognizable shape would visibly warp under the same
+treatment, so this piece needed ISING's "recreate the sim buffer to match
+canvas aspect on resize" approach instead of PHYSARUM's "fixed square,
+stretch on draw" one).
+
+### The bounding-box trap: don't guess where an attractor sits, measure it
+Four of the five maps are trivially bounded (Clifford/de Jong/Svensson —
+every output is a sum of sin/cos terms; Ikeda — a damped rotation with
+spectral norm u<1), but none of them are centered at the origin or sized
+to fit a comfortable view by construction, and Hopalong's boundedness
+isn't obvious from the formula at all. Rather than eyeball a scale/
+center per mode and iterate by screenshot (this gallery's usual fallback
+for tuning traps), this session precomputed each mode's real bounding
+box with a headless Node script — 1000-iteration warmup discarding the
+transient, then 200k-300k iterations recording min/max x and y — and
+derived cx/cy/halfw/halfh and a FIT=0.82 margin scale directly from the
+measured numbers. Verified worth doing: Hopalong's box (halfw=halfh~129,
+centered near (4.3,2.9)) is nothing a human would have guessed from the
+formula alone, and Svensson's box is a 3:1 elongated rectangle (halfw
+7.56 vs halfh 2.4) — an honest reflection of the actual attractor's
+shape, not a bug, rendered as a wide flat band rather than force-fit into
+a square.
+
+### The Hopalong trap: "chaotic-looking" parameters aren't always chaotic
+First build used Hopalong's own textbook "default" parameters (a=-55,
+b=-1, c=-42, cited on Wikibooks). It rendered a strikingly regular
+16-fold "flower of rings" pattern — and the live Lyapunov readout came
+back at lambda=0.000, not a rounding artifact: re-running the same
+two-trajectory calculation standalone in Node confirmed lambda really is
+~1.5e-5, i.e. genuinely zero. The Hopalong/Martin map family is NOT
+chaotic for every parameter choice — some points sit on quasi-periodic
+invariant loops (KAM-torus-like behavior) that merely LOOK fractal-ish
+from the density of many incommensurate rings, without any actual
+sensitive dependence. This is a real, useful negative result (a
+Wikibooks "pretty default" picked for a nice static image, not for being
+inside the chaotic regime) but broke this piece's own "every mode's
+lambda is measurably positive" claim, so it was swapped for a
+Softology-gallery-sourced parameter set (a=7.16878197155893,
+b=8.43659746693447, c=2.55983412731439) verified via the same standalone
+Lyapunov check to read lambda~0.056 before being adopted — the smallest
+of the five modes' exponents (weak chaos, not strong), an honest
+reflection of this map family sitting close to the chaotic/quasi-periodic
+boundary rather than deep in either regime. General lesson: a "looks
+chaotic" render is not evidence of positive lambda — check the number, not
+the picture, before trusting a parameter set found in a gallery/blog.
+
+### The multistability trap: not every click lands in the chaotic basin
+Initial interaction design reseeded the ENTIRE population into a tight
+cluster at the click point (screenToWorld's inverse of the same view
+transform used to render). Testing a click in IKEDA mode, off in visibly
+empty dark space away from the spiral, reproducibly made the WHOLE
+attractor fade to black over several seconds and never come back: a
+standalone Node trace of the exact click-mapped world coordinates showed
+the point converging not onto the chaotic attractor but toward a slowly-
+drifting orbit far outside the attractor's own measured bounding box
+(around (2.95,4.15) against a box centered near (0.68,-0.67) with
+halfw~1.03) — a real, separate basin the Ikeda map is known to have
+alongside its chaotic sea, not a bug in the map or the click math.
+Reseeding 100% of the population there left nothing behind to keep
+painting the spiral, so it decayed away with nothing replacing it. Fixed
+two ways at once: (1) the position-update shader now reseeds only a
+random 40% of the population per click (decided per-texel via a GPU
+hash, not a JS loop), so even an unlucky click leaves most of the
+population still tracing the real attractor — the piece can never go
+fully dark from one click; (2) screenToWorld clamps its result to 60% of
+the mode's own measured half-extent (not the full box — testing found
+the outer 40% is itself a rarely-visited fringe that can border
+non-chaotic territory) before handing it to the reseed. Verified via
+repeated headless clicks at the same "bad" screen coordinate before and
+after the fix: before, a small cluster of points froze in place for 8+
+real seconds while the rest of the structure visibly decayed to near-
+black; after, the same click is fully absorbed back into the spiral
+within 1-2 seconds with the rest of the structure never dimming. General
+lesson for any future piece whose per-point dynamics are a nonlinear map
+with more than one attracting set: a "reseed the whole population
+somewhere the user chose" interaction needs either a verified-safe
+target region or a partial-population fallback (ideally both) — chaotic
+maps are not guaranteed globally single-basin just because their MAIN
+attractor is well-documented and pretty.
+
+### 5 modes (30s hold, full reseed + cleared accumulation buffer on every
+switch, all converging from the same canonical safe start (0.1,0.1) —
+verified per-mode via the same bounding-box precompute, not assumed safe)
+- CLIFFORD: Pickover attractor, a=-1.4,b=1.6,c=1.0,d=0.7 — woven-ribbon
+  shape, lambda~0.2-0.3
+- DE JONG: a=2.01,b=-2.53,c=1.61,d=-0.33 — a lacy curved "wave" shape
+  with fine filamentary detail throughout, lambda~0.3-0.5
+- SVENSSON: a=1.4,b=1.56,c=1.4,d=-6.56 — a wide elongated ring/torus,
+  lambda~0.4-1.6 (the highest and most variable of the five)
+- IKEDA: u=0.9 — a genuine optical-resonator spiral with fine internal
+  banding, lambda~0.5-0.6
+- HOPALONG: a=7.169,b=8.437,c=2.560 — a granular three-lobed cluster
+  with visibly chaotic (not smooth) texture, lambda~0.05-0.12, the
+  weakest chaos of the five (see the Hopalong trap above)
+
+### Interaction
+Click/touch reseeds 40% of the population into a tight, screen-relative-
+sized cluster at the (clamped) pointer position — verified via headless
+click mid-mode in both CLIFFORD (dense/saturated mode) and IKEDA (sparse/
+high-contrast mode): the reseeded fraction visibly fans out and re-
+threads itself back into the existing structure within roughly a second
+for nearby clicks, while a click landing far from the current structure
+shows a slower, honest multi-second convergent "chase" proportional to
+how far it has to travel before the exponential-separation phase can
+fan it across the shape — not an instant snap, and not a bug.
+
+### Verification
+Headless Playwright + SwiftShader confirmed: ~13fps (measured
+side-by-side with PHYSARUM at ~12fps under the same harness — this
+sandbox's SwiftShader is simply slower than whatever environment recorded
+this gallery's earlier "~30fps" figures; not a piece-specific
+regression), no console errors beyond the same benign favicon 404 every
+page in this gallery gets, all 5 modes producing visually and numerically
+distinct attractor shapes (verified via direct screenshot at full
+30s-hold density, not just formula inspection) with correct scale/
+centering from the bounding-box precompute (nothing clipped or off-
+frame), the live Lyapunov readout positive and stable for every mode
+after the Hopalong parameter fix, the click/touch partial-reseed
+interaction verified safe against the worst discovered case (IKEDA's
+competing basin) after the fix, a 390x844 mobile portrait viewport with
+real touch events keeping the UI unclipped, and clean re-initialization
+across a portrait-to-landscape resize with no leaked textures/
+framebuffers and no console errors.
+
+### Inspiration
+This session's web research into GPU-accelerated strange-attractor
+rendering confirmed Clifford/de Jong/Ikeda/Hopalong are all real,
+well-documented, GPU-friendly chaotic maps already used elsewhere in
+generative art (Ricky Reusser's Observable notebook, Paul Bourke's and
+Softology's parameter galleries, a QC20/DeJong-Attractor WebGL reference)
+without needing a fundamentally new rendering architecture — the novelty
+here is architectural (zero interaction between simulated units, a first
+for this gallery) and measurement-based (a GPU-readback-free live
+Lyapunov exponent), not a new rendering technique. Chosen over the
+gallery's own standing backlog items (a triangular-lattice Ising
+antiferromagnet, a Brusselator reaction-diffusion variant, a true Penrose
+tiling) because every one of those is a variation on an EXISTING
+architectural register in this gallery (stochastic lattice, local
+diffusion, closed-form wave superposition respectively), whereas
+zero-interaction independent chaotic trajectories had never been shown
+from this angle before.
 
 ---
 
@@ -1805,3 +2007,37 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [ ] ISING: an interactive temperature slider instead of only the 5 fixed
       auto-cycled modes, so a visitor can walk the transition themselves
       rather than only watching the 5 curated points get visited
+- [x] Strange attractors / chaotic dynamical systems (Clifford, de Jong,
+      Ikeda, Hopalong) — done in ATTRACTOR (session 12), first piece with
+      zero interaction between simulated units and the first live readout
+      needing no GPU pixel readback at all
+- [ ] ATTRACTOR: a proper GPU reduction for the box-counted fractal
+      dimension of the accumulated density (LICHTENBERG's own technique),
+      distinct from the live Lyapunov exponent already shown — would
+      surface the OTHER classic strange-attractor number (a non-integer
+      fractal/correlation dimension) alongside the measure of chaos this
+      session already added, deliberately left out this session to keep
+      scope to one new live measurement technique rather than two
+- [ ] ATTRACTOR: an interactive (a,b,c,d) parameter explorer for one map
+      family (Clifford is the natural candidate, per Ricky Reusser's own
+      Observable notebook) instead of only the 5 curated auto-cycled
+      parameter sets, echoing the same "let a visitor walk the parameter
+      space themselves" idea flagged for ISING's temperature and
+      LICHTENBERG's eta above
+- [ ] ATTRACTOR: a 3D attractor family (Lorenz, Rossler, Aizawa, Thomas —
+      all well-documented and GPU-friendly per this session's own
+      research) raymarched or point-cloud rendered, echoing the standing
+      "3D reaction-diffusion"/"3D Lichtenberg" backlog entries that never
+      got built for performance reasons — worth reconsidering here since,
+      like DBM growth, a 3D strange attractor is a sparse curve through
+      volume rather than a dense volumetric field
+- [ ] ATTRACTOR: distributed per-map parameters (small per-point jitter
+      on a,b,c,d rather than one shared constant for the whole
+      population) to render a small FAMILY of nearby attractors
+      simultaneously and visualize how continuously the shape itself
+      deforms as the parameters move, a direct visual complement to the
+      discrete 5-mode auto-cycle already shown
+- [ ] ATTRACTOR: verify the Hopalong/Svensson/de Jong maps' behavior
+      under a D3D9-era ANGLE backend — this session, like SWARMALATOR's
+      own still-open item above, only verified on SwiftShader/native GL
+      paths

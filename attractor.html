@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATTRACTOR — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+#order .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="orderLabel">&#955; &asymp; </span><span class="val" id="orderVal">&mdash;</span>
+  <span class="sub" id="subVal">NATS / ITERATION</span>
+</div>
+<div id="ui">
+  <span id="modeName">CLIFFORD</span>
+  <span id="desc">PICKOVER ATTRACTOR &middot; WOVEN RIBBONS</span>
+</div>
+<script>
+/*  ATTRACTOR — strange attractors and sensitive dependence on initial
+ *  conditions
+ *
+ *  Five classic 2D chaotic maps (Ruelle & Takens coined "strange
+ *  attractor" in 1971 for exactly this phenomenon: a bounded, fractal,
+ *  non-periodic set that a dissipative dynamical system settles onto).
+ *  Every point (x,y) is fed back through a fixed nonlinear formula,
+ *  once per frame, forever:
+ *    CLIFFORD (Pickover, popularized c.1990): x'=sin(ay)+c*cos(ax),
+ *      y'=sin(bx)+d*cos(by)
+ *    DE JONG (Peter de Jong, Computer Recreations, Sci. Am. July 1987):
+ *      x'=sin(ay)-cos(bx), y'=sin(cx)-cos(dy)
+ *    SVENSSON (Johnny Svensson's de Jong variant): x'=d*sin(ax)-sin(by),
+ *      y'=c*cos(ax)+cos(by)
+ *    IKEDA (Kensuke Ikeda, 1979 — a real physical model of light
+ *      circulating in a nonlinear-medium ring cavity, not just an
+ *      abstract map): t=0.4-6/(1+x^2+y^2), x'=1+u(x*cos t - y*sin t),
+ *      y'=u(x*sin t + y*cos t)
+ *    HOPALONG / MARTIN (Barry Martin, Aston University; nicknamed
+ *      "Hopalong" and popularized by A.K. Dewdney's "Wallpaper for the
+ *      Mind", Scientific American, Sept. 1986): x'=y-sign(x)*sqrt(|bx-c|),
+ *      y'=a-x
+ *  All five are deterministic and bounded (Clifford/de Jong/Svensson
+ *  trivially so — every output is a sum of sin/cos terms — Ikeda by
+ *  construction as a damped rotation; Hopalong empirically, verified by
+ *  this session's own bounding-box precompute below), yet every orbit
+ *  is aperiodic and exponentially sensitive to its starting point: the
+ *  textbook definition of deterministic chaos.
+ *
+ *  Why this piece is architecturally different: every earlier piece in
+ *  this gallery couples its simulated units to one another — PHYSARUM's
+ *  agents share a pheromone field, SWARMALATOR's oscillators couple
+ *  all-to-all, ISING's spins flip against their local neighbors' energy,
+ *  LICHTENBERG's growth cells share one solved potential field, MEMBRANE/
+ *  LENIA/EXCITABLE diffuse through a Laplacian kernel. Here there is NO
+ *  coupling of any kind: every one of ~147,000 points is a fully
+ *  independent copy of the exact same formula, unaware every other point
+ *  exists. And yet, with zero communication between them, they trace out
+ *  one single, intricate, self-similar structure — the attractor's
+ *  invariant measure emerges purely from the geometry of one equation's
+ *  phase space, not from any interaction. It's the same "chaos means
+ *  emergent order from a source other than interaction" idea this
+ *  gallery hasn't shown from this angle before.
+ *
+ *  Position lives in a ping-ponged float texture exactly like every
+ *  other piece here, but the update rule reads ONLY the texel's own
+ *  value — no neighbor sampling, no VTF-summed population loop, the
+ *  simplest possible per-fragment update this gallery has ever run, and
+ *  the most visually intricate result from it. Points are splatted via
+ *  gl.POINTS (VTF, exactly PHYSARUM's technique) additively into a
+ *  decaying accumulation buffer — the same "structure channel + fast-
+ *  decay flash channel" and the same 1-exp(-k*x) tonemap PHYSARUM
+ *  established, reused here for a completely different quantity (density
+ *  of independent trajectories rather than pheromone concentration).
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const orderValEl = document.getElementById('orderVal');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('Float textures unavailable');
+if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) fatal('Vertex texture fetch required');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 uv;
+void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}`;
+
+/* Position update: read this texel's own (x,y), feed it through whichever
+   map uMapId selects, write the result back. uParams packs each map's
+   constants as (a,b,c,d) — Ikeda only uses .x (its single parameter u),
+   Hopalong only uses .x/.y/.z (a,b,c). No neighbor texture reads at all:
+   the simplest per-fragment update rule in this gallery. */
+const POS_SIM = `
+precision highp float;
+uniform sampler2D uPosTex;
+uniform float uMapId;
+uniform vec4 uParams;
+uniform float uClickActive;
+uniform vec2 uClickPos;
+uniform float uClickFrac;
+uniform float uClickJitter;
+uniform float uClickSeed;
+varying vec2 uv;
+
+float hash(vec2 p, float seed){
+  vec3 p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195) + seed);
+  p3 += dot(p3, p3.yzx + 19.19);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+vec2 stepMap(vec2 pos, float mapId, vec4 p){
+  float x = pos.x, y = pos.y;
+  if (mapId < 0.5) {
+    return vec2(sin(p.x*y) + p.z*cos(p.x*x), sin(p.y*x) + p.w*cos(p.y*y));
+  } else if (mapId < 1.5) {
+    return vec2(sin(p.x*y) - cos(p.y*x), sin(p.z*x) - cos(p.w*y));
+  } else if (mapId < 2.5) {
+    return vec2(p.w*sin(p.x*x) - sin(p.y*y), p.z*cos(p.x*x) + cos(p.y*y));
+  } else if (mapId < 3.5) {
+    float t = 0.4 - 6.0 / (1.0 + x*x + y*y);
+    float ct = cos(t), st = sin(t);
+    return vec2(1.0 + p.x*(x*ct - y*st), p.x*(x*st + y*ct));
+  } else {
+    float s = sign(x);
+    return vec2(y - s*sqrt(abs(p.y*x - p.z)), p.x - x);
+  }
+}
+
+/* A click reseeds only a random FRACTION of the population into a tight
+   cluster at the pointer, decided per-texel here on the GPU — not a full
+   population replace. Two reasons, both found by testing, not assumed:
+   (1) some maps (Ikeda in particular) are only chaotic in PART of their
+   phase space — Ikeda's own damped-rotation map coexists with a stable
+   non-chaotic orbit far outside the attractor's measured bounding box,
+   and a click that lands in that other basin would otherwise carry the
+   ENTIRE population away from the attractor with nothing left to
+   replenish it, fading the whole piece to black with no way back short
+   of a mode switch. Reseeding only a fraction means even an unlucky click
+   leaves most of the population still tracing the real attractor. (2) it
+   also just reads better: a flock partially scattering and re-threading
+   itself is a livelier demonstration than the whole population vanishing
+   and reappearing as one block. */
+void main(){
+  vec2 pos = texture2D(uPosTex, uv).xy;
+  if (uClickActive > 0.5 && hash(uv, uClickSeed) < uClickFrac) {
+    vec2 j = vec2(hash(uv+0.13, uClickSeed), hash(uv+0.71, uClickSeed)) * 2.0 - 1.0;
+    gl_FragColor = vec4(uClickPos + j * uClickJitter, 0.0, 1.0);
+    return;
+  }
+  gl_FragColor = vec4(stepMap(pos, uMapId, uParams), 0.0, 1.0);
+}`;
+
+/* Deposit: rasterize every point (VTF-read from the position texture,
+   PHYSARUM's own technique) into the accumulation buffer. uCenter/
+   uScaleWorld fit each mode's own empirically bounding-boxed extent into
+   view (see MODES below); uScaleAspect corrects for the accumulation
+   buffer's own aspect so the attractor's true shape is never stretched. */
+const DEPOSIT_VS = `
+precision highp float;
+attribute vec2 aTexcoord;
+uniform sampler2D uPosTex;
+uniform vec2 uCenter;
+uniform float uScaleWorld;
+uniform vec2 uScaleAspect;
+void main(){
+  vec2 pos = texture2D(uPosTex, aTexcoord).xy;
+  vec2 ndc = (pos - uCenter) * uScaleWorld * uScaleAspect;
+  gl_Position = vec4(ndc, 0.0, 1.0);
+  gl_PointSize = 1.3;
+}`;
+const DEPOSIT_FS = `
+precision highp float;
+uniform float uDep;
+void main(){ gl_FragColor = vec4(uDep, 1.0, 0.0, 0.0); }`;
+
+// Decay pass: R (persistent structure) fades slowly, G (just-landed flash) fast.
+const DECAY_FS = `
+precision highp float;
+uniform sampler2D uTex;
+uniform float uDecayR, uDecayG;
+varying vec2 uv;
+void main(){
+  vec2 t = texture2D(uTex, uv).rg;
+  gl_FragColor = vec4(t.r*uDecayR, t.g*uDecayG, 0.0, 1.0);
+}`;
+
+const RENDER = `
+precision highp float;
+uniform sampler2D uTex;
+uniform vec3 colA, colB;
+varying vec2 uv;
+void main(){
+  vec2 t = texture2D(uTex, uv).rg;
+  float d = 1.0 - exp(-3.4 * t.r);
+  vec3 col = mix(colB, colA, d);
+  col += colA * min(t.g, 1.0) * 0.55;
+  vec2 q = uv*2.0 - 1.0;
+  col *= 1.0 - 0.35 * smoothstep(0.5, 1.6, dot(q,q));
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const posProg     = mkProg(VS, POS_SIM);
+const depositProg = mkProg(DEPOSIT_VS, DEPOSIT_FS);
+const decayProg   = mkProg(VS, DECAY_FS);
+const renderProg  = mkProg(VS, RENDER);
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(prog) {
+  const a = gl.getAttribLocation(prog, 'p');
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(a);
+  gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+}
+const u = (prog, name) => gl.getUniformLocation(prog, name);
+
+/* ── Points: AGENTS_DIM^2 independent trajectories, PHYSARUM's own count ── */
+const AGENTS_DIM = 384;
+const N = AGENTS_DIM * AGENTS_DIM;
+
+const ptCoords = new Float32Array(N * 2);
+{
+  let k = 0;
+  for (let j = 0; j < AGENTS_DIM; j++)
+    for (let i = 0; i < AGENTS_DIM; i++) {
+      ptCoords[k++] = (i + 0.5) / AGENTS_DIM;
+      ptCoords[k++] = (j + 0.5) / AGENTS_DIM;
+    }
+}
+const ptBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+gl.bufferData(gl.ARRAY_BUFFER, ptCoords, gl.STATIC_DRAW);
+function bindPts(prog) {
+  const loc = gl.getAttribLocation(prog, 'aTexcoord');
+  gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(w, h, data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+/* ── Modes ──────────────────────────────────────────────
+   cx/cy/halfw/halfh were measured, not guessed: a headless Node precompute
+   (200k iterations, 1000-iteration warmup, starting at (0.1,0.1) — the
+   same canonical safe start every mode below reseeds from) recorded each
+   map's actual bounding box. FIT=0.82 leaves an even margin on the
+   attractor's longer axis; `scale` is derived from the measured box, not
+   tuned by eye. Every map converges from the SAME (0.1,0.1) start whether
+   at page load or after a click reseed elsewhere — a chaotic map mixes any
+   small neighborhood across its whole attractor within a couple dozen
+   iterations, so "start near a known-safe point, let mixing do the
+   spreading" is both simpler and safer than seeding a wide random box that
+   might wander outside Hopalong's basin before it ever finds the attractor. */
+const FIT = 0.82;
+const MODES = [
+  { name:'CLIFFORD', desc:'PICKOVER ATTRACTOR &middot; WOVEN RIBBONS', mapId:0,
+    p:{a:-1.4,b:1.6,c:1.0,d:0.7}, cx:0.280, cy:0.115, halfw:1.700, halfh:1.419,
+    colA:[0.64,0.56,1.00], colB:[0.03,0.02,0.08] },
+  { name:'DE JONG', desc:'PETER DE JONG &middot; SCI. AM. 1987', mapId:1,
+    p:{a:2.01,b:-2.53,c:1.61,d:-0.33}, cx:-0.152, cy:-0.906, halfw:1.670, halfh:1.088,
+    colA:[0.15,0.95,0.85], colB:[0.01,0.03,0.06] },
+  { name:'SVENSSON', desc:'JOHNNY SVENSSON &middot; DE JONG VARIANT', mapId:2,
+    p:{a:1.4,b:1.56,c:1.4,d:-6.56}, cx:0.0, cy:0.0, halfw:7.560, halfh:2.400,
+    colA:[1.00,0.30,0.65], colB:[0.05,0.01,0.08] },
+  { name:'IKEDA', desc:'KENSUKE IKEDA &middot; 1979 &middot; OPTICAL RESONATOR', mapId:3,
+    p:{a:0.9,b:0,c:0,d:0}, cx:0.677, cy:-0.674, halfw:1.031, halfh:1.540,
+    colA:[1.00,0.38,0.10], colB:[0.05,0.01,0.01] },
+  { name:'HOPALONG', desc:"BARRY MARTIN &middot; WALLPAPER FOR THE MIND &middot; 1986", mapId:4,
+    p:{a:7.16878197155893,b:8.43659746693447,c:2.55983412731439,d:0}, cx:4.316, cy:2.852, halfw:129.447, halfh:129.447,
+    colA:[1.00,0.80,0.25], colB:[0.05,0.03,0.01] },
+];
+MODES.forEach(m => m.scale = FIT / Math.max(m.halfw, m.halfh));
+
+function iterateMapJS(mapId, x, y, p) {
+  switch (mapId) {
+    case 0: return [Math.sin(p.a*y) + p.c*Math.cos(p.a*x), Math.sin(p.b*x) + p.d*Math.cos(p.b*y)];
+    case 1: return [Math.sin(p.a*y) - Math.cos(p.b*x), Math.sin(p.c*x) - Math.cos(p.d*y)];
+    case 2: return [p.d*Math.sin(p.a*x) - Math.sin(p.b*y), p.c*Math.cos(p.a*x) + Math.cos(p.b*y)];
+    case 3: {
+      const t = 0.4 - 6/(1+x*x+y*y), ct = Math.cos(t), st = Math.sin(t);
+      return [1 + p.a*(x*ct - y*st), p.a*(x*st + y*ct)];
+    }
+    case 4: {
+      const s = x > 0 ? 1 : (x < 0 ? -1 : 0);
+      return [y - s*Math.sqrt(Math.abs(p.b*x - p.c)), p.a - x];
+    }
+  }
+}
+
+const HOLD = 30000;
+const JITTER_NORM = 0.006; // apparent cluster size on screen, same for every mode
+let modeIdx = 0, modeStart = 0;
+
+/* ── Position ping-pong ─────────────────────────────────── */
+function seedCluster(cx, cy) {
+  const m = MODES[modeIdx];
+  const jw = JITTER_NORM / m.scale;
+  const d = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    d[i*4]   = cx + (Math.random()*2-1) * jw;
+    d[i*4+1] = cy + (Math.random()*2-1) * jw;
+  }
+  return d;
+}
+
+let posA = mkTex(AGENTS_DIM, AGENTS_DIM, seedCluster(0.1, 0.1));
+let posB = mkTex(AGENTS_DIM, AGENTS_DIM, null);
+let posFbA = mkFB(posA), posFbB = mkFB(posB);
+
+function reseedPositions(cx, cy) {
+  gl.bindTexture(gl.TEXTURE_2D, posA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, AGENTS_DIM, AGENTS_DIM, 0, gl.RGBA, gl.FLOAT, seedCluster(cx, cy));
+}
+
+/* ── Accumulation buffer (recreated on resize, matching canvas aspect so
+   the attractor's true shape is never stretched) ─────────────────────── */
+let accumW = 2, accumH = 2, accumA, accumB, accumFbA, accumFbB;
+let scaleAspectX = 1, scaleAspectY = 1;
+
+function initAccum() {
+  let w = C.width, h = C.height;
+  const MX = 900;
+  if (w > MX || h > MX) { const s = MX / Math.max(w, h); w = Math.max(2, w*s|0); h = Math.max(2, h*s|0); }
+  accumW = w; accumH = h;
+  if (accumA) { gl.deleteTexture(accumA); gl.deleteTexture(accumB); gl.deleteFramebuffer(accumFbA); gl.deleteFramebuffer(accumFbB); }
+  const zero = new Float32Array(accumW * accumH * 4);
+  accumA = mkTex(accumW, accumH, zero);
+  accumB = mkTex(accumW, accumH, zero);
+  accumFbA = mkFB(accumA); accumFbB = mkFB(accumB);
+  const halfPx = Math.min(accumW, accumH);
+  scaleAspectX = halfPx / accumW;
+  scaleAspectY = halfPx / accumH;
+}
+
+function clearAccum() {
+  const zero = new Float32Array(accumW * accumH * 4);
+  gl.bindTexture(gl.TEXTURE_2D, accumA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, accumW, accumH, 0, gl.RGBA, gl.FLOAT, zero);
+  gl.bindTexture(gl.TEXTURE_2D, accumB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, accumW, accumH, 0, gl.RGBA, gl.FLOAT, zero);
+}
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  C.width  = window.innerWidth  * dpr | 0;
+  C.height = window.innerHeight * dpr | 0;
+  C.style.width  = window.innerWidth  + 'px';
+  C.style.height = window.innerHeight + 'px';
+  initAccum();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── Live largest Lyapunov exponent — the classic two-trajectory
+   renormalization method (Benettin et al.): a reference point and a
+   shadow point epsilon apart both iterate the SAME map every frame; the
+   log of how much they separate, averaged over many steps and re-
+   normalized back to epsilon each time so the shadow never actually
+   escapes to the far side of the attractor, converges to lambda. Every
+   earlier live readout in this gallery (ISING's M, SWARMALATOR's R,
+   LICHTENBERG's D) needs a GPU pixel readback of the simulated field;
+   this one needs none at all, since it tracks its own tiny two-point
+   shadow simulation entirely in JS, fully decoupled from the ~147k points
+   the GPU is actually drawing. A positive lambda is chaos's own
+   fingerprint — nearby trajectories separating exponentially — and
+   reads positive for every mode here, the measured confirmation of what
+   "strange attractor" already implies by name. */
+const EPS = 1e-6;
+let lyRefX, lyRefY, lyShX, lyShY, lySum, lyCount;
+
+function initLyapunov(m) {
+  let x = 0.1, y = 0.1;
+  for (let i = 0; i < 500; i++) [x, y] = iterateMapJS(m.mapId, x, y, m.p);
+  lyRefX = x; lyRefY = y;
+  lyShX = x + EPS; lyShY = y;
+  lySum = 0; lyCount = 0;
+}
+function lyapunovStep(m) {
+  const [nrx, nry] = iterateMapJS(m.mapId, lyRefX, lyRefY, m.p);
+  const [nsx, nsy] = iterateMapJS(m.mapId, lyShX, lyShY, m.p);
+  lyRefX = nrx; lyRefY = nry;
+  let dx = nsx - nrx, dy = nsy - nry;
+  let d = Math.hypot(dx, dy);
+  if (!(d > 1e-15)) d = 1e-15;
+  lySum += Math.log(d / EPS);
+  lyCount++;
+  lyShX = nrx + dx/d*EPS;
+  lyShY = nry + dy/d*EPS;
+}
+
+/* ── Mode schedule ──────────────────────────────────────── */
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.innerHTML = m.desc;
+  clearAccum();
+  reseedPositions(0.1, 0.1);
+  initLyapunov(m);
+}
+applyMode(0);
+modeStart = performance.now();
+
+/* ── Interaction: reseed a FRACTION of the population into a tight
+   cluster at the pointer (see the GPU-side comment on POS_SIM above for
+   why not the whole population). Watch that fraction fan out and
+   re-converge onto the identical attractor within about a second: the
+   attractor's shape doesn't depend on where you start it, but the PATH
+   getting there is exponentially sensitive to that starting point — both
+   halves of "strange attractor" demonstrated by the same click.
+   screenToWorld's result is clamped to the mode's own measured bounding
+   box (cx/cy/halfw/halfh) before use: testing this session found that a
+   click mapped to world coordinates well outside that box can land in a
+   DIFFERENT basin entirely — Ikeda in particular has a stable orbit far
+   outside its chaotic attractor's own footprint (a real multistability
+   the Ikeda map is known for, not a bug) — clamping keeps every click
+   inside the region this session verified drains back into the chaotic
+   attractor. */
+let pendingClick = null;
+function screenToWorld(clientX, clientY) {
+  const rect = C.getBoundingClientRect();
+  const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+  const m = MODES[modeIdx];
+  const wx = m.cx + (ndcX / scaleAspectX) / m.scale;
+  const wy = m.cy + (ndcY / scaleAspectY) / m.scale;
+  // Clamp to 60% of the measured box, not 100%: testing found the outer
+  // edge of the box is itself a rarely-visited fringe bordering non-
+  // chaotic territory (see the POS_SIM comment above) — staying well
+  // inside the densely-explored core avoids it.
+  const kx = m.halfw * 0.6, ky = m.halfh * 0.6;
+  return [
+    Math.max(m.cx - kx, Math.min(m.cx + kx, wx)),
+    Math.max(m.cy - ky, Math.min(m.cy + ky, wy)),
+  ];
+}
+function onPointer(clientX, clientY) {
+  const [wx, wy] = screenToWorld(clientX, clientY);
+  pendingClick = { x: wx, y: wy, seed: Math.random() * 1000 };
+}
+C.addEventListener('mousedown', e => onPointer(e.clientX, e.clientY));
+C.addEventListener('touchstart', e => { e.preventDefault(); onPointer(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+
+/* ── Render passes ──────────────────────────────────────── */
+function posStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(posProg); bindQuad(posProg);
+  gl.viewport(0, 0, AGENTS_DIM, AGENTS_DIM);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, posFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, posA);
+  gl.uniform1i(u(posProg,'uPosTex'), 0);
+  gl.uniform1f(u(posProg,'uMapId'), m.mapId);
+  gl.uniform4f(u(posProg,'uParams'), m.p.a, m.p.b, m.p.c, m.p.d || 0);
+  if (pendingClick) {
+    gl.uniform1f(u(posProg,'uClickActive'), 1.0);
+    gl.uniform2f(u(posProg,'uClickPos'), pendingClick.x, pendingClick.y);
+    gl.uniform1f(u(posProg,'uClickFrac'), 0.4);
+    gl.uniform1f(u(posProg,'uClickJitter'), JITTER_NORM / m.scale);
+    gl.uniform1f(u(posProg,'uClickSeed'), pendingClick.seed);
+    pendingClick = null;
+  } else {
+    gl.uniform1f(u(posProg,'uClickActive'), 0.0);
+  }
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  [posA, posB] = [posB, posA];
+  [posFbA, posFbB] = [posFbB, posFbA];
+}
+
+function depositStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(depositProg); bindPts(depositProg);
+  gl.viewport(0, 0, accumW, accumH);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accumFbA);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, posA);
+  gl.uniform1i(u(depositProg,'uPosTex'), 0);
+  gl.uniform2f(u(depositProg,'uCenter'), m.cx, m.cy);
+  gl.uniform1f(u(depositProg,'uScaleWorld'), m.scale);
+  gl.uniform2f(u(depositProg,'uScaleAspect'), scaleAspectX, scaleAspectY);
+  gl.uniform1f(u(depositProg,'uDep'), 0.05);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, N);
+  gl.disable(gl.BLEND);
+}
+
+function decayStep() {
+  gl.useProgram(decayProg); bindQuad(decayProg);
+  gl.viewport(0, 0, accumW, accumH);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accumFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accumA);
+  gl.uniform1i(u(decayProg,'uTex'), 0);
+  gl.uniform1f(u(decayProg,'uDecayR'), 0.985);
+  gl.uniform1f(u(decayProg,'uDecayG'), 0.80);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  [accumA, accumB] = [accumB, accumA];
+  [accumFbA, accumFbB] = [accumFbB, accumFbA];
+}
+
+function drawFrame() {
+  const m = MODES[modeIdx];
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(renderProg); bindQuad(renderProg);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accumA);
+  gl.uniform1i(u(renderProg,'uTex'), 0);
+  gl.uniform3fv(u(renderProg,'colA'), m.colA);
+  gl.uniform3fv(u(renderProg,'colB'), m.colB);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+let frameCount = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > HOLD) { modeStart = now; applyMode(modeIdx + 1); }
+
+  posStep();
+  depositStep();
+  decayStep();
+  drawFrame();
+
+  lyapunovStep(MODES[modeIdx]);
+  if (++frameCount % 15 === 0 && lyCount > 0) {
+    orderValEl.textContent = (lySum / lyCount).toFixed(3);
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
