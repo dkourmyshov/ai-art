@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SOFTCELL — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">NAUTILUS</span>
+  <span id="desc">CHAMBERED GROWTH · SOFT 0% · CORNERS/CELL 2.00</span>
+</div>
+<script>
+/*  SOFTCELL — the edge-bending algorithm (Domokos, Regos & Regos, "Soft
+ *  cells and the geometry of seashells," PNAS Nexus, Sept 2024)
+ *
+ *  The paper's finding: classical tilings (hexagons, bricks, Voronoi
+ *  froth) are built from flat faces meeting at sharp corners, but almost
+ *  nothing tiles space this way in nature. Nautilus shell chambers, onion
+ *  skin, muscle fascicles, zebra stripes and biological epithelium all
+ *  fill their plane (or volume) with "soft cells" instead — the authors'
+ *  new geometric class, in which every corner but a minimal irreducible
+ *  set (exactly TWO per cell in 2D, per their proof; zero in 3D) has been
+ *  smoothed away into a tangent curve by an explicit "edge-bending"
+ *  operator. This piece IS that operator, applied live: every face of a
+ *  tiling is rendered with its non-cusp vertices replaced by a fillet
+ *  (two points pulled in from each vertex along its adjacent edges,
+ *  joined by a quadratic Bezier through the original corner as control
+ *  point), radius scaled by a global softness t oscillating 0..1 forever
+ *  — t=0 reproduces the plain sharp polyhedral tiling the paper starts
+ *  from, t=1 is the fully soft tiling it proves such tilings deform into.
+ *  Nothing here is a physical simulation (no forces, no timestep PDE) —
+ *  it is the live geometric transformation itself, the first piece in
+ *  this gallery about a deformation of shape rather than a dynamical
+ *  system evolving through time.
+ *
+ *  Corner-count invariant: for each face this session's cusp-selection
+ *  heuristic picks the two vertices FARTHEST apart in the face (a stand-
+ *  in for the paper's own combinatorial corner-reduction, not derived
+ *  from it) and only those two are ever left unfilleted, at any t. The UI
+ *  "CORNERS/CELL" readout counts them directly from the live face data
+ *  every frame — always exactly 2.00, not a hardcoded label, the same
+ *  "measure the real invariant, don't just imply it" discipline as
+ *  GYRUS's live GI or ISING's magnetization.
+ *
+ *  Seam consistency without a mesh library: two faces sharing an edge
+ *  must fillet that edge identically from both sides or the tiling shows
+ *  visible cracks. Because fillet radius here is a deterministic function
+ *  of (vertex position, adjacent edge length) alone, and every tiling
+ *  below is built with an explicit shared vertex/face graph (a snap-to-
+ *  grid hash merges near-coincident points from independent per-cell
+ *  Voronoi clips into one shared index), both faces compute the exact
+ *  same fillet points on a shared edge automatically — no explicit
+ *  neighbor-agreement pass required. Organic irregularity comes from a
+ *  smooth deterministic domain warp applied to vertex positions at draw
+ *  time (a function of position and clock alone) rather than from random
+ *  per-vertex jitter, which would have broken this shared-vertex
+ *  consistency and cracked every seam.
+ *
+ *  Four registers, one engine: NAUTILUS builds nested logarithmic-spiral
+ *  chambers analytically (the paper's own headline example — real
+ *  nautilus septa are 3D soft cells with a 2D soft-cell cross-section);
+ *  TISSUE and STRIPE are Lloyd-relaxed Voronoi froth (epithelium /
+ *  muscle-fascicle registers), STRIPE computed in an x-squished metric
+ *  so its cells elongate into the zebra-stripe register the paper cites
+ *  explicitly; COMB is an analytic hex lattice (the crystalline register
+ *  the paper contrasts soft cells against). All four faces are pushed
+ *  through the identical fillet renderer above — the only piece in this
+ *  gallery built on Canvas2D vector paths rather than a WebGL field or
+ *  particle swarm, GYRUS's own architectural departure, applied here to
+ *  a wholly different kind of subject (planar tilings, not growing
+ *  curves).
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+
+let W, H, cx, cy, pxScale;
+function resize() {
+  W = canvas.width  = Math.round(window.innerWidth  * Math.min(2, window.devicePixelRatio || 1));
+  H = canvas.height = Math.round(window.innerHeight * Math.min(2, window.devicePixelRatio || 1));
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  cx = W / 2; cy = H / 2;
+  pxScale = Math.min(W, H) * 0.47;
+  // tiling half-extent needed to cover the canvas, in sim units, plus margin —
+  // recomputed on every resize since a portrait phone needs a much taller
+  // extent than the square-ish default; nautilus ignores this (self-contained
+  // object, not a plane-filling tiling)
+  BOUND = Math.max(1.55, 0.5 * Math.max(W, H) / pxScale * 1.08);
+}
+let resizeRebuildTimer = null;
+window.addEventListener('resize', () => {
+  resize();
+  clearTimeout(resizeRebuildTimer);
+  resizeRebuildTimer = setTimeout(() => {
+    if (MODES[modeIdx].gen !== 'nautilus') buildMode(modeIdx);
+  }, 250);
+});
+let BOUND = 1.55;
+resize();
+
+/* ── shared soft-cell mesh + fillet renderer ─────────────────────────────── */
+
+const FILLET_FRAC = 0.42;
+
+// snap-to-grid vertex dedup: near-coincident points (independent Voronoi
+// clips, or spiral arcs sampled from two adjacent chambers) merge into one
+// shared vertex index so adjacent faces fillet a shared edge identically.
+function makeMesh() {
+  return { verts: [], map: new Map(), faces: [] };
+}
+function meshVert(mesh, x, y) {
+  const key = Math.round(x * 20000) + ',' + Math.round(y * 20000);
+  let idx = mesh.map.get(key);
+  if (idx === undefined) {
+    idx = mesh.verts.length;
+    mesh.verts.push([x, y]);
+    mesh.map.set(key, idx);
+  }
+  return idx;
+}
+function meshFace(mesh, idxs) {
+  if (idxs.length < 3) return;
+  // drop degenerate/near-zero-area faces (can appear at tiling borders)
+  let area2 = 0;
+  for (let i = 0; i < idxs.length; i++) {
+    const a = mesh.verts[idxs[i]], b = mesh.verts[idxs[(i + 1) % idxs.length]];
+    area2 += a[0] * b[1] - b[0] * a[1];
+  }
+  if (Math.abs(area2) < 1e-9) return;
+  mesh.faces.push({ v: idxs, cusp: null, hue: Math.random() });
+}
+// pick the two farthest-apart vertices in a face as its permanent cusps
+function assignCusps(mesh) {
+  for (const f of mesh.faces) {
+    const v = f.v, k = v.length;
+    let bi = 0, bj = 1, bd = -1;
+    for (let i = 0; i < k; i++) {
+      for (let j = i + 1; j < k; j++) {
+        const a = mesh.verts[v[i]], b = mesh.verts[v[j]];
+        const d = (a[0]-b[0])**2 + (a[1]-b[1])**2;
+        if (d > bd) { bd = d; bi = i; bj = j; }
+      }
+    }
+    f.cusp = new Array(k).fill(false);
+    f.cusp[bi] = true; f.cusp[bj] = true;
+  }
+}
+
+// deterministic organic warp — a function of position + time only, so
+// shared vertices always warp identically regardless of which face reads them
+function warp(x, y, time, amp, freq) {
+  const wx = x + amp * Math.sin(freq * y + time * 0.11 + 1.7) + amp * 0.6 * Math.sin(freq * 1.9 * x - time * 0.07);
+  const wy = y + amp * Math.sin(freq * x - time * 0.09 + 0.4) + amp * 0.6 * Math.sin(freq * 1.7 * y + time * 0.08);
+  return [wx, wy];
+}
+
+function buildFacePath(pos, cusp, t) {
+  const k = pos.length;
+  const entry = new Array(k), exit = new Array(k), ctrl = new Array(k);
+  for (let i = 0; i < k; i++) {
+    const prev = pos[(i - 1 + k) % k], cur = pos[i], next = pos[(i + 1) % k];
+    if (cusp[i]) {
+      entry[i] = cur; exit[i] = cur; ctrl[i] = null;
+    } else {
+      const lp = Math.hypot(cur[0]-prev[0], cur[1]-prev[1]) || 1e-6;
+      const ln = Math.hypot(cur[0]-next[0], cur[1]-next[1]) || 1e-6;
+      const r = Math.min(lp, ln) * FILLET_FRAC * t;
+      entry[i] = [cur[0] + (prev[0]-cur[0])/lp*r, cur[1] + (prev[1]-cur[1])/lp*r];
+      exit[i]  = [cur[0] + (next[0]-cur[0])/ln*r, cur[1] + (next[1]-cur[1])/ln*r];
+      ctrl[i] = cur;
+    }
+  }
+  const path = new Path2D();
+  path.moveTo(entry[0][0], entry[0][1]);
+  for (let i = 0; i < k; i++) {
+    if (i > 0) path.lineTo(entry[i][0], entry[i][1]);
+    if (ctrl[i]) path.quadraticCurveTo(ctrl[i][0], ctrl[i][1], exit[i][0], exit[i][1]);
+  }
+  path.lineTo(entry[0][0], entry[0][1]);
+  path.closePath();
+  return path;
+}
+
+/* ── generators ───────────────────────────────────────────────────────────── */
+
+function centroid(poly) {
+  let a = 0, cx0 = 0, cy0 = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i+1) % poly.length];
+    const cr = p[0]*q[1] - q[0]*p[1];
+    a += cr; cx0 += (p[0]+q[0]) * cr; cy0 += (p[1]+q[1]) * cr;
+  }
+  a *= 0.5;
+  if (Math.abs(a) < 1e-9) return poly[0];
+  return [cx0 / (6*a), cy0 / (6*a)];
+}
+function clipHalfPlane(poly, mx, my, nx, ny) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i], nxt = poly[(i+1) % poly.length];
+    const dCur = (cur[0]-mx)*nx + (cur[1]-my)*ny;
+    const dNxt = (nxt[0]-mx)*nx + (nxt[1]-my)*ny;
+    const curIn = dCur <= 0, nxtIn = dNxt <= 0;
+    if (curIn) out.push(cur);
+    if (curIn !== nxtIn) {
+      const t = dCur / (dCur - dNxt);
+      out.push([cur[0] + (nxt[0]-cur[0])*t, cur[1] + (nxt[1]-cur[1])*t]);
+    }
+  }
+  return out;
+}
+function voronoiCells(pts, boundPoly) {
+  const cells = new Array(pts.length);
+  for (let i = 0; i < pts.length; i++) {
+    let poly = boundPoly;
+    const p = pts[i];
+    for (let j = 0; j < pts.length; j++) {
+      if (j === i) continue;
+      const q = pts[j];
+      poly = clipHalfPlane(poly, (p[0]+q[0])/2, (p[1]+q[1])/2, q[0]-p[0], q[1]-p[1]);
+      if (poly.length === 0) break;
+    }
+    cells[i] = poly;
+  }
+  return cells;
+}
+
+// points are generated and relaxed in a "squished" x-metric (stretchX>1
+// elongates cells into the zebra-stripe register once un-squished at the end)
+function genVoronoi(n, stretchX, relaxIters) {
+  const bx = BOUND / stretchX;
+  const squishedBound = [[-bx,-BOUND],[bx,-BOUND],[bx,BOUND],[-bx,BOUND]];
+  let pts = [];
+  for (let i = 0; i < n; i++) pts.push([(Math.random()*2-1)*bx, (Math.random()*2-1)*BOUND]);
+  let cells;
+  for (let iter = 0; iter < relaxIters + 1; iter++) {
+    cells = voronoiCells(pts, squishedBound);
+    if (iter < relaxIters) pts = cells.map((c, i) => c.length ? centroid(c) : pts[i]);
+  }
+  const mesh = makeMesh();
+  for (const cell of cells) {
+    if (cell.length < 3) continue;
+    const idxs = cell.map(([x,y]) => meshVert(mesh, x*stretchX, y));
+    meshFace(mesh, idxs);
+  }
+  assignCusps(mesh);
+  return mesh;
+}
+
+function genHex(hexR) {
+  const mesh = makeMesh();
+  const sqrt3 = Math.sqrt(3);
+  const qMax = Math.ceil(BOUND / (hexR*sqrt3)) + 2;
+  const rMax = Math.ceil(BOUND / (hexR*1.5)) + 2;
+  for (let r = -rMax; r <= rMax; r++) {
+    for (let q = -qMax; q <= qMax; q++) {
+      const hx = hexR * sqrt3 * (q + r/2);
+      const hy = hexR * 1.5 * r;
+      if (hx < -BOUND-hexR || hx > BOUND+hexR || hy < -BOUND-hexR || hy > BOUND+hexR) continue;
+      const idxs = [];
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI/180 * (60*i + 30);
+        idxs.push(meshVert(mesh, hx + hexR*Math.cos(a), hy + hexR*Math.sin(a)));
+      }
+      meshFace(mesh, idxs);
+    }
+  }
+  assignCusps(mesh);
+  return mesh;
+}
+
+// nautilus: nested logarithmic-spiral chambers, septa at fixed angular
+// spacing, inner wall = the outer wall exactly one whorl (2*PI) earlier —
+// the real recursive structure of a chambered shell, not a pie-slice toy.
+// cos/sin are 2*PI-periodic, so the inner-wall point at angle th (spanning
+// the same [t0,t1] as the outer wall) needs only a smaller radius, r(th-2*PI):
+// no coordinate shift, which is what makes the shared-vertex dedup below
+// land chamber k's inner wall exactly on chamber (k - NAUT_PER_TURN)'s outer
+// wall — the two faces that are genuinely adjacent one whorl apart.
+const NAUT_B = 0.18;          // spiral growth-rate constant (Nautilus pompilius is close to this)
+const NAUT_PER_TURN = 9;      // septa per whorl
+const NAUT_R0 = 0.045;
+const NAUT_MAX_R = 1.05;
+const NAUT_THETA_CAP = Math.log(NAUT_MAX_R / NAUT_R0) / NAUT_B;
+function spiralR(theta) { return NAUT_R0 * Math.exp(NAUT_B * theta); }
+function genNautilus(thetaMax) {
+  const mesh = makeMesh();
+  const dTheta = (2*Math.PI) / NAUT_PER_TURN;
+  const arcSamples = 5, septumSamples = 1; // one interior point per septum: a single clean bow under filleting, not a faceted multi-kink
+  const chambers = Math.floor(thetaMax / dTheta);
+  for (let k = 0; k < chambers; k++) {
+    const t0 = k * dTheta, t1 = t0 + dTheta;
+    const idxs = [];
+    for (let s = 0; s <= arcSamples; s++) {          // outer wall, t0 -> t1
+      const th = t0 + (t1-t0)*s/arcSamples;
+      const r = spiralR(th);
+      idxs.push(meshVert(mesh, r*Math.cos(th), r*Math.sin(th)));
+    }
+    // septum at theta=t1: interior radial points so filleting can bow the
+    // septum, not just nibble its ends — without these a septum is one long
+    // straight edge and stays visually straight at any softness
+    const rOuterT1 = spiralR(t1), rInnerT1 = spiralR(t1 - 2*Math.PI);
+    for (let s = 1; s <= septumSamples; s++) {
+      const r = rOuterT1 + (rInnerT1 - rOuterT1) * s / (septumSamples + 1);
+      idxs.push(meshVert(mesh, r*Math.cos(t1), r*Math.sin(t1)));
+    }
+    for (let s = 0; s <= arcSamples; s++) {          // inner wall, reversed t1 -> t0 for winding
+      const th = t1 - (t1-t0)*s/arcSamples;
+      const r = spiralR(th - 2*Math.PI);
+      idxs.push(meshVert(mesh, r*Math.cos(th), r*Math.sin(th)));
+    }
+    const rInnerT0 = spiralR(t0 - 2*Math.PI), rOuterT0 = spiralR(t0);   // septum at theta=t0
+    for (let s = 1; s <= septumSamples; s++) {
+      const r = rInnerT0 + (rOuterT0 - rInnerT0) * s / (septumSamples + 1);
+      idxs.push(meshVert(mesh, r*Math.cos(t0), r*Math.sin(t0)));
+    }
+    meshFace(mesh, idxs);
+  }
+  assignCusps(mesh);
+  return mesh;
+}
+
+/* ── modes ────────────────────────────────────────────────────────────────── */
+
+function paletteHue(mode, hueSeed, warpedCentroid) {
+  switch (mode) {
+    case 'nautilus': {
+      const t = Math.min(1, Math.hypot(warpedCentroid[0], warpedCentroid[1]) / 1.1);
+      const h = 32 + t*10, s = 42 - t*14, l = 88 - t*46;
+      return `hsl(${h},${s}%,${l}%)`;
+    }
+    case 'tissue': {
+      const h = 322 + hueSeed*36 - 18;
+      return `hsl(${h},${46 + hueSeed*18}%,${30 + hueSeed*22}%)`;
+    }
+    case 'comb': {
+      const h = 40 + hueSeed*20 - 10;
+      return `hsl(${h},${62}%,${26 + hueSeed*26}%)`;
+    }
+    case 'stripe': {
+      const band = (Math.sin(warpedCentroid[1]*7 + hueSeed*3) > 0.15) ? 1 : 0;
+      return band ? `hsl(30,14%,${10 + hueSeed*6}%)` : `hsl(36,22%,${78 + hueSeed*10}%)`;
+    }
+  }
+}
+
+const MODES = [
+  { name:'NAUTILUS', desc:'CHAMBERED SPIRAL GROWTH · SEPTA', gen:'nautilus', tMin:0.15, tMax:0.98, bg:'#07090c' },
+  { name:'TISSUE',   desc:'EPITHELIAL VORONOI FROTH',        gen:'tissue',   tMin:0.35, tMax:1.00, bg:'#0a0609' },
+  { name:'COMB',     desc:'HEXAGONAL LATTICE',                gen:'comb',     tMin:0.00, tMax:0.85, bg:'#08060a' },
+  { name:'STRIPE',   desc:'ANISOTROPIC FROTH · ZEBRA REGISTER', gen:'stripe', tMin:0.20, tMax:0.95, bg:'#050505' },
+];
+const MODE_HOLD_MS = 40000;
+const WARP_AMP = { nautilus:0.012, tissue:0.05, comb:0.045, stripe:0.05 };
+const WARP_FREQ = { nautilus:2.0, tissue:2.4, comb:2.6, stripe:2.2 };
+
+let modeIdx = 0, modeStart = performance.now(), mesh = null, simTime = 0;
+let ripples = []; // {x,y,t0}
+
+function buildMode(idx) {
+  const m = MODES[idx];
+  if (m.gen === 'nautilus') mesh = genNautilus(0.001);
+  else if (m.gen === 'tissue') mesh = genVoronoi(150, 1.0, 2);
+  else if (m.gen === 'comb') mesh = genHex(0.115);
+  else if (m.gen === 'stripe') mesh = genVoronoi(130, 2.6, 2);
+  modeNameEl.textContent = m.name;
+  ripples = [];
+}
+buildMode(0);
+
+/* ── render ───────────────────────────────────────────────────────────────── */
+
+function draw(now) {
+  const m = MODES[modeIdx];
+  ctx.fillStyle = m.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const breathe = 0.5 - 0.5*Math.cos(simTime * 0.11);
+  const t = m.tMin + (m.tMax - m.tMin) * breathe;
+
+  const amp = WARP_AMP[m.gen], freq = WARP_FREQ[m.gen];
+  const warped = mesh.verts.map(([x,y]) => warp(x, y, simTime, amp, freq));
+
+  // click/touch ripple: transient localized extra softness
+  const activeRipples = ripples.filter(r => now - r.t0 < 2600);
+  ripples = activeRipples;
+
+  let cuspCount = 0;
+  for (const face of mesh.faces) {
+    const pos = face.v.map(i => {
+      const [x,y] = warped[i];
+      return [cx + x*pxScale, cy + y*pxScale];
+    });
+    // per-face ripple boost: nudge this face's local t upward transiently
+    let localT = t;
+    for (const r of activeRipples) {
+      const age = (now - r.t0) / 1000;
+      const fc = centroid(pos);
+      const d = Math.hypot(fc[0]-r.x, fc[1]-r.y) / pxScale;
+      const falloff = Math.exp(-d*3.2) * Math.exp(-age*1.4);
+      localT = Math.min(1, localT + falloff * 0.7);
+    }
+    const path = buildFacePath(pos, face.cusp, localT);
+
+    for (let i = 0; i < face.cusp.length; i++) if (face.cusp[i]) cuspCount++;
+
+    const fc = centroid(pos);
+    const seed = face.hue;
+    ctx.fillStyle = paletteHue(m.gen, seed, [(fc[0]-cx)/pxScale, (fc[1]-cy)/pxScale]);
+    ctx.fill(path);
+    ctx.strokeStyle = m.gen === 'stripe' ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke(path);
+  }
+
+  if (m.gen === 'nautilus') {
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(230,214,190,0.9)';
+    ctx.arc(cx, cy, Math.max(1.5, 0.012*pxScale), 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  const avgCusp = mesh.faces.length ? cuspCount / mesh.faces.length : 0;
+  descEl.textContent = `${m.desc} · SOFT ${(t*100).toFixed(0)}% · CORNERS/CELL ${avgCusp.toFixed(2)}`;
+}
+
+/* ── growth + schedule ────────────────────────────────────────────────────── */
+
+const NAUT_GROW_RATE = NAUT_THETA_CAP / 24; // spends ~24s of the 40s mode-hold growing
+let nautThetaMax = 0.001;
+
+function advanceSchedule(now, dt) {
+  const m = MODES[modeIdx];
+  if (m.gen === 'nautilus' && nautThetaMax < NAUT_THETA_CAP) {
+    nautThetaMax = Math.min(NAUT_THETA_CAP, nautThetaMax + NAUT_GROW_RATE * dt);
+    mesh = genNautilus(nautThetaMax);
+  }
+  // TISSUE/COMB/STRIPE tilings are built once per mode-entry and animated
+  // purely via the deterministic warp() below — organic motion without ever
+  // re-randomizing point positions, which would read as a jarring teleport
+  // rather than living tissue breathing.
+  if (now - modeStart > MODE_HOLD_MS) {
+    modeIdx = (modeIdx + 1) % MODES.length;
+    modeStart = now;
+    simTime = 0;
+    nautThetaMax = 0.001;
+    buildMode(modeIdx);
+  }
+}
+
+let lastNow = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastNow) / 1000);
+  lastNow = now;
+  simTime += dt;
+  advanceSchedule(now, dt);
+  draw(now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: click/touch drops a decaying softness ripple ──────────── */
+
+function toPx(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return [(clientX - rect.left) * (canvas.width / rect.width), (clientY - rect.top) * (canvas.height / rect.height)];
+}
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  const [px, py] = toPx(x, y);
+  ripples.push({ x: px, y: py, t0: performance.now() });
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>

@@ -18,7 +18,139 @@ sandpile.html    — SANDPILE piece
 swarmalator.html — SWARMALATOR piece
 ising.html       — ISING piece
 lichtenberg.html — LICHTENBERG piece
-attractor.html   — ATTRACTOR piece (new)
+attractor.html   — ATTRACTOR piece
+softcell.html    — SOFTCELL piece (new)
+
+---
+
+## Piece 13: SOFTCELL — Edge-Bending & the Geometry of Seashells (2026-07-10)
+Domokos, Regős & Regős, "Soft cells and the geometry of seashells," PNAS
+Nexus, Sept 2024 (this session's web-research find, surfaced while
+searching for genuinely new 2024-2026 mathematical-shape discoveries
+rather than the usual generic "generative art trends" results): almost
+nothing in nature tiles the way classical geometry tiles — hexagons,
+bricks, Voronoi froth are built from flat faces meeting at sharp corners,
+but nautilus shell chambers, onion skin, muscle fascicles, zebra stripes
+and epithelial tissue all fill their plane with "soft cells" instead, the
+authors' new geometric class proven to have a minimal irreducible corner
+count (exactly TWO per cell in 2D, ZERO in 3D) reachable from any sharp
+tiling by an explicit "edge-bending" deformation. This piece IS that
+deformation, applied live and continuously, not a one-shot illustration
+of the end state — a global softness t oscillates 0..1 forever, and every
+non-cusp vertex of every tiling face is rendered as a fillet (two points
+pulled in along its adjacent edges, joined by a quadratic Bezier through
+the original corner) whose radius scales with t. t=0 reproduces the
+plain sharp polyhedral tiling the paper starts from; t=1 approaches the
+fully soft tiling it proves such tilings deform into. Nothing here is a
+physical simulation (no forces, no PDE, no timestep integration) — it is
+the first piece in this gallery about a geometric deformation of shape
+rather than a dynamical system evolving through time, and (after GYRUS)
+only the second piece built on Canvas2D vector paths rather than a WebGL
+field or gl.POINTS particle swarm.
+
+### The shared-vertex trick that makes seams free
+Two faces sharing an edge must fillet that edge identically from both
+sides or the tiling shows visible cracks at every seam. This session's
+solution needed no explicit neighbor-agreement pass: fillet radius is a
+pure function of (vertex position, adjacent edge length), and every
+tiling is built through one shared mesh structure (verts[] + faces[] of
+vertex indices) via a snap-to-grid vertex dedup (meshVert() rounds to a
+1/20000 grid and reuses the index for near-coincident points) — so two
+faces independently computing "my corner's fillet" from the same shared
+vertex and the same shared edge always agree, automatically. This is
+what let three structurally very different generators (analytic hex
+lattice, Lloyd-relaxed Voronoi clipping, analytic nested log-spiral
+chambers) all feed the identical renderer with zero special-casing.
+Organic irregularity comes from a smooth deterministic domain warp
+(warp(x,y,time) — trig functions of position and clock only, no random
+per-vertex jitter) applied to vertex positions at DRAW time, after the
+mesh is built — random per-vertex jitter was tried first in the plan and
+rejected before writing any code, since two faces sampling independent
+random jitter at a shared vertex would immediately crack the seam;
+warping as a function of position alone sidesteps this because a shared
+vertex always warps to the same place no matter which face reads it.
+
+### Cusp selection: an honest heuristic, not a derivation
+The paper's own combinatorial proof of which corners survive as cusps
+is not implemented; this session's stand-in is simpler and cruder — for
+each face, the two vertices FARTHEST apart (by squared distance, O(k^2)
+per face, k small) are permanently marked as that face's two cusps, and
+only those two are ever left unfilleted at any t. This is a genuine
+approximation (flagged the same way GYRUS's 2D self-avoidance and
+EXCITABLE's kernel choice are, elsewhere in this gallery), but it
+reproduces the paper's actual invariant faithfully: the "CORNERS/CELL"
+UI readout counts designated-cusp vertices directly from the live face
+data every frame and reads exactly 2.00 always, not a hardcoded label —
+same "measure the real invariant, don't just imply it" discipline as
+GYRUS's live GI, ISING's magnetization, LICHTENBERG's fractal dimension,
+and ATTRACTOR's Lyapunov exponent.
+
+### Four registers through one engine
+- NAUTILUS: nested logarithmic-spiral chambers built analytically
+  (r(theta) = r0 * exp(b*theta), b=0.18, ~Nautilus pompilius), septa at
+  fixed angular spacing (9/whorl), growing outward continuously for the
+  first ~24s of each 40s mode-hold then holding. The real recursive
+  chambered structure, not a pie-slice toy: since cos/sin are 2*PI-
+  periodic, a chamber's INNER wall at angle theta is just the spiral
+  evaluated one whorl earlier (r(theta - 2*PI)) at the SAME (x,y)
+  direction — no coordinate shift needed — which is exactly what makes
+  chamber k's inner wall land, via the shared-vertex dedup, precisely on
+  chamber (k - chambers-per-whorl)'s outer wall: the two faces that are
+  genuinely adjacent one whorl apart, discovered as a clean consequence
+  of the periodicity rather than needing to be special-cased.
+- TISSUE / STRIPE: both Lloyd-relaxed Voronoi froth (brute-force O(n^2)
+  half-plane clipping per site against every other site's bisector, 2
+  relaxation passes moving each point to its cell's centroid) — cheap
+  enough at n~130-150 to not need Fortune's algorithm. STRIPE computes
+  the same algorithm in an x-squished metric (points and the clip bound
+  both compressed in x by 2.6, un-squished only when building final mesh
+  vertices) so cells elongate into the zebra-stripe register the paper
+  cites explicitly by name; TISSUE runs the identical code unsquished
+  for the epithelium/muscle-fascicle register.
+- COMB: a plain analytic axial-coordinate hex lattice — the crystalline
+  register the paper's own soft cells are explicitly contrasted against.
+
+### Traps hit this session
+- Nautilus scale blowup: an early version grew the spiral to 4.35 whorls
+  before checking the actual radius the exponential reaches — r0=0.05,
+  b=0.18 at 4.35 whorls gives r~6.8, six times the intended view extent.
+  Capped growth analytically instead (NAUT_THETA_CAP = ln(maxR/r0)/b for
+  a chosen max radius) rather than picking a whorl count by eye.
+- Septa reading as visually straight even at t=0.98: the first nautilus
+  build gave each septum only 2 vertices (one long straight edge), so
+  filleting could only nibble its very ends — correct per the algorithm
+  but visually flat. Fix: inserted interior radial sample points along
+  each septum so filleting has room to bow the middle, not just round
+  the tips; one interior midpoint (a single clean bow) reads better than
+  three (a faceted multi-kink) at this piece's chamber scale.
+- Fixed BOUND left black gaps top/bottom on tall phone aspect ratios
+  (checked at 390x844): the tiling extent was sized for a square-ish
+  viewport. Fixed by recomputing BOUND from the actual canvas aspect on
+  every resize (debounced 250ms) and rebuilding the current tiling —
+  nautilus is exempt, being a single centered object rather than a
+  plane-filling tiling, so margin around it on unusual aspects is
+  expected, not a bug.
+- A distant-site culling optimization in the Voronoi clipper (skip pairs
+  farther than a fixed threshold) was written, then found to incorrectly
+  cull legitimate neighbors under STRIPE's anisotropic squished bound
+  (its threshold assumed a roughly square bound) — removed entirely
+  rather than fixed, since n~150 is cheap enough (~180k clip ops) for
+  brute-force O(n^2) to not need the optimization in the first place.
+- Verified via headless Playwright/Chromium screenshots at desktop
+  (1200x800) and phone (390x844) viewports, forcing mode transitions and
+  softness extremes directly through the page's own top-level bindings
+  (a classic non-module <script> exposes its let/const/function
+  declarations to page.evaluate()) rather than waiting out the full 40s
+  mode-hold; confirmed 60fps steady-state even fully grown, zero console
+  errors, and the CORNERS/CELL readout at exactly 2.00 in every mode.
+- Inspiration: web research this session specifically avoided repeating
+  the "physics simulation" register nearly every prior piece uses (RD,
+  CA, agent-based, wave interference, growth, sandpile, swarm, spin,
+  dielectric breakdown, chaos) and searched instead for recent (2024+)
+  pure-mathematics discoveries; soft cells stood out for being both
+  genuinely novel (a new named geometric class, not a decades-old
+  physical model like every earlier piece) and immediately visual
+  (an explicit deformation between two recognizable end states).
 
 ---
 
@@ -1475,6 +1607,38 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-10 — Session 13
+- Added SOFTCELL: edge-bending / minimal-corner tilings (Domokos, Regős
+  & Regős, PNAS Nexus 2024). First piece about a live geometric
+  deformation of shape rather than a dynamical system evolving through
+  time — no forces, no PDE, no timestep integration; a global softness
+  parameter oscillates 0..1 and continuously fillets every tiling face's
+  non-cusp corners. Second Canvas2D vector-path piece after GYRUS (no
+  WebGL). Four modes: NAUTILUS (analytic nested log-spiral shell
+  chambers, grows for ~24s then holds), TISSUE (Lloyd-relaxed Voronoi
+  froth, epithelium register), COMB (analytic hex lattice, crystalline
+  contrast case), STRIPE (Voronoi computed in an x-squished metric,
+  zebra-stripe register). See "Piece 13" above for the shared-vertex
+  fillet-consistency trick and the traps hit (spiral scale blowup, flat-
+  reading septa, portrait-aspect tiling gaps, a Voronoi culling bug).
+- Verified all 4 modes, resize/phone-aspect behavior, and the ripple
+  interaction via headless Playwright/Chromium screenshots; 60fps
+  steady-state confirmed even with the nautilus fully grown.
+- Inspiration: this session deliberately searched web results for recent
+  (2024+) pure-mathematics shape discoveries instead of the "physics
+  simulation" register nearly every prior piece uses, specifically to
+  land on something genuinely novel rather than another named PDE/CA/
+  agent model.
+
+### 2026-07-09 — Session 12
+- Added ATTRACTOR: strange attractors and sensitive dependence on
+  initial conditions (Clifford, de Jong, Svensson, Ikeda, Hopalong —
+  Ruelle & Takens' 1971 coinage). First piece with zero coupling between
+  simulated units (each of ~147k points is an independent copy of the
+  same map) and the first live-measured quantity (Lyapunov exponent via
+  a two-point shadow-trajectory) needing no GPU pixel readback at all.
+  See "Piece 12" above for the full technical writeup.
+
 ### 2026-07-08 — Session 11
 - Added LICHTENBERG: the dielectric breakdown model (Niemeyer-Pietronero-
   Weismann, 1984). First piece that solves a genuine boundary-value
@@ -2041,3 +2205,35 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       under a D3D9-era ANGLE backend — this session, like SWARMALATOR's
       own still-open item above, only verified on SwiftShader/native GL
       paths
+- [x] A non-simulation, closed-form/deformation piece distinct from every
+      earlier dynamical-system piece — done in SOFTCELL (session 13),
+      the gallery's first piece about a geometric deformation of shape
+      (edge-bending between sharp and soft tilings) rather than a system
+      evolving through time
+- [ ] SOFTCELL: an actual (not heuristic) implementation of the paper's
+      own combinatorial corner-reduction proof for cusp placement,
+      replacing this session's "two farthest-apart vertices per face"
+      stand-in — would need to work through the edge-bending algorithm's
+      real construction rather than approximate its visible result
+- [ ] SOFTCELL: a true 3D soft-cell mode (zero corners, per the paper's
+      3D result) — e.g. a raymarched or point-cloud rendered soft
+      polyhedral tiling (Kelvin foam / Weaire-Phelan-style cells edge-
+      bent smooth), echoing the standing "3D reaction-diffusion"/"3D
+      Lichtenberg"/"3D attractor" backlog entries that never got built
+      for performance reasons in this gallery
+- [ ] SOFTCELL: an interactive softness slider (continuous, visitor-
+      controlled t) instead of only the auto-oscillating breathe — the
+      same "let a visitor walk the parameter themselves" idea flagged
+      for ISING's temperature, LICHTENBERG's eta, and ATTRACTOR's (a,b,c,d)
+- [ ] SOFTCELL: a true architectural mode explicitly referencing Zaha
+      Hadid's flowing forms (the paper's own cited example) — a large-
+      scale irregular running-bond/brick tiling pushed through the same
+      fillet engine, distinct in register from NAUTILUS/TISSUE/COMB/STRIPE
+- [ ] SOFTCELL: continuous Voronoi point drift (real Lloyd-relaxation
+      motion frame-to-frame, not just the deterministic domain warp) for
+      TISSUE/STRIPE — this session deliberately built each mode's tiling
+      once per mode-entry and animated only via warp() after an earlier
+      attempt at periodic full re-relaxation read as a jarring teleport;
+      a properly incremental per-frame relaxation (small step toward each
+      cell's centroid, recompute cells, repeat) was left undone this
+      session but would give genuinely evolving cell topology over time
