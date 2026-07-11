@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EINSTEIN — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">HEXAD</span>
+  <span id="desc">SUBSTITUTION TILING · LEVEL 0 · MIRRORED 0.0%</span>
+</div>
+<script>
+/*  EINSTEIN — the aperiodic monotile ("the hat", Smith, Myers, Kaplan &
+ *  Goodman-Strauss, "An aperiodic monotile," Combinatorial Theory 2024,
+ *  arXiv 2303.10798). In March 2023 this team found the first single
+ *  shape that tiles the infinite plane edge-to-edge yet NEVER
+ *  periodically — no translation maps any such tiling onto itself —
+ *  closing a search that runs back through Penrose's 1974 two-tile
+ *  aperiodic set to the open "einstein problem" (German ein Stein,
+ *  "one stone": a literal pun on the physicist's name that the field
+ *  had used as its own nickname for the unsolved problem for decades).
+ *  A second, stronger fact the same team proved two months later with
+ *  the "spectre" tile (not built here, left honest in the backlog
+ *  below): the hat's own aperiodic tilings are only possible because
+ *  reflected copies of the tile are mixed in with unreflected ones —
+ *  a MIRROR-IMAGE hat is combinatorially unavoidable in every valid
+ *  hat tiling, which is exactly what this piece's live MIRRORED
+ *  readout measures directly from the constructed tile census, not a
+ *  hardcoded label, this gallery's usual "measure the real invariant"
+ *  discipline (GYRUS's GI, ISING's magnetization, SOFTCELL's
+ *  corners/cell).
+ *
+ *  This piece is not a growth simulation of the tiling — the plane a
+ *  hat tiles is fixed and combinatorial, nothing here integrates a
+ *  force or relaxes a field. What IS live is the paper's own
+ *  construction algorithm: an "inflation" substitution system that
+ *  combines four fixed metatiles (named H, T, P and F in the paper,
+ *  themselves each built from 1-4 hat tiles) via a table of 29 fixed
+ *  edge-matching rules into one bigger patch, then re-partitions that
+ *  patch into four NEW, larger H/T/P/F metatiles one substitution
+ *  level up — repeat, and the four metatile families grow without
+ *  bound while staying mutually consistent by construction. Every
+ *  visible tile boundary below is a real edge-to-edge seam produced by
+ *  this recursive process, not an approximation.
+ *
+ *  Reference implementation: the metatile outlines, the hat tile's own
+ *  13-vertex polygon, and the 29-rule patch-construction table below
+ *  are ported from Craig Kaplan & David Smith's own reference
+ *  visualizer (github.com/isohedral/hatviz, BSD-3-Clause) rather than
+ *  re-derived from the paper's geometric proof from scratch this
+ *  session — the numbers ARE the published construction, not an
+ *  interpretation of it, so porting the reference's own encoding was
+ *  the faithful choice, following the same "port a citable published
+ *  algorithm rather than re-derive it" approach QUASICRYSTAL, ISING
+ *  and LICHTENBERG already used for their own source models.
+ *
+ *    Copyright (c) 2023, Craig S. Kaplan. Redistribution and use in
+ *    source and binary forms, with or without modification, are
+ *    permitted provided that the above copyright notice and this
+ *    list of conditions are retained. THIS SOFTWARE IS PROVIDED "AS
+ *    IS", WITHOUT WARRANTY OF ANY KIND. (BSD 3-Clause, condensed;
+ *    full text in the hatviz repository.)
+ *
+ *  Four registers, one substitution engine: HEXAD/WEDGE/RHOMB/PINWHEEL
+ *  root the identical recursive construction at the H, T, P and F
+ *  metatile respectively — the same recursion, four different overall
+ *  silhouettes, chosen to sit at a comparable final tile count (see
+ *  the per-mode LEVEL below) purely by picking each root's own level
+ *  empirically from a standalone growth-rate test run before writing
+ *  this renderer (H/P/F level 3 ~700-1200 hats, T needs level 4 to
+ *  reach the same range — T's metatile is the smallest of the four).
+ *  SUPERTILE overlays every intermediate substitution level of the H
+ *  root simultaneously as unfilled stroked outlines, colour-coded by
+ *  recursion depth — the recursive self-similar hierarchy the other
+ *  four modes only show the leaf level of.
+ *
+ *  Each mode grows outward from the tiling's own centre over its first
+ *  ~16s (tiles reveal in order of distance from centre, an honest
+ *  "watch the recursion happen" pacing choice, not a structural growth
+ *  process), holds fully assembled, then cross-fades to the next mode.
+ *  Click/touch drops a transient brightness pulse into the tiling.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+
+/* ── ported geometry + substitution algorithm (see attribution above) ─────── */
+
+const hr3 = 0.8660254037844386;
+const ident = [1, 0, 0, 0, 1, 0];
+function pt(x, y) { return { x, y }; }
+function hexPt(x, y) { return pt(x + 0.5 * y, hr3 * y); }
+function matInv(T) {
+  const det = T[0]*T[4] - T[1]*T[3];
+  return [T[4]/det, -T[1]/det, (T[1]*T[5]-T[2]*T[4])/det,
+    -T[3]/det, T[0]/det, (T[2]*T[3]-T[0]*T[5])/det];
+}
+function matMul(A, B) {
+  return [A[0]*B[0] + A[1]*B[3], A[0]*B[1] + A[1]*B[4], A[0]*B[2] + A[1]*B[5] + A[2],
+          A[3]*B[0] + A[4]*B[3], A[3]*B[1] + A[4]*B[4], A[3]*B[2] + A[4]*B[5] + A[5]];
+}
+function padd(p, q) { return { x: p.x+q.x, y: p.y+q.y }; }
+function psub(p, q) { return { x: p.x-q.x, y: p.y-q.y }; }
+function trot(ang) { const c=Math.cos(ang), s=Math.sin(ang); return [c,-s,0,s,c,0]; }
+function ttrans(tx, ty) { return [1,0,tx,0,1,ty]; }
+function rotAbout(p, ang) { return matMul(ttrans(p.x,p.y), matMul(trot(ang), ttrans(-p.x,-p.y))); }
+function transPt(M, P) { return pt(M[0]*P.x+M[1]*P.y+M[2], M[3]*P.x+M[4]*P.y+M[5]); }
+function matchSeg(p, q) { return [q.x-p.x, p.y-q.y, p.x, q.y-p.y, q.x-p.x, p.y]; }
+function matchTwo(p1, q1, p2, q2) { return matMul(matchSeg(p2,q2), matInv(matchSeg(p1,q1))); }
+function segIntersect(p1, q1, p2, q2) {
+  const d = (q2.y-p2.y)*(q1.x-p1.x) - (q2.x-p2.x)*(q1.y-p1.y);
+  const uA = ((q2.x-p2.x)*(p1.y-p2.y) - (q2.y-p2.y)*(p1.x-p2.x)) / d;
+  return pt(p1.x + uA*(q1.x-p1.x), p1.y + uA*(q1.y-p1.y));
+}
+
+// the hat tile's own 13-vertex boundary, on a 60-degree unit lattice
+const hat_outline = [
+  hexPt(0,0), hexPt(-1,-1), hexPt(0,-2), hexPt(2,-2),
+  hexPt(2,-1), hexPt(4,-2), hexPt(5,-1), hexPt(4,0),
+  hexPt(3,0), hexPt(2,2), hexPt(0,3), hexPt(0,2), hexPt(-1,2)
+];
+
+class HatTile { constructor(label) { this.label = label; } }
+class MetaTile {
+  constructor(shape) { this.shape = shape; this.children = []; }
+  addChild(T, geom) { this.children.push({ T, geom }); }
+  evalChild(n, i) { return transPt(this.children[n].T, this.children[n].geom.shape[i]); }
+  recentre() {
+    let cx = 0, cy = 0;
+    for (const p of this.shape) { cx += p.x; cy += p.y; }
+    cx /= this.shape.length; cy /= this.shape.length;
+    for (let i = 0; i < this.shape.length; i++) this.shape[i] = padd(this.shape[i], pt(-cx,-cy));
+    const M = ttrans(-cx, -cy);
+    for (const ch of this.children) ch.T = matMul(M, ch.T);
+  }
+}
+
+const H1_hat = new HatTile('H1'), H_hat = new HatTile('H'), T_hat = new HatTile('T'),
+      P_hat = new HatTile('P'), F_hat = new HatTile('F');
+
+const H_init = (function() {
+  const o = [pt(0,0), pt(4,0), pt(4.5,hr3), pt(2.5,5*hr3), pt(1.5,5*hr3), pt(-0.5,hr3)];
+  const m = new MetaTile(o);
+  m.addChild(matchTwo(hat_outline[5], hat_outline[7], o[5], o[0]), H_hat);
+  m.addChild(matchTwo(hat_outline[9], hat_outline[11], o[1], o[2]), H_hat);
+  m.addChild(matchTwo(hat_outline[5], hat_outline[7], o[3], o[4]), H_hat);
+  m.addChild(matMul(ttrans(2.5,hr3), matMul([-0.5,-hr3,0,hr3,-0.5,0],[0.5,0,0,0,-0.5,0])), H1_hat);
+  return m;
+})();
+const T_init = (function() {
+  const o = [pt(0,0), pt(3,0), pt(1.5,3*hr3)];
+  const m = new MetaTile(o);
+  m.addChild([0.5,0,0.5,0,0.5,hr3], T_hat);
+  return m;
+})();
+const P_init = (function() {
+  const o = [pt(0,0), pt(4,0), pt(3,2*hr3), pt(-1,2*hr3)];
+  const m = new MetaTile(o);
+  m.addChild([0.5,0,1.5,0,0.5,hr3], P_hat);
+  m.addChild(matMul(ttrans(0,2*hr3), matMul([0.5,hr3,0,-hr3,0.5,0],[0.5,0,0,0,0.5,0])), P_hat);
+  return m;
+})();
+const F_init = (function() {
+  const o = [pt(0,0), pt(3,0), pt(3.5,hr3), pt(3,2*hr3), pt(-1,2*hr3)];
+  const m = new MetaTile(o);
+  m.addChild([0.5,0,1.5,0,0.5,hr3], F_hat);
+  m.addChild(matMul(ttrans(0,2*hr3), matMul([0.5,hr3,0,-hr3,0.5,0],[0.5,0,0,0,0.5,0])), F_hat);
+  return m;
+})();
+
+// the 29-rule edge-matching table that assembles one supertile patch
+// from the current-level H/T/P/F metatiles
+function constructPatch(H, T, P, F) {
+  const rules = [
+    ['H'], [0,0,'P',2], [1,0,'H',2], [2,0,'P',2], [3,0,'H',2], [4,4,'P',2],
+    [0,4,'F',3], [2,4,'F',3], [4,1,3,2,'F',0], [8,3,'H',0], [9,2,'P',0],
+    [10,2,'H',0], [11,4,'P',2], [12,0,'H',2], [13,0,'F',3], [14,2,'F',1],
+    [15,3,'H',4], [8,2,'F',1], [17,3,'H',0], [18,2,'P',0], [19,2,'H',2],
+    [20,4,'F',3], [20,0,'P',2], [22,0,'H',2], [23,4,'F',3], [23,0,'F',3],
+    [16,0,'P',2], [9,4,0,2,'T',2], [4,0,'F',3]
+  ];
+  const ret = new MetaTile([]);
+  const shapes = { H, T, P, F };
+  for (const r of rules) {
+    if (r.length === 1) {
+      ret.addChild(ident, shapes[r[0]]);
+    } else if (r.length === 4) {
+      const poly = ret.children[r[0]].geom.shape, Tm = ret.children[r[0]].T;
+      const P2 = transPt(Tm, poly[(r[1]+1)%poly.length]), Q2 = transPt(Tm, poly[r[1]]);
+      const nshp = shapes[r[2]], npoly = nshp.shape;
+      ret.addChild(matchTwo(npoly[r[3]], npoly[(r[3]+1)%npoly.length], P2, Q2), nshp);
+    } else {
+      const chP = ret.children[r[0]], chQ = ret.children[r[2]];
+      const P2 = transPt(chQ.T, chQ.geom.shape[r[3]]), Q2 = transPt(chP.T, chP.geom.shape[r[1]]);
+      const nshp = shapes[r[4]], npoly = nshp.shape;
+      ret.addChild(matchTwo(npoly[r[5]], npoly[(r[5]+1)%npoly.length], P2, Q2), nshp);
+    }
+  }
+  return ret;
+}
+
+// re-partitions a patch into the next level's four bigger H/T/P/F metatiles
+function constructMetatiles(patch) {
+  const bps1 = patch.evalChild(8,2), bps2 = patch.evalChild(21,2);
+  const rbps = transPt(rotAbout(bps1, -2*Math.PI/3), bps2);
+  const p72 = patch.evalChild(7,2), p252 = patch.evalChild(25,2);
+  const llc = segIntersect(bps1, rbps, patch.evalChild(6,2), p72);
+  let w = psub(patch.evalChild(6,2), llc);
+
+  const newH = [llc, bps1];
+  w = transPt(trot(-Math.PI/3), w);
+  newH.push(padd(newH[1], w));
+  newH.push(patch.evalChild(14,2));
+  w = transPt(trot(-Math.PI/3), w);
+  newH.push(psub(newH[3], w));
+  newH.push(patch.evalChild(6,2));
+
+  const H = new MetaTile(newH);
+  for (const ch of [0,9,16,27,26,6,1,8,10,15]) H.addChild(patch.children[ch].T, patch.children[ch].geom);
+
+  const P = new MetaTile([p72, padd(p72, psub(bps1, llc)), bps1, llc]);
+  for (const ch of [7,2,3,4,28]) P.addChild(patch.children[ch].T, patch.children[ch].geom);
+
+  const F = new MetaTile([bps2, patch.evalChild(24,2), patch.evalChild(25,0), p252, padd(p252, psub(llc,bps1))]);
+  for (const ch of [21,20,22,23,24,25]) F.addChild(patch.children[ch].T, patch.children[ch].geom);
+
+  const AAA = newH[2], BBB = padd(newH[1], psub(newH[4], newH[5]));
+  const CCC = transPt(rotAbout(BBB, -Math.PI/3), AAA);
+  const T = new MetaTile([BBB, CCC, AAA]);
+  T.addChild(patch.children[11].T, patch.children[11].geom);
+
+  H.recentre(); P.recentre(); F.recentre(); T.recentre();
+  return { H, T, P, F };
+}
+
+function inflate(level) {
+  let cur = { H: H_init, T: T_init, P: P_init, F: F_init };
+  for (let i = 0; i < level; i++) cur = constructMetatiles(constructPatch(cur.H, cur.T, cur.P, cur.F));
+  return cur;
+}
+
+// walk a metatile tree collecting every leaf hat tile's accumulated
+// transform + label; determinant sign of that transform is exactly
+// whether the tile is a mirrored (reflected) copy or a plain one
+function gatherLeaves(meta, T, out) {
+  for (const ch of meta.children) {
+    const T2 = matMul(T, ch.T);
+    if (ch.geom instanceof HatTile) out.push({ T: T2, label: ch.geom.label });
+    else gatherLeaves(ch.geom, T2, out);
+  }
+}
+// collect every metatile outline at a given recursion depth below root
+// (depth 0 = root's own outline, depth = full recursion = leaf hat outlines)
+function gatherOutlinesAtDepth(meta, T, depthRemaining, out) {
+  if (depthRemaining <= 0) { out.push({ T, shape: meta.shape }); return; }
+  for (const ch of meta.children) {
+    const T2 = matMul(T, ch.T);
+    if (ch.geom instanceof HatTile) out.push({ T: T2, shape: hat_outline });
+    else gatherOutlinesAtDepth(ch.geom, T2, depthRemaining - 1, out);
+  }
+}
+
+/* ── canvas + view ────────────────────────────────────────────────────────── */
+
+let W, H, cx, cy;
+function resize() {
+  W = canvas.width  = Math.round(window.innerWidth  * Math.min(2, window.devicePixelRatio || 1));
+  H = canvas.height = Math.round(window.innerHeight * Math.min(2, window.devicePixelRatio || 1));
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  cx = W / 2; cy = H / 2;
+  fitView();
+}
+window.addEventListener('resize', resize);
+
+/* ── modes ────────────────────────────────────────────────────────────────── */
+// root/level picked empirically (see hat-test growth-rate script) so all
+// four silhouette modes land near the same final tile count, ~700-1200 hats
+const MODES = [
+  { name:'HEXAD',    desc:'H-METATILE ROOT',       root:'H', level:3, hue:198 },
+  { name:'WEDGE',     desc:'T-METATILE ROOT',       root:'T', level:4, hue:280 },
+  { name:'RHOMB',     desc:'P-METATILE ROOT',       root:'P', level:3, hue:22  },
+  { name:'PINWHEEL',  desc:'F-METATILE ROOT',       root:'F', level:3, hue:150 },
+  { name:'SUPERTILE', desc:'RECURSIVE HIERARCHY · H-METATILE ROOT', root:'H', level:3, hue:0, hierarchy:true },
+];
+const MODE_HOLD_MS = 34000;
+const GROW_MS = 16000;
+const FADE_MS = 1200;
+
+let modeIdx = 0, modeStart = performance.now();
+let leaves = [], hierLayers = [];   // built once per mode entry, in sim-space
+let simMinX, simMaxX, simMinY, simMaxY;
+let mirroredCount = 0, mirroredPct = 0;
+let ripples = [];
+
+function buildMode(idx) {
+  const m = MODES[idx];
+  const tiles = inflate(m.level);
+  const root = tiles[m.root];
+
+  leaves = [];
+  gatherLeaves(root, ident, leaves);
+  mirroredCount = leaves.filter(l => (l.T[0]*l.T[4] - l.T[1]*l.T[3]) < 0).length;
+  mirroredPct = leaves.length ? 100 * mirroredCount / leaves.length : 0;
+
+  // world-space polygon points + centroid + reveal distance, computed once
+  simMinX = simMinY = Infinity; simMaxX = simMaxY = -Infinity;
+  for (const l of leaves) {
+    l.pts = hat_outline.map(p => { const w = transPt(l.T, p); return [w.x, w.y]; });
+    let px = 0, py = 0;
+    for (const [x,y] of l.pts) { px += x; py += y; simMinX = Math.min(simMinX,x); simMaxX = Math.max(simMaxX,x); simMinY = Math.min(simMinY,y); simMaxY = Math.max(simMaxY,y); }
+    l.cx = px / l.pts.length; l.cy = py / l.pts.length;
+    l.mirrored = (l.T[0]*l.T[4] - l.T[1]*l.T[3]) < 0;
+  }
+  const cenX = (simMinX+simMaxX)/2, cenY = (simMinY+simMaxY)/2;
+  for (const l of leaves) l.dist = Math.hypot(l.cx-cenX, l.cy-cenY);
+  const maxDist = leaves.reduce((mx,l) => Math.max(mx,l.dist), 1);
+  for (const l of leaves) l.revealAt = GROW_MS * (l.dist / maxDist);
+
+  hierLayers = [];
+  if (m.hierarchy) {
+    for (let d = 0; d <= m.level; d++) {
+      const out = [];
+      gatherOutlinesAtDepth(root, ident, d, out);
+      for (const o of out) o.pts = o.shape.map(p => { const w = transPt(o.T, p); return [w.x, w.y]; });
+      hierLayers.push(out);
+    }
+  }
+
+  modeNameEl.textContent = m.name;
+  fitView();
+  ripples = [];
+}
+
+let pxScale = 40;
+function fitView() {
+  const w = Math.max(1e-6, simMaxX - simMinX), h = Math.max(1e-6, simMaxY - simMinY);
+  const cenX = (simMinX+simMaxX)/2, cenY = (simMinY+simMaxY)/2;
+  pxScale = Math.min(W / w, H / h) * 0.90;
+  viewCX = cenX; viewCY = cenY;
+}
+let viewCX = 0, viewCY = 0;
+function toScreen(x, y) { return [cx + (x - viewCX) * pxScale, cy + (y - viewCY) * pxScale]; }
+
+resize();
+buildMode(0);
+
+/* ── palette ──────────────────────────────────────────────────────────────── */
+
+function tileColor(mode, leaf) {
+  const baseL = leaf.label === 'H1' ? 62 : 40;
+  const hue = leaf.label === 'H1'
+    ? (mode.hue + 150) % 360          // mirrored copies get the complementary accent
+    : mode.hue;
+  const sat = leaf.label === 'H1' ? 58 : 32;
+  return `hsl(${hue},${sat}%,${baseL}%)`;
+}
+
+/* ── render ───────────────────────────────────────────────────────────────── */
+
+function draw(now) {
+  const m = MODES[modeIdx];
+  ctx.fillStyle = '#050507';
+  ctx.fillRect(0, 0, W, H);
+
+  const elapsed = now - modeStart;
+  const growT = Math.min(1, elapsed / GROW_MS);
+  const fadeIn = Math.min(1, elapsed / FADE_MS);
+  const holdRemain = MODE_HOLD_MS - elapsed;
+  const fadeOut = holdRemain < FADE_MS ? Math.max(0, holdRemain / FADE_MS) : 1;
+  const globalAlpha = Math.min(fadeIn, fadeOut);
+
+  const pulseW = 2 * Math.PI / 5200;
+  const activeRipples = ripples.filter(r => now - r.t0 < 2200);
+  ripples = activeRipples;
+
+  if (m.hierarchy) {
+    // nested recursion-depth outlines; reveal order mirrors the actual
+    // inflation direction (finest level-0 metatile groupings appear first,
+    // the single coarsest root outline last, unifying everything under it)
+    for (let d = 0; d < hierLayers.length; d++) {
+      const frac = d / Math.max(1, hierLayers.length - 1);
+      const revealOrder = hierLayers.length - 1 - d;
+      const layerReveal = Math.min(1, Math.max(0, (growT * (hierLayers.length + 1)) - revealOrder));
+      if (layerReveal <= 0) continue;
+      const hue = 200 - frac * 170;
+      ctx.strokeStyle = `hsla(${hue},70%,${58 - frac*18}%,${(0.85 - frac*0.45) * globalAlpha * layerReveal})`;
+      ctx.lineWidth = Math.max(0.6, (hierLayers.length - d) * 0.9);
+      for (const o of hierLayers[d]) {
+        ctx.beginPath();
+        for (let i = 0; i < o.pts.length; i++) {
+          const [sx, sy] = toScreen(o.pts[i][0], o.pts[i][1]);
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+    descEl.textContent = `${m.desc} · LEVELS 0-${m.level} · ${leaves.length} LEAF TILES`;
+  } else {
+    for (const l of leaves) {
+      if (elapsed < l.revealAt) continue;
+      const revealFrac = Math.min(1, (elapsed - l.revealAt) / 700);
+
+      let pulse = 0.94 + 0.06 * Math.sin(now * pulseW - l.dist * 0.05);
+      for (const r of activeRipples) {
+        const age = (now - r.t0) / 1000;
+        const d = Math.hypot(l.cx - r.simX, l.cy - r.simY);
+        pulse += Math.exp(-d * 0.09) * Math.exp(-age * 2.0) * 1.4;
+      }
+
+      ctx.globalAlpha = globalAlpha * revealFrac;
+      ctx.fillStyle = tileColor(m, l);
+      ctx.beginPath();
+      for (let i = 0; i < l.pts.length; i++) {
+        const [sx, sy] = toScreen(l.pts[i][0], l.pts[i][1]);
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      const flash = Math.max(0, pulse - 1) * 0.5;
+      ctx.filter = flash > 0.01 ? `brightness(${1 + flash})` : 'none';
+      ctx.fill();
+      ctx.filter = 'none';
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    descEl.textContent = `${m.desc} · LEVEL ${m.level} · ${leaves.length} TILES · MIRRORED ${mirroredPct.toFixed(1)}%`;
+  }
+}
+
+/* ── schedule + interaction ──────────────────────────────────────────────── */
+
+function advanceSchedule(now) {
+  if (now - modeStart > MODE_HOLD_MS) {
+    modeIdx = (modeIdx + 1) % MODES.length;
+    modeStart = now;
+    buildMode(modeIdx);
+  }
+}
+
+function loop(now) {
+  advanceSchedule(now);
+  draw(now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function toPx(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return [(clientX - rect.left) * (canvas.width / rect.width), (clientY - rect.top) * (canvas.height / rect.height)];
+}
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  const [px, py] = toPx(x, y);
+  ripples.push({ simX: viewCX + (px - cx) / pxScale, simY: viewCY + (py - cy) / pxScale, t0: performance.now() });
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>

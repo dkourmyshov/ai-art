@@ -19,7 +19,122 @@ swarmalator.html — SWARMALATOR piece
 ising.html       — ISING piece
 lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
-softcell.html    — SOFTCELL piece (new)
+softcell.html    — SOFTCELL piece
+einstein.html    — EINSTEIN piece (new)
+
+---
+
+## Piece 14: EINSTEIN — The First Aperiodic Monotile (2026-07-11)
+Smith, Myers, Kaplan & Goodman-Strauss, "An aperiodic monotile,"
+Combinatorial Theory 2024 / arXiv 2303.10798 (this session's web-research
+find, again deliberately searched for a recent pure-mathematics shape
+discovery rather than a physics-simulation register, following SOFTCELL's
+own precedent last session). In March 2023 this team found the first
+single shape — "the hat" — that tiles the infinite plane edge-to-edge but
+NEVER periodically, closing the open "einstein problem" (German ein Stein,
+"one stone," the field's own decades-old pun on the physicist's name) that
+runs back through Penrose's 1974 two-tile aperiodic set and Wang tiles
+before that. This piece renders the paper's own construction algorithm
+live: a substitution/inflation system that recursively assembles four
+named metatiles (H, T, P, F) into ever-larger versions of themselves,
+which is how the paper actually proves the tiling exists and extends to
+infinity, not a visual approximation of the result.
+
+### Ported from a citable reference implementation, not re-derived
+The metatile outlines, the hat tile's own 13-vertex polygon, and the
+29-rule edge-matching table that assembles one substitution "patch" from
+four same-level metatiles are ported from Craig Kaplan & David Smith's
+own reference visualizer (github.com/isohedral/hatviz, BSD-3-Clause;
+attribution comment with condensed license text kept in einstein.html).
+These numbers ARE the published construction — porting the reference's
+own encoding was the faithful choice over re-deriving 2023 research
+geometry from the paper's proof from scratch this session, continuing
+the same "port a citable published algorithm" approach QUASICRYSTAL,
+ISING and LICHTENBERG already used for their own source models. The
+algorithm was verified in a standalone Node script (checking leaf-tile
+counts and bounding boxes per recursion level, and that all six
+constructPatch/constructMetatiles helper functions round-trip cleanly)
+before any canvas rendering code was written — the same "verify the
+numerical assumption directly" discipline ISING and LICHTENBERG both
+flagged as a general lesson.
+
+### Picking a recursion depth empirically, not guessing
+The four metatile families grow at very different rates per substitution
+level (their own children counts differ: H starts with 4 hat tiles, T
+with 1, P and F with 2 each), so a single shared "level N" produces wildly
+uneven final tile counts across the four roots. The growth-rate test
+script measured leaf-tile counts through level 6 (roughly 6.85x per level
+for the H family) and picked each mode's own level so all four land in
+the same ~700-1200 hat-tile range: H/P/F at level 3 (1156/658/770 hats),
+T needs level 4 to reach the same range (1156 hats) since its metatile is
+the smallest of the four. This mirrors GYRUS's own empirical calibration
+of node count against gyrification index — measure the real relationship
+first, don't guess a shared constant.
+
+### The chirality fact this piece measures live
+The paper proves something sharper than "an aperiodic monotile exists":
+every valid hat tiling MUST include reflected (mirror-image) copies of
+the tile mixed in with unreflected ones — no tiling using only
+unreflected hats is possible. The reference algorithm already tracks
+this for free: reflected instances are labelled H1 (vs. plain H/T/P/F)
+at construction time, and this piece detects the same fact independently
+by checking the determinant sign of each leaf tile's accumulated
+transform (negative = reflected) — the two methods agree exactly, a
+built-in cross-check. The live MIRRORED-percentage readout in the UI is
+computed from this per-frame census, not a hardcoded label, continuing
+GYRUS/ISING/LICHTENBERG/ATTRACTOR/SOFTCELL's "measure the real
+invariant" discipline; H's own census reads 12.7% mirrored (147/1156).
+Mirrored tiles are rendered in a complementary accent hue so the fact is
+visible directly in the tiling, not just in the readout number.
+
+### Five registers, one substitution engine
+HEXAD/WEDGE/RHOMB/PINWHEEL root the identical recursive construction at
+the H/T/P/F metatile respectively — same algorithm, four different
+overall silhouettes (hexagonal, triangular, parallelogram, asymmetric
+pentagon) purely from which metatile seeds the recursion, each its own
+mode hue with the mirrored-tile accent overlaid. SUPERTILE instead
+overlays every intermediate recursion level of the H root simultaneously
+as unfilled stroked outlines colour-coded by depth, the recursive
+self-similar hierarchy the other four modes only ever show the leaf
+level of — this needed a second gather function (gatherOutlinesAtDepth)
+returning each level's own metatile-boundary polygons rather than only
+leaf hat outlines. A caught pacing mistake worth flagging: the first cut
+revealed hierarchy layers coarsest-first (root outline appearing before
+any fine structure), which back-loaded the mode's most informative
+detail to the very end of its growth window and, worse, meant a mid-mode
+screenshot during testing showed only 2-3 of the 4 levels — reversed to
+reveal finest-first (mirroring the actual inflation direction: small
+hat/metatile groupings appear immediately, the single unifying root
+outline arrives last), verified by re-testing with a direct mode-jump
+script rather than trusting the first screenshot's timing.
+
+### Growth pacing and interaction
+Since the tiling itself is a fixed combinatorial object (no forces, no
+PDE, nothing to integrate), the only asked-for questions were how to
+make a static structure feel alive and how to keep ~1200 flat-filled
+13-gons at interactive framerate. Answered the first by ordering each
+leaf tile's reveal by its distance from the tiling's own centroid and
+fading tiles in over the mode's first 16s (an honest "watch the
+recursion assemble" pacing choice, not a structural growth process
+unlike NAUTILUS's real chambered growth), plus a continuous low-amplitude
+per-tile brightness pulse once settled. Answered the second by caching
+each leaf's world-space polygon points once per mode-build rather than
+walking the metatile tree every frame — the combinatorial structure
+never changes after a mode is built, only reveal-alpha and pulse
+brightness are time-dependent, so per-frame work is a flat iteration
+over a precomputed array. Click/touch drops a transient localized
+brightness flash via a distance/age falloff, the same ripple-interaction
+shape as SOFTCELL and CHLADNI. Measured 60fps with HEXAD's 1156 tiles
+fully revealed via headless Playwright.
+
+### Left honest, not built
+The "spectre" tile (the same team's May 2023 follow-up, a chiral variant
+that needs NO reflected copies at all — the still-stronger discovery)
+is not implemented this session; its edge geometry curves two of the
+hat's straight edges into a matching "S" shape, a genuinely different
+tile boundary from the ported hat_outline that would need its own
+construction rather than a parameter tweak of what's here. Flagged
+honestly below rather than approximated.
 
 ---
 
@@ -1607,6 +1722,38 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-11 — Session 14
+- Added EINSTEIN: the first aperiodic monotile ("the hat" — Smith, Myers,
+  Kaplan & Goodman-Strauss, arXiv 2303.10798, 2023). Renders the paper's
+  own substitution/inflation construction live (four metatiles H/T/P/F
+  recursively assembled via a 29-rule edge-matching table into ever-
+  larger versions of themselves), ported from Craig Kaplan & David
+  Smith's own reference implementation (github.com/isohedral/hatviz,
+  BSD-3-Clause, attributed in-file) rather than re-derived from the
+  paper's proof from scratch. Verified the ported algorithm in a
+  standalone Node script (leaf-tile counts and bounding boxes through
+  recursion level 6) before writing any canvas code, and used that same
+  script to pick each mode's recursion depth empirically so all four
+  metatile roots land in a comparable ~700-1200 hat-tile range despite
+  very different per-level growth rates. See "Piece 14" above for the
+  live chirality (mirrored-tile) measurement, the SUPERTILE hierarchy
+  mode's reveal-order fix, and the growth/interaction pacing.
+- Verified all 5 modes, the growth-reveal timeline, click/touch ripple,
+  window resize mid-animation, a 390x844 mobile portrait viewport with
+  real touch events, and 60fps with the heaviest mode (HEXAD, 1156 tiles)
+  fully revealed, via headless Playwright/Chromium screenshots; no
+  console errors beyond a benign missing-favicon 404 every other piece
+  in this gallery also emits.
+- Inspiration: web research deliberately steered toward recent (2023+)
+  pure-mathematics shape discoveries again, continuing SOFTCELL's own
+  choice of register last session rather than another named PDE/CA/
+  agent-based physics model; "aperiodic monotile" was a clear standout
+  as a 2023 result the gallery hadn't touched, distinct in algorithmic
+  register from both SOFTCELL (analytic/Voronoi mesh + fillet
+  deformation) and QUASICRYSTAL (closed-form wave interference) despite
+  all three sharing an "aperiodic pattern" theme — this is the gallery's
+  first piece built on a combinatorial substitution/inflation system.
+
 ### 2026-07-10 — Session 13
 - Added SOFTCELL: edge-bending / minimal-corner tilings (Domokos, Regős
   & Regős, PNAS Nexus 2024). First piece about a live geometric
@@ -2237,3 +2384,30 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       a properly incremental per-frame relaxation (small step toward each
       cell's centroid, recompute cells, repeat) was left undone this
       session but would give genuinely evolving cell topology over time
+- [x] A piece built on combinatorial substitution/inflation rather than a
+      mesh, field, or agent population — done in EINSTEIN (session 14),
+      the aperiodic hat monotile's own recursive metatile construction
+- [ ] EINSTEIN: the "spectre" tile (Smith/Myers/Kaplan/Goodman-Strauss's
+      own May 2023 follow-up) — a chiral variant needing NO reflected
+      copies at all, the still-stronger discovery this session's hat-only
+      build deliberately left out; needs its own edge geometry (two of
+      the hat's straight edges become a matching "S" curve) rather than
+      a parameter tweak of hat_outline
+- [ ] EINSTEIN: the continuous Tile(a,b) family the original paper proves
+      shares this exact same combinatorial substitution system across a
+      whole one-parameter continuum of edge-length ratios (the Hat is
+      Tile(1,sqrt3), the equilateral "Turtle" is Tile(1,1)) — would need
+      re-deriving hat_outline's fixed hexPt-based coordinates as a real
+      function of (a,b) rather than the single ratio baked into the
+      ported reference geometry; left undone this session as out of
+      scope after the reference-porting research, not attempted and
+      found too hard
+- [ ] EINSTEIN: an interactive recursion-depth slider (build level N on
+      demand rather than only the 5 auto-cycled curated levels/roots),
+      echoing the same "let a visitor walk the parameter themselves"
+      idea flagged for ISING's temperature, LICHTENBERG's eta,
+      ATTRACTOR's (a,b,c,d) and SOFTCELL's softness t
+- [ ] EINSTEIN: colour tiles by which of the 29 patch-construction rules
+      produced them (rather than only by label/chirality), which would
+      make the substitution table's own internal structure visible
+      rather than only its output
