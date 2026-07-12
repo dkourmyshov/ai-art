@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+spectre.html     — SPECTRE piece (new)
 membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
 excitable.html   — EXCITABLE piece
@@ -20,7 +21,171 @@ ising.html       — ISING piece
 lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
-einstein.html    — EINSTEIN piece (new)
+einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 15: SPECTRE — The Chiral Aperiodic Monotile (2026-07-12)
+Smith, Myers, Kaplan & Goodman-Strauss, "A chiral aperiodic monotile,"
+arXiv:2305.17743, May 2023 — the same team's own follow-up to the "hat"
+tile EINSTEIN renders elsewhere in this gallery, and the paper's own
+STRONGER result, chosen this session specifically to complete the
+"spectre" backlog item EINSTEIN flagged honestly as left undone
+("its edge geometry curves two of the hat's straight edges into a
+matching S shape, a genuinely different tile boundary... needs its own
+construction"). Where the hat's aperiodic tilings are only valid because
+reflected copies are mixed in with unreflected ones (EINSTEIN's own live
+MIRRORED readout measures that forced ~12.7%), bending the tile's edges
+into a matching asymmetric curve makes a reflected copy physically unable
+to edge-match an unreflected neighbour AT ALL — "strictly chiral," a
+genuinely stronger and more elegant closure of the same question than
+"weakly chiral, so exclude reflections by convention."
+
+### Ported from a citable reference implementation, not re-derived
+The tile's 14-vertex polygon, the 9-category substitution grammar (an
+8-slot child-placement/rotation table plus a 9x8 child-category lookup),
+and the alternating-direction bezier edge template are ported from
+kerupani129s' own spectre-monotile-js (github.com/kerupani129s/
+spectre-monotile-js, MIT License, condensed attribution kept in-file) —
+the same "port a citable published algorithm rather than re-derive 2023
+research geometry from scratch" choice QUASICRYSTAL, ISING, LICHTENBERG
+and EINSTEIN all made for their own source models. One honest divergence
+flagged in-file: this reference curves all 14 edges via one shared
+alternating template rather than the paper's own hand-picked 2 special
+edges — a legitimate alternative construction of the same combinatorial
+grammar, kept as the reference implements it rather than re-derived from
+the paper's figures, the same kind of flagged approximation SOFTCELL's
+cusp heuristic and GYRUS's 2D self-avoidance already model for this
+gallery.
+
+### Two facts verified computationally before any canvas code was written
+1. Handedness census. A standalone Node port of the reference's own
+   matrix/grammar math (no DOM available outside a browser, so a small
+   compatible 2D-affine class was written and checked against the
+   reference's own documented semantics) walked the grammar and found
+   every leaf tile's accumulated placement matrix carries the SAME
+   determinant sign at a given recursion depth — always, with no
+   per-branch exceptions across any of the 9 root categories tested
+   (depth 1/3/5: all-negative; depth 2/4: all-positive; one shared
+   FLIPPING factor applies uniformly per substitution level, so depth
+   parity alone decides the sign for literally every leaf). Handedness is
+   UNANIMOUS, never split — this piece's live readout reports the real
+   per-build census (leaves.filter(det<0).length), not a hardcoded 0%,
+   and would say MIXED if it ever found otherwise.
+2. Edge self-mirror check. Sampling the straight LINE edge template
+   against its own mirror image gives exactly zero difference (a line
+   segment is trivially its own reflection, max|orig-mirrored|=0.0 over
+   11 sample points); sampling the curved BEZIER template (control points
+   at y=+0.5) against ITS mirror (control points negated to y=-0.5) gives
+   a real nonzero difference (max diff 0.75, a full half-edge-length
+   bulge flip). This is the actual geometric mechanism behind "strictly
+   chiral": a reflected spectre's boundary genuinely cannot coincide with
+   an unreflected neighbour's edge under the curved template, while
+   nothing stops it under the straight one — TURTLE mode's own straight
+   edges COULD in principle also tile with mixed reflections (not built
+   as its own mode here, since demonstrating it would need a second,
+   non-recursive periodic construction out of scope this session — see
+   backlog below); SPECTRE mode's curved edges cannot, by this measured
+   fact alone, independent of any rule imposed on the construction.
+
+### The silhouette surprise: root category doesn't change the outer shape
+Unlike EINSTEIN's four metatile roots (H/T/P/F), which each root the
+recursion in a genuinely different overall silhouette, this grammar's
+`generateKeyPoints` computes ONE shared quadrilateral per recursion level
+that every one of the 9 categories' supertiles occupies identically —
+switching root category changes ONLY which categories populate the
+interior, never the outer boundary (verified: bounding-box width/height
+match to sub-pixel precision across categories 1-8 at a fixed depth).
+This ruled out "one mode per silhouette" (EINSTEIN's own approach) and
+led directly to GRAMMAR mode below — the one place root/category choice
+actually produces a different-LOOKING result, because it's colored BY
+category rather than shaped by it.
+
+### Five registers, one grammar
+- SPECTRE: BEZIER_CURVE edges, root Delta, depth 3 (559 tiles) — the
+  headline strictly-chiral tiling, uniform teal hue.
+- TURTLE: LINE (straight) edges, same root/depth — a direct paired
+  contrast against SPECTRE using the IDENTICAL recursive structure
+  (same matrices, same category assignment), isolating edge geometry as
+  the only variable; the straight-edge boundary reads visibly more
+  angular/crystalline next to SPECTRE's smoother puzzle-piece curves.
+- MYSTIC: BEZIER_CURVE, root Gamma (category 0, the one root whose base
+  case is a genuine glued PAIR of tiles rather than a single one) — the
+  paired Gamma1/Gamma2 children are rendered in the reference's own
+  green/cyan accent colors, making the base-case construction detail
+  visible directly rather than only narrated; confirmed via screenshot
+  that mystic pairs appear as adjacent green/cyan tile couples scattered
+  through an otherwise neutral field, exactly matching the construction.
+- GRAMMAR: BEZIER_CURVE, root Xi, every leaf colored by its own
+  categoryID via a golden-ratio hue step (9 distinct hues, LICHTENBERG's
+  STORM-mode technique reused for a different purpose) — verified via a
+  category histogram (Node script) that all 9 categories appear with
+  meaningful counts (8 to 110 leaves each, not a degenerate 1-2-color
+  result) before committing to this as a mode; makes the substitution
+  grammar's own recursive internal structure visible directly, a concrete
+  realization of EINSTEIN's own backlog idea ("colour tiles by which
+  rule produced them"), adapted from 29 patch-rules to 9 categories.
+- HEXAGON: the IDENTICAL 9-category grammar, unmodified, run on a plain
+  6-vertex hexagon instead of a spectre (`useMystic:false`, matching the
+  reference's own createHexagons(), which doesn't special-case category
+  0 as a glued pair at all) — demonstrates directly, not just asserts,
+  that the recursion is agnostic to which physical shape occupies each
+  category slot; renders as a clean fractal-boundaried honeycomb patch.
+
+### Growth-rate and depth choice
+A leaf-count growth-rate script (same discipline as EINSTEIN's own
+per-metatile-family test) found this grammar grows ~7.9x per level
+uniformly across all 9 roots (faster than EINSTEIN's four hat-metatile
+families, ~6.85x for H) — with no integer depth landing in EINSTEIN's own
+~700-1200 target range (depth 2 gives 62-71, depth 3 gives 488-559, depth
+4 gives 3842-4401). Depth 3 was picked as the best available compromise
+(559 leaves for categories 1-8, 488 for Gamma/HEXAGON's category-0-as-leaf
+variant, both a comparable order of magnitude to EINSTEIN's range even if
+not an exact match) rather than forcing depth 4's ~4x-denser patch through
+Canvas2D bezier fills without first checking performance headroom.
+
+### Rendering: cached per-leaf screen matrices, not per-frame path rebuilds
+Each of the 3 leaf shapes (spectre-bezier, spectre-line, hexagon) is built
+into ONE shared Path2D in local tile space, once, via a faithful
+transliteration of the reference's own alternating-reversed-edge
+EdgeShape.generatePath logic (verified separately via a Node continuity
+trace: the traced boundary visits all 14/6 actual vertices in order with
+zero closure error before this logic was trusted inside the real
+renderer). Per leaf, only a single combined local-to-screen DOMMatrix-
+equivalent is cached once per mode-build/resize (view pan/zoom composed
+with the leaf's own placement matrix); the render loop calls
+ctx.setTransform with that cached matrix and fills/strokes the ONE shared
+Path2D directly — no per-frame Path2D allocation or matrix recomputation,
+the same "cache once per mode-build, only reveal-alpha/pulse are
+time-dependent" discipline EINSTEIN, SOFTCELL and ATTRACTOR all
+established for their own per-frame economy. Stroke width is compensated
+by 1/pxScale before the transform so it reads as a constant screen pixel
+regardless of the view's own zoom level.
+
+### Verification
+Headless Playwright/Chromium confirmed all 5 modes build with the exact
+leaf counts/handedness the Node scripts predicted (559/559/488/559/496,
+handedness unanimous in every case, matching the verified parity fact),
+39-47fps fully revealed, zero console/page errors, correct behavior at a
+390x844 mobile portrait viewport (UI wraps to a stacked readable column,
+tiling fits and centers correctly), the click/touch ripple firing
+correctly, and clean re-initialization (fitView + cached screen matrices
+recomputed, leaf count unchanged) across a live resize mid-animation on
+both desktop and phone viewports.
+
+### Left honest, not built
+The paper's own hand-picked "only 2 special edges curve, the other 12
+stay straight" construction is not implemented — this piece uses the
+ported reference's own "all 14 edges curve via one shared alternating
+template" convention instead (flagged above and in-file). A genuine
+non-recursive PERIODIC tiling by mirrored straight-edge Mystic pairs
+(the actual reason "weakly chiral" matters — Tile(1,1) with straight
+edges can ALSO be tiled boringly and periodically if reflections are
+allowed, which the curved edge specifically forecloses) was considered
+as a 6th mode but not built this session, since it needs a genuinely
+different, non-substitution lattice construction rather than a parameter
+change to the existing grammar — a concrete, well-scoped backlog item
+below rather than an approximated stand-in.
 
 ---
 
@@ -1722,6 +1887,43 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-12 — Session 15
+- Added SPECTRE: the chiral aperiodic monotile (Smith, Myers, Kaplan &
+  Goodman-Strauss, "A chiral aperiodic monotile," arXiv:2305.17743, May
+  2023) — the same team's own follow-up to EINSTEIN's hat tile, and the
+  paper's stronger result: bending the tile's edges into a matching
+  asymmetric curve makes reflected copies physically unable to edge-match
+  unreflected ones, so every valid tiling is single-handed with nothing
+  to exclude by convention ("strictly chiral" vs the hat's "weakly
+  chiral"). Ported the 14-vertex tile, 9-category substitution grammar,
+  and alternating bezier edge template from kerupani129s'
+  spectre-monotile-js (MIT), attributed in-file, rather than re-deriving
+  2023 research geometry from scratch — same discipline EINSTEIN used for
+  hatviz. Verified two facts computationally before writing canvas code:
+  (1) every leaf's placement-matrix determinant sign is unanimous across
+  an entire tiling (all leaves the same sign, purely a function of
+  recursion-depth parity, never split), confirmed via a standalone Node
+  port of the grammar math; (2) the straight LINE edge template is
+  trivially self-mirror-symmetric while the curved BEZIER template is
+  not, which is the actual geometric mechanism forcing single-handedness.
+  See "Piece 15" above for the five modes (SPECTRE/TURTLE/MYSTIC/GRAMMAR/
+  HEXAGON), the silhouette surprise that led to GRAMMAR mode, and the
+  cached-screen-matrix rendering approach.
+- Verified all 5 modes' exact leaf counts and handedness census against
+  the Node scripts' predictions, 39-47fps fully revealed, zero console
+  errors, a 390x844 mobile portrait viewport, click/touch ripple
+  interaction, and clean resize mid-animation, via headless Playwright/
+  Chromium screenshots forcing direct mode jumps through the page's own
+  top-level bindings.
+- Inspiration: web research this session picked up directly where
+  EINSTEIN's own "left honest, not built" backlog note left off (the
+  spectre tile's own May 2023 follow-up paper, explicitly flagged there
+  as needing its own edge-geometry construction rather than a parameter
+  tweak) — continuing the established practice of building a flagged
+  backlog item next time it's on the table rather than re-researching a
+  fresh topic from zero every session, the same reasoning LICHTENBERG
+  followed after being passed over twice.
+
 ### 2026-07-11 — Session 14
 - Added EINSTEIN: the first aperiodic monotile ("the hat" — Smith, Myers,
   Kaplan & Goodman-Strauss, arXiv 2303.10798, 2023). Renders the paper's
@@ -2387,12 +2589,11 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 - [x] A piece built on combinatorial substitution/inflation rather than a
       mesh, field, or agent population — done in EINSTEIN (session 14),
       the aperiodic hat monotile's own recursive metatile construction
-- [ ] EINSTEIN: the "spectre" tile (Smith/Myers/Kaplan/Goodman-Strauss's
-      own May 2023 follow-up) — a chiral variant needing NO reflected
-      copies at all, the still-stronger discovery this session's hat-only
-      build deliberately left out; needs its own edge geometry (two of
-      the hat's straight edges become a matching "S" curve) rather than
-      a parameter tweak of hat_outline
+- [x] EINSTEIN: the "spectre" tile (Smith/Myers/Kaplan/Goodman-Strauss's
+      own May 2023 follow-up) — done in SPECTRE (session 15), a chiral
+      variant needing NO reflected copies at all, ported from a different
+      reference implementation (kerupani129s/spectre-monotile-js) than
+      hatviz since the two papers' own reference code differs
 - [ ] EINSTEIN: the continuous Tile(a,b) family the original paper proves
       shares this exact same combinatorial substitution system across a
       whole one-parameter continuum of edge-length ratios (the Hat is
@@ -2411,3 +2612,26 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       produced them (rather than only by label/chirality), which would
       make the substitution table's own internal structure visible
       rather than only its output
+- [ ] SPECTRE: a genuine non-recursive PERIODIC mode — mirrored
+      straight-edge Mystic pairs tiled by plain lattice translation (the
+      actual reason "weakly chiral" matters: Tile(1,1) with straight
+      edges can ALSO be tiled boringly and periodically if reflections
+      are allowed, which curving the edge specifically forecloses) —
+      considered this session but needs its own non-substitution lattice
+      construction, not a parameter change to the existing grammar; left
+      as a well-scoped backlog item rather than an approximated stand-in
+- [ ] SPECTRE: the paper's own hand-picked "only 2 of 14 edges curve, the
+      rest stay straight" construction, replacing the ported reference's
+      "all 14 edges curve via one shared alternating template" convention
+      used this session — would need working from the paper's own
+      figures rather than the reference implementation's own (equally
+      valid, but different) choice
+- [ ] SPECTRE: an interactive recursion-depth slider, echoing the same
+      "let a visitor walk the parameter themselves" idea flagged for
+      ISING's temperature, LICHTENBERG's eta, ATTRACTOR's (a,b,c,d),
+      SOFTCELL's softness t, and EINSTEIN's own still-open version of
+      this same idea
+- [ ] SPECTRE: the continuous Tile(a,b) family this grammar likely
+      generalizes across (per EINSTEIN's own still-open backlog note
+      about the hat's matching one-parameter continuum) — not attempted
+      this session, out of scope after the reference-porting research

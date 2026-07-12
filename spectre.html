@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPECTRE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="ui">
+  <span id="modeName">SPECTRE</span>
+  <span id="desc">STRICTLY CHIRAL · DEPTH 3 · HANDEDNESS UNANIMOUS</span>
+</div>
+<script>
+/*  SPECTRE — the chiral aperiodic monotile (Smith, Myers, Kaplan &
+ *  Goodman-Strauss, "A chiral aperiodic monotile," arXiv:2305.17743, May
+ *  2023). This is the same team's own follow-up to the "hat" tile
+ *  EINSTEIN renders elsewhere in this gallery, and a genuinely STRONGER
+ *  result: where the hat's aperiodic tilings are only valid because
+ *  reflected copies are mixed in with unreflected ones (EINSTEIN's own
+ *  live MIRRORED readout measures that forced ~12.7%), the spectre family
+ *  is "strictly chiral" — bending the tile's straight edges into a
+ *  matching asymmetric curve makes a reflected copy of the tile
+ *  physically unable to edge-match an unreflected neighbour at all, so
+ *  every valid tiling uses exactly one handedness, full stop, with
+ *  nothing to exclude by convention.
+ *
+ *  Reference implementation ported: the tile's 14-vertex polygon, the
+ *  9-category substitution grammar (an 8-slot child-placement/rotation
+ *  table plus a 9x8 child-category lookup), and the alternating-direction
+ *  bezier edge template are ported from kerupani129s' own
+ *  spectre-monotile-js (github.com/kerupani129s/spectre-monotile-js, MIT
+ *  License, (c) 2025) rather than re-derived from the paper's proof from
+ *  scratch — the same "port a citable published algorithm" choice
+ *  EINSTEIN made for hatviz, QUASICRYSTAL/ISING/LICHTENBERG made for their
+ *  own source models. One honest divergence from the paper's own
+ *  description flagged here: the ported reference curves all 14 edges via
+ *  one shared alternating template rather than the paper's hand-picked 2
+ *  special edges — a legitimate alternative construction of the same
+ *  combinatorial grammar, kept as the reference implements it rather than
+ *  re-derived.
+ *
+ *    MIT License. Copyright (c) 2025 kerupani129s. Permission is hereby
+ *    granted, free of charge, to any person obtaining a copy of this
+ *    software to deal in the Software without restriction, subject to
+ *    including the above copyright notice. THE SOFTWARE IS PROVIDED "AS
+ *    IS", WITHOUT WARRANTY OF ANY KIND. (Condensed; full text in the
+ *    spectre-monotile-js repository.)
+ *
+ *  Two facts this session verified computationally before writing any
+ *  canvas code (a standalone Node port of the matrix/grammar math, plus a
+ *  separate curve-continuity trace), rather than assuming them from the
+ *  paper's own prose:
+ *   1. Handedness census. Every leaf tile's accumulated placement matrix
+ *      carries a determinant sign; walking the grammar shows this sign is
+ *      IDENTICAL for every leaf at a given recursion depth (all positive
+ *      at even depths, all negative at odd depths — one shared FLIPPING
+ *      factor is applied uniformly per level, so depth parity alone
+ *      decides the sign, never a per-branch mix). Handedness is always
+ *      UNANIMOUS, never split — the live readout below reports the real
+ *      census, not a hardcoded 0%.
+ *   2. Edge self-mirror check. Sampling the straight LINE edge template
+ *      against its own mirror image gives zero difference (a line segment
+ *      is trivially its own reflection); sampling the curved BEZIER
+ *      template against its mirror gives a real, nonzero difference (the
+ *      bulge flips to the wrong side) — so a mirrored spectre's boundary
+ *      genuinely cannot coincide with an unmirrored neighbour's edge.
+ *      TURTLE mode (straight edges) could in principle also be tiled with
+ *      mixed reflections; SPECTRE mode (curved edges) cannot, by this
+ *      geometric fact alone, independent of any rule about it.
+ *
+ *  The same 9-category grammar is agnostic to what physical shape
+ *  occupies each category slot — HEXAGON mode below runs the identical
+ *  substitution table on a plain hexagon instead of a spectre, unchanged,
+ *  to make that point directly rather than only asserting it.
+ *
+ *  This is not a growth simulation — the tiling is a fixed combinatorial
+ *  object, nothing here integrates a force or relaxes a field. Each mode
+ *  reveals its already-built tiling outward from its own centroid over
+ *  ~16s (an honest "watch the recursion assemble" pacing choice, the same
+ *  one EINSTEIN uses), holds, then cross-fades onward. Click/touch drops
+ *  a transient brightness pulse into the tiling.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+
+/* ── minimal 2D affine matrix (CSS/DOMMatrix convention: x'=ax+cy+e, y'=bx+dy+f) ── */
+
+class Mat {
+  constructor(a=1,b=0,c=0,d=1,e=0,f=0){ this.a=a;this.b=b;this.c=c;this.d=d;this.e=e;this.f=f; }
+  static get IDENTITY(){ return new Mat(); }
+  static get FLIPPING(){ return new Mat(0,1,1,0,0,0); }
+  multiply(o){
+    return new Mat(
+      this.a*o.a + this.c*o.b,  this.b*o.a + this.d*o.b,
+      this.a*o.c + this.c*o.d,  this.b*o.c + this.d*o.d,
+      this.a*o.e + this.c*o.f + this.e,  this.b*o.e + this.d*o.f + this.f,
+    );
+  }
+  rotate(deg){
+    const r = deg*Math.PI/180;
+    return this.multiply(new Mat(Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0));
+  }
+  translate(x,y){ return this.multiply(new Mat(1,0,0,1,x,y)); }
+  transformPoint(p){ return { x: this.a*p.x + this.c*p.y + this.e, y: this.b*p.x + this.d*p.y + this.f }; }
+  get det(){ return this.a*this.d - this.b*this.c; }
+}
+const EDGE_REVERSING = new Mat(-1,0,0,-1,1,0);
+
+/* ── ported tile geometry (see attribution above) ─────────────────────────── */
+
+const S3 = Math.sqrt(3);
+const SPECTRE_POINTS = [
+  {x:0,y:0}, {x:1,y:0}, {x:1.5,y:-S3/2}, {x:1.5+S3/2,y:0.5-S3/2},
+  {x:1.5+S3/2,y:1.5-S3/2}, {x:2.5+S3/2,y:1.5-S3/2}, {x:3+S3/2,y:1.5}, {x:3,y:2},
+  {x:3-S3/2,y:1.5}, {x:2.5-S3/2,y:1.5+S3/2}, {x:1.5-S3/2,y:1.5+S3/2},
+  {x:0.5-S3/2,y:1.5+S3/2}, {x:-S3/2,y:1.5}, {x:0,y:1},
+];
+const SPECTRE_KEY_IDX = [3,5,7,11];
+
+const HEXAGON_POINTS = [
+  {x:0,y:0}, {x:1,y:0}, {x:1.5,y:S3/2}, {x:1,y:S3}, {x:0,y:S3}, {x:-0.5,y:S3/2},
+];
+const HEXAGON_KEY_IDX = [1,2,3,5];
+
+// edge templates: a straight LINE segment, and a cubic-bezier "S" bulge,
+// both spanning local (0,0) -> (1,0)
+const LINE_TEMPLATE = { segments: [{type:'line', start:{x:0,y:0}, end:{x:1,y:0}}], lastPoint:{x:1,y:0} };
+const BEZIER_TEMPLATE = { segments: [{type:'bezier', start:{x:0,y:0}, cp1:{x:1/3,y:0.5}, cp2:{x:2/3,y:0.5}, end:{x:1,y:0}}], lastPoint:{x:1,y:0} };
+
+// builds a closed Path2D through `points`, connecting consecutive vertices
+// with `template`'s edge shape, alternating its direction per edge (the
+// mechanism that makes the curved template break reflective self-symmetry
+// — verified against a standalone continuity trace before use here)
+function buildTilePath(points, template) {
+  const path = new Path2D();
+  path.moveTo(points[0].x, points[0].y);
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const start = points[i], end = points[(i+1) % n];
+    const reversed = (i % 2 === 0);
+    const ang = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+    let m = Mat.IDENTITY.translate(start.x, start.y).rotate(ang);
+    if (reversed) m = m.multiply(EDGE_REVERSING);
+
+    if (reversed) {
+      const lp = m.transformPoint(template.lastPoint);
+      path.lineTo(lp.x, lp.y);
+    }
+    const segs = reversed ? [...template.segments].reverse() : template.segments;
+    for (const seg of segs) {
+      if (seg.type === 'line') {
+        const p = m.transformPoint(reversed ? seg.start : seg.end);
+        path.lineTo(p.x, p.y);
+      } else {
+        const [c1, c2, e] = reversed ? [seg.cp2, seg.cp1, seg.start] : [seg.cp1, seg.cp2, seg.end];
+        const p1 = m.transformPoint(c1), p2 = m.transformPoint(c2), pe = m.transformPoint(e);
+        path.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, pe.x, pe.y);
+      }
+    }
+    if (!reversed) path.lineTo(end.x, end.y);
+  }
+  path.closePath();
+  return path;
+}
+
+/* ── the 9-category substitution grammar (shape-agnostic: only cares about
+ * each tile's 4 "key points", not its physical outline) ─────────────────── */
+
+const CATEGORY_COUNT = 9;
+const RULES_CHILD_MATRIX = [
+  { shared:[3,0], angle:0 }, { shared:[0,3], angle:-120 }, { shared:[1,2], angle:-60 },
+  { shared:[0,3], angle:-60 }, { shared:[1,3], angle:0 }, { shared:[1,2], angle:60 },
+  { shared:[0,3], angle:60 }, { shared:[1,3], angle:120 },
+];
+const RULES_CHILD_CATEGORY = [
+  [0,5,1,-1,2,6,4,7], [0,4,1,4,7,6,5,7], [0,8,1,5,7,6,5,7], [0,8,1,4,7,6,5,7],
+  [0,8,1,5,7,6,8,7], [0,8,1,4,7,6,8,7], [0,4,1,4,7,6,5,3], [0,8,1,8,7,6,5,7], [0,8,1,8,7,6,8,7],
+];
+const RULES_KEY_POINT = [
+  { childIndex:7, keyPointIndex:2 }, { childIndex:6, keyPointIndex:1 },
+  { childIndex:4, keyPointIndex:2 }, { childIndex:1, keyPointIndex:1 },
+];
+
+function generateChildMatrices(keyPoints) {
+  const rules = RULES_CHILD_MATRIX.map(({shared,angle}) => ({
+    matrixRotation: Mat.IDENTITY.rotate(angle),
+    sharedKeyPoints: shared.map(i => keyPoints[i]),
+  }));
+  const { matrixRotation: mr0, sharedKeyPoints: skp0 } = rules[0];
+  let matrices = [Mat.FLIPPING.multiply(mr0)];
+  let point = mr0.transformPoint(skp0[1]);
+  for (let i = 1; i < rules.length; i++) {
+    const { matrixRotation, sharedKeyPoints } = rules[i];
+    const sharedRotated = matrixRotation.transformPoint(sharedKeyPoints[0]);
+    const matrixTranslation = Mat.IDENTITY.translate(point.x - sharedRotated.x, point.y - sharedRotated.y);
+    const matrixBase = matrixTranslation.multiply(matrixRotation);
+    matrices.push(Mat.FLIPPING.multiply(matrixBase));
+    point = matrixBase.transformPoint(sharedKeyPoints[1]);
+  }
+  return matrices;
+}
+function generateKeyPoints(keyPoints, matricesChild) {
+  return RULES_KEY_POINT.map(({childIndex,keyPointIndex}) => matricesChild[childIndex].transformPoint(keyPoints[keyPointIndex]));
+}
+
+// base (level-0) tiling: category 0 is a "Mystic" pair of two real tiles
+// glued via pure rotation (categoryID 9/10); categories 1-8 are plain
+// leaf tiles. `useMystic=false` (HEXAGON mode) makes category 0 a plain
+// leaf too, matching the reference's own createHexagons().
+function baseTiling(keyPoints, originPt, secondPt, useMystic) {
+  const tiles = new Array(CATEGORY_COUNT);
+  tiles[0] = useMystic ? { kind:'mystic', children: [
+    { categoryID:9,  matrix: Mat.IDENTITY.translate(originPt.x, originPt.y).rotate(0) },
+    { categoryID:10, matrix: Mat.IDENTITY.translate(secondPt.x, secondPt.y).rotate(30) },
+  ]} : { kind:'leaf', categoryID:0 };
+  for (let c = 1; c < CATEGORY_COUNT; c++) tiles[c] = { kind:'leaf', categoryID:c };
+  return { keyPoints, tiles };
+}
+function substitute(tiling) {
+  const matricesChild = generateChildMatrices(tiling.keyPoints);
+  const keyPoints = generateKeyPoints(tiling.keyPoints, matricesChild);
+  const tiles = new Array(CATEGORY_COUNT);
+  for (let categoryID = 0; categoryID < CATEGORY_COUNT; categoryID++) {
+    const children = [];
+    RULES_CHILD_CATEGORY[categoryID].forEach((childCat, slot) => {
+      if (childCat < 0) return;
+      children.push({ tile: tiling.tiles[childCat], matrix: matricesChild[slot] });
+    });
+    tiles[categoryID] = { kind:'super', children };
+  }
+  return { keyPoints, tiles };
+}
+// flattens a (possibly Mystic-containing) tile tree into leaf placements
+function gatherLeaves(tile, matrix, out) {
+  if (tile.kind === 'mystic') {
+    for (const c of tile.children) gatherLeaves({kind:'leaf', categoryID:c.categoryID}, matrix.multiply(c.matrix), out);
+  } else if (tile.kind === 'leaf') {
+    out.push({ matrix, categoryID: tile.categoryID });
+  } else {
+    for (const c of tile.children) gatherLeaves(c.tile, matrix.multiply(c.matrix), out);
+  }
+}
+
+function buildTiling(rootCategoryID, depth, tilePoints, keyIdx, useMystic) {
+  const keyPoints = keyIdx.map(i => tilePoints[i]);
+  let tiling = baseTiling(keyPoints, tilePoints[0], tilePoints[useMystic ? 8 : 0], useMystic);
+  for (let i = 0; i < depth; i++) tiling = substitute(tiling);
+  const out = [];
+  gatherLeaves(tiling.tiles[rootCategoryID], Mat.IDENTITY, out);
+  return out;
+}
+
+const SPECTRE_PATH_BEZIER = buildTilePath(SPECTRE_POINTS, BEZIER_TEMPLATE);
+const SPECTRE_PATH_LINE   = buildTilePath(SPECTRE_POINTS, LINE_TEMPLATE);
+const HEXAGON_PATH        = buildTilePath(HEXAGON_POINTS, LINE_TEMPLATE);
+
+/* ── canvas + view ────────────────────────────────────────────────────────── */
+
+let W, H, cx, cy;
+function resize() {
+  W = canvas.width  = Math.round(window.innerWidth  * Math.min(2, window.devicePixelRatio || 1));
+  H = canvas.height = Math.round(window.innerHeight * Math.min(2, window.devicePixelRatio || 1));
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  cx = W / 2; cy = H / 2;
+  fitView();
+  cacheScreenMatrices();
+}
+window.addEventListener('resize', resize);
+
+/* ── modes ────────────────────────────────────────────────────────────────── */
+// depth picked empirically (see the growth-rate/leaf-count Node script run
+// before writing this file): the grammar grows ~7.9x per level regardless
+// of root (faster than EINSTEIN's four hat-metatile families, ~6.85x for
+// H) — depth 3 lands root 1-8 at 559 leaves, root 0 (Gamma, one fewer
+// child slot than the rest) at 488, both a comparable density to
+// EINSTEIN's own ~700-1200 hat range
+const MODES = [
+  { name:'SPECTRE', desc:'STRICTLY CHIRAL · BEZIER EDGE', path:SPECTRE_PATH_BEZIER, points:SPECTRE_POINTS,
+    keyIdx:SPECTRE_KEY_IDX, useMystic:true, root:1, depth:3, hue:190, style:'uniform' },
+  { name:'TURTLE', desc:'TILE(1,1) STRAIGHT EDGE · SAME GRAMMAR', path:SPECTRE_PATH_LINE, points:SPECTRE_POINTS,
+    keyIdx:SPECTRE_KEY_IDX, useMystic:true, root:1, depth:3, hue:262, style:'uniform' },
+  { name:'MYSTIC', desc:'Γ-ROOT · BASE MYSTIC PAIR HIGHLIGHTED', path:SPECTRE_PATH_BEZIER, points:SPECTRE_POINTS,
+    keyIdx:SPECTRE_KEY_IDX, useMystic:true, root:0, depth:3, hue:150, style:'mystic' },
+  { name:'GRAMMAR', desc:'COLOURED BY SUBSTITUTION CATEGORY', path:SPECTRE_PATH_BEZIER, points:SPECTRE_POINTS,
+    keyIdx:SPECTRE_KEY_IDX, useMystic:true, root:4, depth:3, hue:0, style:'category' },
+  { name:'HEXAGON', desc:'SAME 9-CATEGORY GRAMMAR · PLAIN HEXAGON', path:HEXAGON_PATH, points:HEXAGON_POINTS,
+    keyIdx:HEXAGON_KEY_IDX, useMystic:false, root:1, depth:3, hue:34, style:'uniform' },
+];
+const MODE_HOLD_MS = 32000;
+const GROW_MS = 16000;
+const FADE_MS = 1200;
+
+let modeIdx = 0, modeStart = performance.now();
+let leaves = [];
+let simMinX, simMaxX, simMinY, simMaxY;
+let negCount = 0, unanimous = true;
+let ripples = [];
+let pxScale = 40, viewCX = 0, viewCY = 0;
+
+function buildMode(idx) {
+  const m = MODES[idx];
+  leaves = buildTiling(m.root, m.depth, m.points, m.keyIdx, m.useMystic);
+
+  const signs = new Set();
+  simMinX = simMinY = Infinity; simMaxX = simMaxY = -Infinity;
+  for (const l of leaves) {
+    signs.add(l.matrix.det < 0 ? -1 : 1);
+    let px = 0, py = 0;
+    l.worldPts = m.points.map(p => l.matrix.transformPoint(p));
+    for (const p of l.worldPts) {
+      px += p.x; py += p.y;
+      simMinX = Math.min(simMinX, p.x); simMaxX = Math.max(simMaxX, p.x);
+      simMinY = Math.min(simMinY, p.y); simMaxY = Math.max(simMaxY, p.y);
+    }
+    l.cx = px / l.worldPts.length; l.cy = py / l.worldPts.length;
+  }
+  negCount = leaves.filter(l => l.matrix.det < 0).length;
+  unanimous = signs.size <= 1;
+
+  const cenX = (simMinX+simMaxX)/2, cenY = (simMinY+simMaxY)/2;
+  for (const l of leaves) l.dist = Math.hypot(l.cx-cenX, l.cy-cenY);
+  const maxDist = leaves.reduce((mx,l) => Math.max(mx,l.dist), 1);
+  for (const l of leaves) l.revealAt = GROW_MS * (l.dist / maxDist);
+
+  modeNameEl.textContent = m.name;
+  fitView();
+  cacheScreenMatrices();
+  ripples = [];
+}
+
+function fitView() {
+  const w = Math.max(1e-6, simMaxX - simMinX), h = Math.max(1e-6, simMaxY - simMinY);
+  const cenX = (simMinX+simMaxX)/2, cenY = (simMinY+simMaxY)/2;
+  pxScale = Math.min(W / w, H / h) * 0.90;
+  viewCX = cenX; viewCY = cenY;
+}
+// cache each leaf's local-tile-space -> screen-pixel-space matrix once per
+// mode-build/resize (only pxScale/viewCX/viewCY/leaf placement change it;
+// per-frame drawing only needs a cheap ctx.setTransform with this)
+function cacheScreenMatrices() {
+  const view = Mat.IDENTITY.translate(cx, cy).multiply(new Mat(pxScale,0,0,pxScale,0,0)).translate(-viewCX, -viewCY);
+  for (const l of leaves) l.screenMatrix = view.multiply(l.matrix);
+}
+
+resize();
+buildMode(0);
+
+/* ── palette ──────────────────────────────────────────────────────────────── */
+
+const GOLDEN = 137.50776;
+function tileColor(mode, leaf) {
+  if (mode.style === 'mystic') {
+    if (leaf.categoryID === 9) return { fill:'#7ce8a0', accent:true };
+    if (leaf.categoryID === 10) return { fill:'#78d6ff', accent:true };
+    return { fill:`hsl(${mode.hue},22%,30%)`, accent:false };
+  }
+  if (mode.style === 'category') {
+    const hue = (leaf.categoryID * GOLDEN) % 360;
+    return { fill:`hsl(${hue},55%,46%)`, accent:false };
+  }
+  return { fill:`hsl(${mode.hue},34%,40%)`, accent:false };
+}
+
+/* ── render ───────────────────────────────────────────────────────────────── */
+
+function draw(now) {
+  const m = MODES[modeIdx];
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = '#050507';
+  ctx.fillRect(0, 0, W, H);
+
+  const elapsed = now - modeStart;
+  const fadeIn = Math.min(1, elapsed / FADE_MS);
+  const holdRemain = MODE_HOLD_MS - elapsed;
+  const fadeOut = holdRemain < FADE_MS ? Math.max(0, holdRemain / FADE_MS) : 1;
+  const globalAlpha = Math.min(fadeIn, fadeOut);
+
+  const pulseW = 2 * Math.PI / 5200;
+  const activeRipples = ripples.filter(r => now - r.t0 < 2200);
+  ripples = activeRipples;
+
+  const strokeW = 1 / pxScale;
+  for (const l of leaves) {
+    if (elapsed < l.revealAt) continue;
+    const revealFrac = Math.min(1, (elapsed - l.revealAt) / 700);
+
+    let pulse = 0.94 + 0.06 * Math.sin(now * pulseW - l.dist * 0.05);
+    for (const r of activeRipples) {
+      const age = (now - r.t0) / 1000;
+      const d = Math.hypot(l.cx - r.simX, l.cy - r.simY);
+      pulse += Math.exp(-d * 0.09) * Math.exp(-age * 2.0) * 1.4;
+    }
+    const flash = Math.max(0, pulse - 1) * 0.5;
+
+    const col = tileColor(m, l);
+    ctx.save();
+    ctx.setTransform(l.screenMatrix.a, l.screenMatrix.b, l.screenMatrix.c, l.screenMatrix.d, l.screenMatrix.e, l.screenMatrix.f);
+    ctx.globalAlpha = globalAlpha * revealFrac;
+    ctx.fillStyle = col.fill;
+    ctx.filter = flash > 0.01 ? `brightness(${1 + flash})` : 'none';
+    ctx.fill(m.path);
+    ctx.filter = 'none';
+    ctx.lineWidth = strokeW * (col.accent ? 1.6 : 1);
+    ctx.strokeStyle = col.accent ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.5)';
+    ctx.stroke(m.path);
+    ctx.restore();
+  }
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 1;
+
+  const handed = unanimous ? 'UNANIMOUS' : 'MIXED';
+  descEl.textContent = `${m.desc} · DEPTH ${m.depth} · ${leaves.length} TILES · HANDEDNESS ${handed} (${negCount}/${leaves.length})`;
+}
+
+/* ── schedule + interaction ──────────────────────────────────────────────── */
+
+function advanceSchedule(now) {
+  if (now - modeStart > MODE_HOLD_MS) {
+    modeIdx = (modeIdx + 1) % MODES.length;
+    modeStart = now;
+    buildMode(modeIdx);
+  }
+}
+
+function loop(now) {
+  advanceSchedule(now);
+  draw(now);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function toPx(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return [(clientX - rect.left) * (canvas.width / rect.width), (clientY - rect.top) * (canvas.height / rect.height)];
+}
+function onPointerDown(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  const [px, py] = toPx(x, y);
+  ripples.push({ simX: viewCX + (px - cx) / pxScale, simY: viewCY + (py - cy) / pxScale, t0: performance.now() });
+}
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+</script>
+</body>
+</html>
