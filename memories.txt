@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-spectre.html     — SPECTRE piece (new)
+flame.html       — FLAME piece (new)
+spectre.html     — SPECTRE piece
 membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
 excitable.html   — EXCITABLE piece
@@ -22,6 +23,161 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 16: FLAME — Iterated Function Systems & Structural Colour (2026-07-13)
+Barnsley's "chaos game" (Fractals Everywhere, 1988) and Draves' fractal
+flame algorithm (his own renderer dates to 1992; the algorithm itself is
+documented in Draves & Reckase, "The Fractal Flame Algorithm," flam3
+project, c.2003). Picks up a genuinely different register from ATTRACTOR
+(session 12): that piece iterates ONE fixed map per mode with zero coupling
+between points; this piece's chaos game randomly picks among several
+affine maps EVERY step, and follows each with one of Draves' nonlinear
+"variation" functions (sinusoidal, swirl, horseshoe, polar, heart, disc,
+spiral, julia) rather than staying purely linear. The two other defining
+ideas from Draves' paper — log-density tone mapping instead of linear/
+binary, and colouring each sample by which xform produced it rather than
+by density alone ("structural colour") — are both implemented directly.
+
+### Architecture: PHYSARUM's own technique, repurposed for a literal random walk
+65536 chaos-game points live in a ping-ponged float texture (position.xy,
+running colour-coordinate.z). A fragment shader advances every point one
+step per frame: hash the point's own texcoord+frame into a weighted xform
+choice, apply that xform's affine map then its variation, and blend the
+colour coordinate halfway toward the chosen xform's own colour (Draves'
+own update rule, c' = (c+c_xform)/2). Updated positions are then splat as
+gl.POINTS with additive blending into a second float texture that decays a
+little every frame — a leaky integrator standing in for "run millions of
+samples before rendering," but live and continuously self-normalizing
+instead of one finished long-exposure frame. Same vertex-texture-fetch +
+point-splat-with-blending combination PHYSARUM introduced for pheromone
+deposits, applied here to a random walk instead of a sensed one.
+
+### A real bug caught only by looking at the actual image, not the console
+The very first render showed particles frozen at 3 isolated points instead
+of playing the chaos game at all. Root cause: the per-particle random
+choice was `hash(uv, uFrame)`, and `uFrame` increments by exactly `1.0`
+every frame — in exact arithmetic `fract(A + integer) === fract(A)`
+IDENTICALLY, so the "random" seed never actually varied per particle, ever.
+Every particle deterministically picked the same xform forever, so each
+converged to that xform's own fixed point instead of hopping between all
+of them — the nested-nearly-static-squares pattern this produces (each
+particle tracing its own single map's contraction toward one point) looked
+enough like real structure to be non-obvious from a single screenshot; it
+only gave itself away by SIERPINSKI mode failing to form a triangle at
+all. Fixed inside the shared hash() itself — `seed = mod(seed,9973.0) *
+0.61803398875` before use — rather than at each of the ~6 call sites, which
+also folds in ISING's own documented "seed grows unboundedly over a long
+session, float32 precision degrades" fix for free, since the mod now
+bounds every seed before it's ever used regardless of how large uFrame
+gets over a long-running page.
+
+### Burn-in, borrowed directly from LICHTENBERG's preRelax()
+Every point starts at a uniform-random position — nowhere near any
+attractor. Depositing from frame zero splats that transient convergence
+trail across the whole domain, and it decays slowly enough (favoring a
+living, breathing accumulation over a fast-reset one) to stay visible for
+many seconds. Fixed exactly the way LICHTENBERG fixed an analogous
+problem: 50 chaos-game steps run synchronously, off-screen, at every
+mode-entry, before the render loop deposits a single point.
+
+### Xform design verified offline before touching the shader
+Three of five curated xform sets, tuned by intuition alone, produced
+degenerate results only visible once rendered: SWIRL BLOOM collapsed to a
+sub-pixel blur (swirl alone is magnitude-preserving — a pure rotation by
+angle r², so with small translations every xform's own fixed point sits on
+top of the others near the origin); HORSESHOE SPIRAL piled ~13% of every
+sample run into a single histogram bin (all three xforms had near-zero
+translation, so absent the spiral branch's own 1/r singularity there was
+nothing to see); JULIA LACE converged to a mathematically perfect but
+visually inert 1D circle (two xforms that are both pure similarities —
+rotation + uniform scale — preserve angle exactly, so the "lace" collapsed
+to a plain ring, box-dimension measured at 1.02). All three traced back to
+the same root cause (fixed points too close together, or too little
+asymmetry to generate real 2D texture) and were diagnosed by porting the
+exact chaos-game math to a standalone Node script (flame_sim.js, same
+"verify computationally before writing canvas code" discipline EINSTEIN
+and SPECTRE used for their own grammar/matrix math) rather than iterating
+blindly through the browser: spreading each xform's fixed point onto its
+own ring fixed SWIRL BLOOM and HORSESHOE SPIRAL (SWIRL BLOOM's fix reused
+directly for HORSESHOE SPIRAL once the same diagnosis applied); adding
+non-uniform scale and shear to break the conformal symmetry turned JULIA
+LACE's circle into genuine woven fractal texture (offline-measured box-
+dimension 1.5, matching what the shipped shader itself later measured).
+HORSESHOE SPIRAL's spiral/horseshoe variations also needed their division-
+by-r floor raised from 1e-6 to 0.12, and the divergence-reseed bound raised
+from 6.0 to 25.0 — the tiny epsilon let points landing near the true origin
+blow up to r~30 and get treated as "escaped" and randomly reseeded, which
+replaced the variation's own real spike-and-return behaviour (a classic
+flame's feathery "spike" lines, an accepted feature of these variations,
+not a runaway) with constant teleport noise flooding the frame.
+
+### Five registers, one algorithm
+- SIERPINSKI: every xform's variation forced to LINEAR — the flame
+  algorithm's own nonlinear step switched off, which collapses it back to
+  exactly Barnsley's original 1988 chaos-game IFS. Live box-dimension
+  reads 1.60, matching the textbook Sierpinski value (log 3 / log 2 ≈
+  1.585) almost exactly — the one mode this session could check against a
+  known closed-form answer, and it did.
+- SWIRL BLOOM: four-fold swirl variation, translations spread onto their
+  own ring (see traps above) — reads as a genuine four-lobed pinwheel
+  bloom, D≈1.7.
+- HORSESHOE SPIRAL: horseshoe + spiral + sinusoidal, D≈1.9-2.0 — this
+  session's most honest result: the spiral variation's own 1/r singularity
+  keeps this parameter set chaotically mixing rather than settling into a
+  low-dimensional fractal, a legitimate contrast against SIERPINSKI's
+  clean textbook value rather than a flaw to keep chasing.
+- JULIA LACE: two julia-variation xforms with shear-broken symmetry, D≈1.5
+  — genuine interleaved woven-lace texture, not the plain circle the first
+  (pure-similarity) attempt produced.
+- HEART DISC BLOOM: heart + disc + sinusoidal, Draves' own warm-palette
+  register (this session's closest visual match to a "classic" flame
+  render) — four xforms, D≈1.9.
+Structural colouring (hue driven by the running colour-coordinate, not
+density) is visible directly as colour gradients ACROSS each fractal's own
+branches — most legible in SIERPINSKI, where the three xforms' colours
+(0.12/0.50/0.88) paint each recursive copy of the triangle in a
+blue-violet-magenta gradient that visibly repeats at every scale.
+
+### Live readout: box-counting dimension of the histogram itself
+Reuses LICHTENBERG's exact box-counting technique (threshold occupancy,
+cover with several box sizes, fit log-count vs log(1/size)), applied here
+to this piece's OWN accumulated visit-density histogram rather than a
+grown dielectric tree — distinct from ATTRACTOR's live Lyapunov exponent,
+which measures orbit divergence rather than the settled pattern's fractal
+geometry. Also tracks a ratcheting-up/slow-decaying observed peak density
+as the log tone-map's self-normalizing exposure, the same "normalize
+against the current peak, not a fixed guess" fix LICHTENBERG's phiMax
+already established for this gallery.
+
+### Interaction and verification
+Click/touch bursts ~10% of the population to the pointer position; because
+those points are deposited every frame WITHOUT their own burn-in (deliber­
+ately, unlike mode-entry), the accumulation buffer records their multi-
+frame convergence trail directly — a fading sequence of progressively
+smaller, progressively more numerous nested blobs tracing the IFS's own
+recursive construction outward from the click point before dissolving back
+into the attractor. Verified all 5 modes (screenshot + a direct
+gl.readPixels sanity check of particle radii, not just visual inspection,
+after the SWIRL BLOOM / HORSESHOE SPIRAL / JULIA LACE traps above),
+14-15fps under headless SwiftShader, zero console errors beyond the usual
+benign favicon 404, the click-burst-and-reconverge interaction on desktop
+mouse and a 390x844 mobile portrait viewport with real touch events, and
+clean letterboxed aspect handling (the accumulation histogram is a square
+buffer independent of window shape, sampled with an explicit
+contain-and-letterbox transform rather than stretched).
+
+### Inspiration
+Web research into 2026 generative-art/creative-coding surveys turned up
+nothing pointing past what this gallery already does in spirit; pivoting
+to "what's a genuinely different ALGORITHM, not just a different subject"
+landed on fractal flames specifically because Draves' own three
+innovations (nonlinear variations, log-density histogram, structural
+colour) are each a clean, checkable departure from ATTRACTOR's single-map
+orbit — probabilistic multi-map selection instead of one fixed map,
+accumulated-histogram tone-mapping instead of raw trajectory density, and
+colour-by-construction-path instead of colour-by-age/velocity.
 
 ---
 
@@ -1887,6 +2043,39 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-13 — Session 16
+- Added FLAME: iterated function systems and the fractal flame algorithm
+  (Barnsley's 1988 chaos game; Draves' 1992 flame algorithm, documented in
+  Draves & Reckase's "The Fractal Flame Algorithm," flam3 project). First
+  piece with probabilistic multi-map selection every step (a real "chaos
+  game" — ATTRACTOR's own strange attractors iterate one fixed map with no
+  branching at all) and the first with a log-density-tone-mapped histogram
+  plus structural colour-by-construction-path, rather than colour driven
+  by density, age, or velocity. See "Piece 16" above for the full
+  architecture, the frame-invariant-hash bug (a real, non-obvious defect:
+  `fract(A+integer)` is IDENTICAL to `fract(A)` in exact arithmetic, so the
+  original per-particle "random" xform choice never varied and every
+  particle silently converged to a single fixed point instead of playing
+  the chaos game), the burn-in fix borrowed directly from LICHTENBERG, and
+  three separate degenerate xform sets (SWIRL BLOOM, HORSESHOE SPIRAL,
+  JULIA LACE) diagnosed by porting the exact math to a standalone Node
+  script before touching the shader, the same discipline EINSTEIN and
+  SPECTRE used for their own grammar/matrix math.
+- Verified all 5 modes both visually and via a direct gl.readPixels
+  sanity check of particle radii (not visual inspection alone — this is
+  exactly how the SWIRL BLOOM/JULIA LACE degenerate cases were caught),
+  14-15fps under headless SwiftShader, zero console errors beyond the
+  usual benign favicon 404, the click/touch burst-and-reconverge
+  interaction on both desktop mouse and a 390x844 mobile portrait viewport
+  with real touch events, and letterboxed aspect handling across a resize.
+- Inspiration: web research into 2026 generative-art surveys didn't turn
+  up anything past what this gallery already covers in spirit; reframed
+  the search toward "a different ALGORITHM, not just a different subject"
+  and landed on fractal flames as a clean, checkable departure from
+  ATTRACTOR's own single-fixed-map orbit — the same "pick the genuinely
+  new architectural register" reasoning SANDPILE, ISING, and SWARMALATOR
+  each used for their own session's choice.
+
 ### 2026-07-12 — Session 15
 - Added SPECTRE: the chiral aperiodic monotile (Smith, Myers, Kaplan &
   Goodman-Strauss, "A chiral aperiodic monotile," arXiv:2305.17743, May
@@ -2635,3 +2824,42 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       generalizes across (per EINSTEIN's own still-open backlog note
       about the hat's matching one-parameter continuum) — not attempted
       this session, out of scope after the reference-porting research
+- [x] Iterated function systems / chaos-game fractals — done in FLAME
+      (session 16), generalized to Draves' full fractal-flame algorithm
+      (nonlinear variations + log-density histogram + structural colour)
+      rather than plain linear IFS
+- [ ] FLAME: an interactive xform editor (drag each xform's own fixed
+      point, live-reweight probabilities) instead of only the 5 curated
+      auto-cycled parameter sets — echoes the same "let a visitor walk the
+      parameter space themselves" idea flagged for ISING's temperature,
+      LICHTENBERG's eta, ATTRACTOR's (a,b,c,d), SOFTCELL's softness t,
+      EINSTEIN/SPECTRE's recursion depth
+- [ ] FLAME: a proper GPU parallel-reduction max (mip-chain or log-step
+      ping-pong) for the log-tone-map's self-normalizing peak density,
+      replacing this session's CPU gl.readPixels-and-scan every 15 frames
+      — would remove the one remaining per-frame CPU/GPU sync point and
+      scale past the current 384x384 accumulation resolution
+- [ ] FLAME: post-transforms (a second affine applied AFTER the variation,
+      per Draves' own full xform spec) — this session's xforms only use
+      the pre-affine + variation half, the simpler of the two; adding
+      post-transforms would unlock parameter sets that need the extra
+      degree of freedom (many published .flame files rely on both)
+- [ ] FLAME: blend multiple variations within a single xform by weight
+      (Draves' spec allows an xform to sum 2+ variations), rather than
+      this session's one-variation-per-xform simplification — would let
+      one branch's own output continuously morph between two variation
+      characters instead of only switching between branches
+- [ ] FLAME: a HORSESHOE SPIRAL follow-up that pushes the spiral
+      variation's share back up from this session's tuned-down 0.10
+      weight now that the r-floor (0.12) and reseed bound (25.0) fixes
+      exist — this session prioritized taming the singularity-driven
+      noise it caused at higher weight over exploring how far its
+      "feathery spike" character can go once properly bounded
+- [ ] FLAME: a 3D IFS / fractal-flame mode (post-transforms and
+      variations both generalize to 3 dimensions in Draves' own later
+      work), echoing the standing "3D reaction-diffusion"/"3D
+      Lichtenberg"/"3D attractor"/"3D soft-cell" backlog entries that
+      never got built in this gallery for performance reasons — worth
+      reconsidering here since, like a strange attractor or DBM growth, a
+      3D chaos-game orbit is a sparse point cloud rather than a dense
+      volumetric field

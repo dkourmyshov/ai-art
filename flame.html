@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FLAME — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+#order .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="orderLabel">D &asymp; </span><span class="val" id="orderVal">&mdash;</span>
+  <span class="sub" id="subVal">HISTOGRAM BOX-DIM</span>
+</div>
+<div id="ui">
+  <span id="modeName">SIERPINSKI</span>
+  <span id="desc">CHAOS GAME &middot; DEGENERATE FLAME</span>
+</div>
+<script>
+/*  FLAME — iterated function systems and the fractal flame algorithm
+ *
+ *  Barnsley's "chaos game" (Fractals Everywhere, 1988): pick one of a small
+ *  set of contractive affine maps at random, every step, forever, and the
+ *  visited points converge onto a fixed fractal attractor no matter where
+ *  you start — the IFS attractor IS the invariant measure of the random
+ *  process, not something drawn by any explicit rule. Draves & Reckase's
+ *  "The Fractal Flame Algorithm" (flam3, c.2003; Draves' own renderer dates
+ *  to 1992) generalizes this three ways: (1) each affine map is followed by
+ *  a NONLINEAR "variation" (swirl, horseshoe, polar, julia, ...) instead of
+ *  staying purely linear, so the attractor is no longer restricted to
+ *  self-affine copies of itself; (2) the output is a per-pixel HISTOGRAM of
+ *  visit counts (millions of samples), tone-mapped through a LOG, not a
+ *  linear or binary image — the reason real flame renders show soft glowing
+ *  filaments instead of hard silhouettes; (3) every point also carries a
+ *  running colour coordinate that is pulled halfway toward whichever xform
+ *  produced it each step (c' = (c+c_xform)/2), so colour encodes the
+ *  RECURSIVE STRUCTURE of which branch generated each region, independent
+ *  of density — "structural colouring."
+ *
+ *  This piece runs the chaos game continuously on the GPU: 65536 points
+ *  live in a ping-ponged float texture (position.xy, colour coordinate.z);
+ *  a fragment shader advances every point by one random xform+variation
+ *  step per frame (PHYSARUM's vertex-texture-fetch technique, reused for a
+ *  literal random walk instead of a sensed one). Updated positions are then
+ *  splat as gl.POINTS with additive blending into a second float texture
+ *  that decays a little each frame — a leaky integrator standing in for the
+ *  "run millions of samples before rendering" long exposure a real flame
+ *  render uses, but live and continuously re-normalized instead of a single
+ *  finished frame.
+ *
+ *  SIERPINSKI mode sets every xform's variation to LINEAR — the flame
+ *  algorithm's nonlinear step switched off — which collapses it back to
+ *  exactly Barnsley's own original chaos-game IFS, the classic Sierpinski
+ *  triangle. The other four modes turn nonlinearity back on with different
+ *  xform sets, each named for its dominant Draves variation.
+ */
+
+const VAR = { LINEAR:0, SIN:1, SPHERICAL:2, SWIRL:3, HORSESHOE:4, POLAR:5, HEART:6, DISC:7, SPIRAL:8, JULIA:9 };
+
+function X(angle, scale, tx, ty, varId, color, weight) {
+  return {
+    a: scale*Math.cos(angle), b: -scale*Math.sin(angle),
+    c: scale*Math.sin(angle), d:  scale*Math.cos(angle),
+    e: tx, f: ty, varId, color, weight: weight===undefined?1:weight,
+  };
+}
+
+// Rotation + non-uniform scale + shear — a pure similarity (X's uniform
+// scale+rotation) is angle-preserving, so two similarity xforms sharing a
+// variation converge onto a plain circular orbit (verified offline: JULIA
+// LACE's first attempt, both xforms pure similarities, measured box-dim
+// 1.02 — a 1D ring, not lace). Breaking the conformal symmetry here is what
+// actually produces 2D fractal texture instead of a smooth curve.
+function XM(angle, sx, sy, shear, tx, ty, varId, color, weight) {
+  const ca = Math.cos(angle), sa = Math.sin(angle);
+  return {
+    a: sx*ca, b: -sx*sa + shear*sx*ca,
+    c: sy*sa, d:  sy*ca + shear*sy*sa,
+    e: tx, f: ty, varId, color, weight: weight===undefined?1:weight,
+  };
+}
+
+const MODES = [
+  { name:'SIERPINSKI', desc:"CHAOS GAME · DEGENERATE FLAME", decay:0.985, viewScale:1.7, viewOffset:[0,0],
+    xforms:[
+      X(0, 0.5, -0.25, -0.1443, VAR.LINEAR, 0.12),
+      X(0, 0.5,  0.25, -0.1443, VAR.LINEAR, 0.50),
+      X(0, 0.5,  0.00,  0.2887, VAR.LINEAR, 0.88),
+    ],
+    pal:[[0.15,0.35,0.95],[0.65,0.25,0.95],[0.95,0.35,0.65]] },
+
+  { name:'SWIRL BLOOM', desc:'FOUR-FOLD SWIRL VARIATION', decay:0.985, viewScale:0.85, viewOffset:[0,0],
+    xforms:[0,1,2,3].map(i => {
+      const ang = i*(Math.PI/2) + 0.35;
+      // Swirl alone is magnitude-preserving (a pure rotation by angle r^2),
+      // so with translation this small every xform's own fixed point sits
+      // right on top of the others near the origin — a single indistinct
+      // dot, not four blooming lobes. Pushing translation past scale spreads
+      // the four fixed points onto their own ring, per fixed-point radius
+      // ~= |t|/(1-s) for a near-isotropic contraction.
+      return X(ang, 0.45, 0.6*Math.cos(ang), 0.6*Math.sin(ang), VAR.SWIRL, i/3);
+    }),
+    pal:[[0.05,0.85,0.55],[0.15,0.55,0.95],[0.85,0.95,0.35]] },
+
+  { name:'HORSESHOE SPIRAL', desc:'HORSESHOE + SPIRAL VARIATIONS', decay:0.97, viewScale:1.0, viewOffset:[0,0],
+    // First attempt gave all 3 xforms near-zero translation (0.01-0.04) —
+    // with such close fixed points, HORSESHOE and SIN alone (offline-tested
+    // in isolation before touching the shader, same discipline EINSTEIN/
+    // SPECTRE used for their own grammar math) collapse to a single dense
+    // point regardless of variation, and SPIRAL's 1/r spikes were the only
+    // thing filling the frame at all — 13% of every 400k-sample test run
+    // landed in one histogram bin. Spreading each xform's own fixed point
+    // onto its own ring (SWIRL BLOOM's fix, reused) turns that one hot spot
+    // into three genuinely separate lobes joined by the spiral's spikes.
+    xforms:[
+      X(-0.6, 0.55, 0.5*Math.cos(0.3), 0.5*Math.sin(0.3), VAR.HORSESHOE, 0.15, 0.45),
+      X( 1.4, 0.50, 0.5*Math.cos(2.4), 0.5*Math.sin(2.4), VAR.SPIRAL,    0.55, 0.10),
+      X( 2.6, 0.55, 0.5*Math.cos(4.5), 0.5*Math.sin(4.5), VAR.SIN,       0.85, 0.45),
+    ],
+    pal:[[0.95,0.55,0.10],[0.95,0.25,0.15],[0.65,0.85,0.95]] },
+
+  { name:'JULIA LACE', desc:'TWO-BRANCH JULIA VARIATION', decay:0.985, viewScale:0.95, viewOffset:[0,0],
+    xforms:[
+      XM( 0.4, 0.95, 0.80,  0.25,  0.02, -0.01, VAR.JULIA, 0.25),
+      XM( 2.1, 0.85, 0.95, -0.20, -0.02,  0.02, VAR.JULIA, 0.75),
+    ],
+    pal:[[0.10,0.75,0.85],[0.65,0.95,0.98],[0.85,0.35,0.95]] },
+
+  { name:'HEART DISC BLOOM', desc:"DRAVES' OWN 1992 REGISTER", decay:0.985, viewScale:1.2, viewOffset:[0,0],
+    xforms:[
+      X( 0.5, 0.75,  0.03, -0.02, VAR.HEART, 0.10),
+      X( 2.3, 0.70, -0.02,  0.03, VAR.DISC,  0.40),
+      X(-1.1, 0.68,  0.02,  0.02, VAR.HEART, 0.65),
+      X( 4.0, 0.72, -0.03, -0.01, VAR.SIN,   0.90),
+    ],
+    pal:[[0.95,0.15,0.05],[0.98,0.65,0.05],[0.95,0.90,0.55]] },
+];
+
+function padXforms(xforms) {
+  const n = xforms.length;
+  const totalW = xforms.reduce((s,x) => s + x.weight, 0);
+  let cum = 0;
+  const cums = xforms.map(x => (cum += x.weight/totalW));
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const x = xforms[Math.min(i, n-1)];
+    out.push({ ...x, cum: i < n ? cums[i] : 1.0 });
+  }
+  return out;
+}
+
+const PARTICLE_DIM = 256;             // 65536 chaos-game points
+const N = PARTICLE_DIM * PARTICLE_DIM;
+const ACC_RES = 384;                  // accumulation histogram resolution
+const MODE_MS = 34000;
+const OCC_THRESH = 0.05;
+const BOX_SIZES = [3, 6, 12, 24, 48];
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">Vertex texture fetch required</p>'; throw 0;
+}
+const colorBufferFloatExt = gl.getExtension('WEBGL_color_buffer_float');
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+// seed is pre-mixed with an irrational multiplier and wrapped to a bounded
+// range before use: a raw integer-valued seed (this piece's uFrame counter
+// increments by exactly 1.0/frame) leaves fract(A+seed)===fract(A) IDENTICAL
+// every frame in exact arithmetic — silently frame-invariant, not merely
+// imprecise — and a large unwrapped seed re-introduces ISING's own documented
+// float32-precision seed-drift bug on top. Both fixed once, here, rather than
+// per call site.
+const HASH_GLSL = `
+float hash(vec2 p, float seed){
+  seed = mod(seed, 9973.0) * 0.61803398875;
+  vec3 p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195) + seed);
+  p3 += dot(p3, p3.yzx + 19.19);
+  return fract((p3.x + p3.y) * p3.z);
+}
+`;
+
+const VARIATION_GLSL = `
+vec2 applyVariation(float id, vec2 p, float rnd){
+  float r2 = dot(p,p);
+  // HORSESHOE and SPIRAL divide by r: a plain 1e-6 epsilon still lets points
+  // that land near the true origin blow up to enormous magnitudes (measured
+  // up to r~8 in-frame, far past this piece's own divergence bound), which
+  // then reads as constant reseed-noise instead of the variation's real
+  // shape. A larger floor sacrifices exactness exactly at the singularity
+  // (a measure-zero set the chaos game visits with vanishing probability
+  // anyway) for a bounded, renderable orbit everywhere else.
+  float r  = max(sqrt(r2), 0.12);
+  float th = atan(p.y, p.x);
+  const float PI = 3.14159265;
+  if (id < 0.5)      return p;                                              // LINEAR
+  else if (id < 1.5)  return sin(p);                                        // SINUSOIDAL
+  else if (id < 2.5)  return p / (r2 + 1e-6);                               // SPHERICAL
+  else if (id < 3.5)  return vec2(p.x*sin(r2)-p.y*cos(r2), p.x*cos(r2)+p.y*sin(r2)); // SWIRL
+  else if (id < 4.5)  return vec2((p.x-p.y)*(p.x+p.y)/r, 2.0*p.x*p.y/r);     // HORSESHOE
+  else if (id < 5.5)  return vec2(th/PI, r-1.0);                            // POLAR
+  else if (id < 6.5)  return vec2(r*sin(th*r), -r*cos(th*r));               // HEART
+  else if (id < 7.5)  { float rr = th/PI; return vec2(rr*sin(r*PI), rr*cos(r*PI)); } // DISC
+  else if (id < 8.5)  return vec2((cos(th)+sin(r))/r, (sin(th)-cos(r))/r);  // SPIRAL
+  else {                                                                     // JULIA
+    float rr = sqrt(r);
+    float off = rnd < 0.5 ? 0.0 : PI;
+    float a = th*0.5 + off;
+    return vec2(rr*cos(a), rr*sin(a));
+  }
+}
+`;
+
+// Chaos-game step: pick one xform by weighted random choice, apply affine+variation
+const SIM_FS = `
+precision highp float;
+uniform sampler2D uPosTex;
+uniform float uFrame;
+uniform float uXa[4], uXb[4], uXc[4], uXd[4], uXe[4], uXf[4], uXVar[4], uXColor[4], uCum[4];
+uniform float uBurstActive;
+uniform vec2  uBurstPos;
+varying vec2 uv;
+${HASH_GLSL}
+${VARIATION_GLSL}
+void main(){
+  vec4 st = texture2D(uPosTex, uv);
+  vec2 pos = st.xy;
+  float col = st.z;
+
+  float r1 = hash(uv, uFrame);
+  float a,b,c,d,e,f,varId,xcol;
+  if (r1 < uCum[0])      { a=uXa[0]; b=uXb[0]; c=uXc[0]; d=uXd[0]; e=uXe[0]; f=uXf[0]; varId=uXVar[0]; xcol=uXColor[0]; }
+  else if (r1 < uCum[1]) { a=uXa[1]; b=uXb[1]; c=uXc[1]; d=uXd[1]; e=uXe[1]; f=uXf[1]; varId=uXVar[1]; xcol=uXColor[1]; }
+  else if (r1 < uCum[2]) { a=uXa[2]; b=uXb[2]; c=uXc[2]; d=uXd[2]; e=uXe[2]; f=uXf[2]; varId=uXVar[2]; xcol=uXColor[2]; }
+  else                    { a=uXa[3]; b=uXb[3]; c=uXc[3]; d=uXd[3]; e=uXe[3]; f=uXf[3]; varId=uXVar[3]; xcol=uXColor[3]; }
+
+  vec2 aff = vec2(a*pos.x + b*pos.y + e, c*pos.x + d*pos.y + f);
+  float r2rnd = hash(uv, uFrame + 37.13);
+  vec2 np = applyVariation(varId, aff, r2rnd);
+  float newCol = mix(col, xcol, 0.5);
+
+  // SPIRAL/HORSESHOE divide by r; even floored, a point landing near the
+  // origin can still fling itself out to r~15-20 for one frame before its
+  // xform's own contraction pulls it back in — a real, expected feature of
+  // those variations (a classic flame's feathery "spike" lines come from
+  // exactly this), not a runaway. Only truly escaped points get reseeded;
+  // a tight bound here was replacing that natural spike-and-return with
+  // constant random-teleport noise, flooding the whole frame with static.
+  if (abs(np.x) > 25.0 || abs(np.y) > 25.0) {
+    np = vec2(hash(uv, uFrame+5.1)*2.0-1.0, hash(uv, uFrame+9.7)*2.0-1.0);
+    newCol = 0.5;
+  }
+
+  if (uBurstActive > 0.5) {
+    float sel = hash(uv, uFrame*1.7 + 3.0);
+    if (sel < 0.10) {
+      float jx = (hash(uv, uFrame+11.0)*2.0-1.0) * 0.06;
+      float jy = (hash(uv, uFrame+22.0)*2.0-1.0) * 0.06;
+      np = uBurstPos + vec2(jx, jy);
+      newCol = 0.5;
+    }
+  }
+  gl_FragColor = vec4(np, newCol, 0.0);
+}
+`;
+
+// Deposit: rasterize points, VTF-reading position from the state texture
+const DEPOSIT_VS = `
+precision highp float;
+attribute vec2 aTexcoord;
+uniform sampler2D uPosTex;
+uniform float uViewScale;
+uniform vec2  uViewOffset;
+varying float vColor;
+void main(){
+  vec4 st = texture2D(uPosTex, aTexcoord);
+  vColor = st.z;
+  vec2 p = (st.xy + uViewOffset) * uViewScale;
+  gl_Position = vec4(p, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}
+`;
+const DEPOSIT_FS = `
+precision highp float;
+varying float vColor;
+void main(){ gl_FragColor = vec4(1.0, vColor, 0.0, 0.0); }
+`;
+
+const DECAY_FS = `
+precision highp float;
+uniform sampler2D uAccTex;
+uniform float uDecay;
+varying vec2 uv;
+void main(){ gl_FragColor = texture2D(uAccTex, uv) * uDecay; }
+`;
+
+const DRAW_FS = `
+precision highp float;
+uniform sampler2D uAccTex;
+uniform float uDMax;
+uniform vec2  uRes;
+uniform vec3  uColA, uColB, uColC;
+varying vec2 uv;
+void main(){
+  float aspect = uRes.x / uRes.y;
+  vec2 q = uv*2.0-1.0;
+  if (aspect > 1.0) q.x *= aspect; else q.y /= aspect;
+  vec2 accUV = q*0.5+0.5;
+  if (accUV.x < 0.0 || accUV.x > 1.0 || accUV.y < 0.0 || accUV.y > 1.0) {
+    gl_FragColor = vec4(0.0,0.0,0.0,1.0); return;
+  }
+  vec4 acc = texture2D(uAccTex, accUV);
+  float dens = acc.r;
+  float c = dens > 1e-5 ? acc.g / dens : 0.0;
+
+  float v = log(1.0 + dens*8.0) / log(1.0 + max(uDMax, 2.0)*8.0);
+  v = clamp(v, 0.0, 1.0);
+  v = pow(v, 0.65);
+
+  vec3 col = c < 0.5 ? mix(uColA, uColB, c*2.0) : mix(uColB, uColC, (c-0.5)*2.0);
+  vec3 outCol = col * v;
+
+  vec2 vq = uv*2.0-1.0;
+  outCol *= 1.0 - smoothstep(0.75, 1.5, dot(vq,vq)) * 0.35;
+  gl_FragColor = vec4(outCol, 1.0);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const pSim     = mkProg(VS, SIM_FS);
+const pDeposit = mkProg(DEPOSIT_VS, DEPOSIT_FS);
+const pDecay   = mkProg(VS, DECAY_FS);
+const pDraw    = mkProg(VS, DRAW_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+const ptCoords = new Float32Array(N * 2);
+{
+  let k = 0;
+  for (let j = 0; j < PARTICLE_DIM; j++)
+    for (let i = 0; i < PARTICLE_DIM; i++) {
+      ptCoords[k++] = (i + 0.5) / PARTICLE_DIM;
+      ptCoords[k++] = (j + 0.5) / PARTICLE_DIM;
+    }
+}
+const ptBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+gl.bufferData(gl.ARRAY_BUFFER, ptCoords, gl.STATIC_DRAW);
+function bindPts(p) {
+  const loc = gl.getAttribLocation(p, 'aTexcoord');
+  gl.bindBuffer(gl.ARRAY_BUFFER, ptBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(w, h, data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function randomPoints() {
+  const d = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    d[i*4]   = Math.random()*2-1;
+    d[i*4+1] = Math.random()*2-1;
+    d[i*4+2] = 0.5;
+    d[i*4+3] = 0;
+  }
+  return d;
+}
+
+let posA = mkTex(PARTICLE_DIM, PARTICLE_DIM, randomPoints());
+let posB = mkTex(PARTICLE_DIM, PARTICLE_DIM, null);
+let posFbA = mkFB(posA), posFbB = mkFB(posB);
+
+const zeroAcc = new Float32Array(ACC_RES * ACC_RES * 4);
+let accA = mkTex(ACC_RES, ACC_RES, zeroAcc);
+let accB = mkTex(ACC_RES, ACC_RES, zeroAcc);
+let accFbA = mkFB(accA), accFbB = mkFB(accB);
+const readBuf = new Float32Array(ACC_RES * ACC_RES * 4);
+
+/* ── simulation state ───────────────────────────────────────────────────── */
+
+let modeIdx = 0, modeStart = performance.now(), uFrame = 0;
+let dMaxSmoothed = 4.0;
+let burstActive = false, burstPos = [0,0];
+let modeData = null;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent = m.desc;
+
+  const padded = padXforms(m.xforms);
+  modeData = {
+    Xa: padded.map(x=>x.a), Xb: padded.map(x=>x.b), Xc: padded.map(x=>x.c),
+    Xd: padded.map(x=>x.d), Xe: padded.map(x=>x.e), Xf: padded.map(x=>x.f),
+    Xvar: padded.map(x=>x.varId), Xcolor: padded.map(x=>x.color), Cum: padded.map(x=>x.cum),
+    viewScale: m.viewScale, viewOffset: m.viewOffset, decay: m.decay,
+    pal: m.pal,
+  };
+
+  gl.bindTexture(gl.TEXTURE_2D, posA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, PARTICLE_DIM, PARTICLE_DIM, 0, gl.RGBA, gl.FLOAT, randomPoints());
+  gl.bindTexture(gl.TEXTURE_2D, accA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ACC_RES, ACC_RES, 0, gl.RGBA, gl.FLOAT, zeroAcc);
+  gl.bindTexture(gl.TEXTURE_2D, accB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ACC_RES, ACC_RES, 0, gl.RGBA, gl.FLOAT, zeroAcc);
+  dMaxSmoothed = 4.0;
+
+  // Burn-in: every chaos-game point starts at a uniform-random position,
+  // nowhere near the attractor. Depositing from frame zero would splat that
+  // transient convergence trail across the whole domain — visible for many
+  // seconds afterward under a slow decay, since the accumulation buffer has
+  // no way to distinguish "briefly visited while converging" from "part of
+  // the attractor." Fixed the same way LICHTENBERG's preRelax() fixed an
+  // analogous problem: run the update synchronously, off-screen, BEFORE the
+  // render loop ever deposits a single point.
+  for (let i = 0; i < 50; i++) { uFrame += 1.0; simStep(); }
+}
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU = locs(pSim, ['uPosTex','uFrame','uXa','uXb','uXc','uXd','uXe','uXf','uXVar','uXColor','uCum','uBurstActive','uBurstPos']);
+const depU = locs(pDeposit, ['uPosTex','uViewScale','uViewOffset']);
+const decU = locs(pDecay, ['uAccTex','uDecay']);
+const drawU = locs(pDraw, ['uAccTex','uDMax','uRes','uColA','uColB','uColC']);
+
+applyMode(0);
+
+function simStep() {
+  gl.useProgram(pSim);
+  bindQuad(pSim);
+  gl.viewport(0, 0, PARTICLE_DIM, PARTICLE_DIM);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, posFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, posA); gl.uniform1i(simU.uPosTex, 0);
+  gl.uniform1f(simU.uFrame, uFrame);
+  gl.uniform1fv(simU.uXa, modeData.Xa); gl.uniform1fv(simU.uXb, modeData.Xb);
+  gl.uniform1fv(simU.uXc, modeData.Xc); gl.uniform1fv(simU.uXd, modeData.Xd);
+  gl.uniform1fv(simU.uXe, modeData.Xe); gl.uniform1fv(simU.uXf, modeData.Xf);
+  gl.uniform1fv(simU.uXVar, modeData.Xvar); gl.uniform1fv(simU.uXColor, modeData.Xcolor);
+  gl.uniform1fv(simU.uCum, modeData.Cum);
+  gl.uniform1f(simU.uBurstActive, burstActive ? 1.0 : 0.0);
+  gl.uniform2f(simU.uBurstPos, burstPos[0], burstPos[1]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  burstActive = false;
+
+  [posA, posB] = [posB, posA];
+  [posFbA, posFbB] = [posFbB, posFbA];
+}
+
+function decayStep() {
+  gl.useProgram(pDecay);
+  bindQuad(pDecay);
+  gl.viewport(0, 0, ACC_RES, ACC_RES);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accA); gl.uniform1i(decU.uAccTex, 0);
+  gl.uniform1f(decU.uDecay, modeData.decay);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function depositStep() {
+  gl.useProgram(pDeposit);
+  bindPts(pDeposit);
+  gl.viewport(0, 0, ACC_RES, ACC_RES);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accFbB);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, posA); gl.uniform1i(depU.uPosTex, 0);
+  gl.uniform1f(depU.uViewScale, modeData.viewScale);
+  gl.uniform2f(depU.uViewOffset, modeData.viewOffset[0], modeData.viewOffset[1]);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.drawArrays(gl.POINTS, 0, N);
+  gl.disable(gl.BLEND);
+
+  [accA, accB] = [accB, accA];
+  [accFbA, accFbB] = [accFbB, accFbA];
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(pDraw);
+  bindQuad(pDraw);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accA); gl.uniform1i(drawU.uAccTex, 0);
+  gl.uniform1f(drawU.uDMax, dMaxSmoothed);
+  gl.uniform2f(drawU.uRes, canvas.width, canvas.height);
+  gl.uniform3f(drawU.uColA, ...modeData.pal[0]);
+  gl.uniform3f(drawU.uColB, ...modeData.pal[1]);
+  gl.uniform3f(drawU.uColC, ...modeData.pal[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ── live box-counting fractal dimension of the histogram ─────────────────
+   Same technique LICHTENBERG uses for its dielectric-tree structure,
+   reused here on the flame's OWN accumulated visit-density histogram:
+   threshold occupancy, cover with boxes of several sizes, fit
+   log(count) vs log(1/size), slope = D. Distinct from ATTRACTOR's live
+   Lyapunov exponent (a measure of orbit divergence) — this measures the
+   fractal geometry of the settled density pattern instead. Also tracks
+   the observed peak density (ratcheting max, slow decay) as the self-
+   normalizing exposure for the log tone-map, echoing LICHTENBERG's own
+   phiMax-normalization fix for the same "absolute scale is meaningless,
+   normalize against the current peak" reason. */
+let orderReadOk = colorBufferFloatExt !== null;
+let frameCount = 0;
+
+function readStats() {
+  if (!orderReadOk) return;
+  try {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, accFbA);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { orderReadOk = false; return; }
+    gl.readPixels(0, 0, ACC_RES, ACC_RES, gl.RGBA, gl.FLOAT, readBuf);
+  } catch (e) { orderReadOk = false; return; }
+
+  let observedMax = 0;
+  const occ = new Uint8Array(ACC_RES * ACC_RES);
+  for (let i = 0; i < ACC_RES*ACC_RES; i++) {
+    const d = readBuf[i*4];
+    if (d > observedMax) observedMax = d;
+    if (d > OCC_THRESH) occ[i] = 1;
+  }
+  dMaxSmoothed = Math.max(observedMax, dMaxSmoothed * 0.995, 2.0);
+
+  const xs = [], ys = [];
+  for (const box of BOX_SIZES) {
+    let count = 0;
+    for (let by = 0; by < ACC_RES; by += box) {
+      for (let bx = 0; bx < ACC_RES; bx += box) {
+        let hit = false;
+        for (let y = by; y < Math.min(by+box, ACC_RES) && !hit; y++) {
+          for (let x = bx; x < Math.min(bx+box, ACC_RES); x++) {
+            if (occ[y*ACC_RES+x]) { hit = true; break; }
+          }
+        }
+        if (hit) count++;
+      }
+    }
+    if (count > 0) { xs.push(Math.log(1.0/box)); ys.push(Math.log(count)); }
+  }
+  const orderValEl = document.getElementById('orderVal');
+  if (xs.length < 2) { orderValEl.textContent = '—'; return; }
+  const n = xs.length;
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (let i = 0; i < n; i++) { sx+=xs[i]; sy+=ys[i]; sxx+=xs[i]*xs[i]; sxy+=xs[i]*ys[i]; }
+  const denom = n*sxx - sx*sx;
+  const slope = denom !== 0 ? (n*sxy - sx*sy) / denom : 0;
+  orderValEl.textContent = Math.max(0, Math.min(2, slope)).toFixed(2);
+}
+
+/* ── main loop ──────────────────────────────────────────────────────────── */
+
+function loop(now) {
+  if (now - modeStart > MODE_MS) {
+    modeStart = now;
+    applyMode(modeIdx + 1);
+  }
+  uFrame += 1.0;
+  simStep();
+  decayStep();
+  depositStep();
+  drawFrame();
+  frameCount++;
+  if (frameCount % 15 === 0) readStats();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: click/touch bursts a batch of points at the pointer ───── */
+
+function screenToFlame(clientX, clientY) {
+  const ndcX = (clientX / window.innerWidth) * 2 - 1;
+  const ndcY = 1 - (clientY / window.innerHeight) * 2;
+  const aspect = canvas.width / canvas.height;
+  const qx = aspect > 1.0 ? ndcX * aspect : ndcX;
+  const qy = aspect > 1.0 ? ndcY : ndcY / aspect;
+  return [
+    qx / modeData.viewScale - modeData.viewOffset[0],
+    qy / modeData.viewScale - modeData.viewOffset[1],
+  ];
+}
+function onPointer(e) {
+  const x = e.clientX ?? e.touches[0].clientX;
+  const y = e.clientY ?? e.touches[0].clientY;
+  burstPos = screenToFlame(x, y);
+  burstActive = true;
+}
+canvas.addEventListener('mousedown', onPointer);
+canvas.addEventListener('mousemove', e => { if (e.buttons) onPointer(e); });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+</script>
+</body>
+</html>
