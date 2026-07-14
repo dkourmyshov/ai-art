@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-flame.html       — FLAME piece (new)
+spinodal.html    — SPINODAL piece (new)
+flame.html       — FLAME piece
 spectre.html     — SPECTRE piece
 membrane.html    — MEMBRANE piece (moved from old index.html)
 lenia.html       — LENIA piece
@@ -23,6 +24,97 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 17: SPINODAL — Phase Separation & Self-Similar Coarsening (2026-07-14)
+Cahn & Hilliard (1958) wrote down the equation for a quenched binary alloy
+that separates into two phases WITHOUT nucleating over an energy barrier —
+inside the spinodal region of the phase diagram, a homogeneous mixture is
+already unstable to infinitesimal fluctuations and decomposes everywhere
+at once. Lifshitz & Slyozov (1961) then showed the resulting domains keep
+coarsening forever afterward, growing as a power law L(t) ~ t^(1/3),
+through the same curvature-driven bulk diffusion as Ostwald ripening.
+Genuinely different register from this gallery's other reaction-diffusion
+pieces (MEMBRANE's Gray-Scott, EXCITABLE's FitzHugh-Nagumo): both of those
+are non-conserved activator/inhibitor systems relaxing toward a pattern;
+Cahn-Hilliard conserves its order parameter exactly (matter only moves by
+being transported, never created or destroyed pointwise), which makes the
+governing PDE fourth-order in space rather than second — every earlier PDE
+in this gallery, including LICHTENBERG's Laplace solve, has been strictly
+second-order until now.
+
+### Architecture: two ordinary Laplacian passes standing in for one
+dc/dt = M*lap(mu), mu = c^3 - c - kappa*lap(c) — factored into two 5-point-
+stencil shader passes (mu-pass, then update-pass reading mu) rather than
+one shader computing a biharmonic operator directly, so no fragment shader
+needs a wide double-Laplacian stencil. Same ping-pong-texture technique as
+every earlier GPU simulation here, chained through one extra intermediate
+buffer (a dedicated mu texture, recomputed whole every substep, no
+ping-pong of its own needed).
+
+### Two real bugs, neither of them the numerics
+Explicit-Euler stability for a biharmonic term was verified offline first
+(ch_sim.js, FLAME's own "simulate in plain JS before writing shader code"
+discipline): dt*M*|8-64*kappa| <= 2 or the Nyquist mode blows up in
+dozens of frames. That bound held throughout — what actually went wrong
+was GPU-only. First: an early SIM=384 grid rendered as a flat,
+textureless field forever. WebGL1 requires power-of-two textures for
+REPEAT wrapping and 384 isn't one, so the toroidal composition texture was
+silently "incomplete" and every sample read back zero — fixed by keeping
+SIM strictly power-of-two (landed on 256, see below). Second, after that
+fix (still at SIM=512): the pattern visibly got FINER over the first ~15
+seconds instead of coarser, domain size dropping every frame, reading
+exactly like the runaway blowup the stability bound warns about. It
+wasn't one. Cross-checking against the SAME plain-JS reference at
+matching grid size (not the smaller 96x96/128x128 grid the original
+ch_sim.js run had verified stability on) reproduced the identical
+trajectory — this was the genuine linear spinodal growth phase, still
+short of saturation, and a denser grid just packs more repeats of the
+same physical wavelength into view. The real fix wasn't numerical at all:
+tune kappa up (a wider, more legible characteristic wavelength) and the
+grid down to SIM=256 (verified this doesn't change the physics, only how
+many wavelengths fit on screen), with LINEAR filtering — gated behind its
+own OES_texture_float_linear extension check, a THIRD bug caught in the
+same pass, since LINEAR-sampling a float texture is a distinct capability
+from merely having float textures via OES_texture_float, and requesting
+it without checking silently zeroed every read — standing in for the
+resolution NEAREST would otherwise have cost the coarser grid.
+
+### Five modes, one PDE
+- CRITICAL: symmetric quench (c0=0), the textbook bicontinuous labyrinth.
+- OFF-CRITICAL: c0=0.25, still inside the spinodal region (|c0|<1/sqrt3)
+  so it needs no nucleation barrier either, but the asymmetric composition
+  produces minority-phase droplets in a majority background instead of an
+  interconnected labyrinth — same instability, different morphology.
+- FINE QUENCH: smaller kappa (1 vs 3), shorter characteristic wavelength,
+  a deliberately denser/finer pattern as a direct visual contrast to
+  CRITICAL at the same grid.
+- STIRRED: a fixed analytic cellular flow field advects the conserved
+  field on top of its own diffusion ("stirred Cahn-Hilliard," cf. Berti
+  et al.), stretching domains along the flow cells into filaments instead
+  of letting them relax to round blobs.
+- ARRESTED: mobility M cut to 0.12; same instability, same eventual fate,
+  just glacially slow — reads as a faint, barely-evolving texture next to
+  the other four's visible motion.
+
+### Live readout: domain size and the Lifshitz-Slyozov exponent
+L ~ area / total-variation, a threshold-free proxy for interface length
+(sum of |c - c_right| + |c - c_down| over the readback grid) — deliberately
+NOT a c=0 sign-crossing count, which would miss most of the boundary in
+OFF-CRITICAL's asymmetric composition. Alpha is the least-squares slope of
+log(L) vs log(simTime) since the last quench, LICHTENBERG's own log-log
+box-counting technique aimed at a different exponent here. This is the
+gallery's now-standard answer to SANDPILE's session-8 flag that a power
+law "implicit in the visuals" should be measured, not just implied — same
+lineage as LICHTENBERG's fractal dimension, ISING's magnetization,
+ATTRACTOR's Lyapunov exponent, GYRUS's GI, and FLAME's own box-dimension.
+
+### Interaction
+Click/tap stamps a small noisy patch at the pointer, reset to near-zero
+composition — a spot instantly re-melted and re-quenched, free to
+decompose on its own from scratch while the rest of the field keeps
+coarsening from wherever it already was.
 
 ---
 
@@ -2863,3 +2955,40 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       reconsidering here since, like a strange attractor or DBM growth, a
       3D chaos-game orbit is a sparse point cloud rather than a dense
       volumetric field
+- [x] Cahn-Hilliard phase separation / spinodal decomposition — done in
+      SPINODAL (session 17), the gallery's first fourth-order (conserved-
+      order-parameter) PDE, distinct from every earlier reaction-diffusion
+      piece's non-conserved activator/inhibitor dynamics
+- [ ] SPINODAL: a semi-implicit (Eyre-splitting) time step instead of
+      explicit Euler — this session's dt is bounded well under the
+      biharmonic stability limit (dt*M*|8-64*kappa|<=2) purely because
+      explicit stepping demands it; an implicit linear part would allow
+      much larger dt (and either a denser grid or faster real-time
+      coarsening) at real numerical-methods cost this session didn't
+      attempt
+- [ ] SPINODAL: a proper GPU parallel-reduction for the total-variation
+      readout, replacing this session's CPU gl.readPixels-and-scan every
+      12 frames — the same remaining per-frame CPU/GPU sync point FLAME's
+      own backlog flags for its log-tone-map peak-density readback
+- [ ] SPINODAL: a true nucleation-and-growth mode (composition OUTSIDE
+      the spinodal region, |c0|>1/sqrt3, decomposing only via a
+      stochastic Cahn-Hilliard-Cook noise term overcoming a real energy
+      barrier) as an explicit contrast against every current mode's
+      barrierless spinodal decomposition — not attempted this session,
+      since it needs an added thermal-noise term the deterministic PDE
+      here doesn't have, not just a different c0
+- [ ] SPINODAL: an interactive kappa slider (continuous, visitor-
+      controlled interfacial energy / characteristic wavelength) instead
+      of only the 5 curated auto-cycled values — the same "let a visitor
+      walk the parameter themselves" idea flagged for ISING's
+      temperature, LICHTENBERG's eta, ATTRACTOR's (a,b,c,d), SOFTCELL's
+      softness t, EINSTEIN/SPECTRE's recursion depth, and FLAME's own
+      xform editor
+- [ ] SPINODAL: a 3D mode (Cahn-Hilliard generalizes directly to a
+      volumetric bicontinuous microstructure — real spinodal alloys and
+      block copolymers separate in 3D), echoing the standing "3D
+      reaction-diffusion"/"3D Lichtenberg"/"3D attractor"/"3D soft-
+      cell"/"3D flame" backlog entries never built here for performance
+      reasons — worth reconsidering since, like DBM growth or a strange
+      attractor, a 3D bicontinuous interface is a comparatively sparse
+      surface rather than a dense volumetric field

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPINODAL — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#order .val{color:rgba(255,255,255,.5)}
+#order .ref{color:rgba(255,255,255,.14)}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <div><span>L &asymp; </span><span class="val" id="lVal">—</span></div>
+  <div><span>&alpha; &asymp; </span><span class="val" id="aVal">—</span> <span class="ref">LS 1/3</span></div>
+</div>
+<div id="ui">
+  <span id="modeName">CRITICAL</span>
+  <span id="desc">SYMMETRIC QUENCH · BICONTINUOUS</span>
+</div>
+<script>
+/*  SPINODAL — the Cahn-Hilliard equation and self-similar coarsening
+ *
+ *  dc/dt = M * div( grad(mu) ),   mu = c^3 - c - kappa * lap(c)
+ *
+ *  c is a CONSERVED order parameter (a local alloy composition, or any
+ *  two-component mixture fraction, in [-1,1]); mu is the chemical
+ *  potential derived from a double-well Ginzburg-Landau free energy
+ *  F = INT (c^2-1)^2/4 + kappa/2 |grad c|^2. Cahn & Hilliard (1958)
+ *  wrote this down for a quenched binary alloy: dump a homogeneous
+ *  A-B mixture instantly below its critical temperature and, if it
+ *  sits inside the SPINODAL region of the phase diagram (|c0| < 1/sqrt3
+ *  for this quartic potential), it doesn't need to nucleate a
+ *  droplet over an energy barrier — it is already unstable to
+ *  infinitesimal composition fluctuations and separates everywhere at
+ *  once, unprompted, into A-rich and B-rich domains threaded through
+ *  each other. That instant, barrierless, everywhere-at-once decay is
+ *  what "spinodal" names, and it is the reason this looks nothing like
+ *  droplets condensing out of a solution.
+ *
+ *  Genuinely different register from every earlier reaction-diffusion
+ *  piece in this gallery (MEMBRANE's Gray-Scott, EXCITABLE's
+ *  FitzHugh-Nagumo): both of those are NON-conserved activator/
+ *  inhibitor systems — local production and decay terms free to create
+ *  or destroy "stuff" pointwise, relaxing toward some pattern. Cahn-
+ *  Hilliard has no such term: c can only move by being transported
+ *  ("spinodal decomposition conserves mass" is the whole point — total
+ *  composition never changes, matter just redistributes into more
+ *  favorable neighborhoods), so the update is a DIVERGENCE of a flux,
+ *  not a rate law. That one difference makes it fourth-order in space
+ *  (a Laplacian of a Laplacian) rather than second — every earlier PDE
+ *  piece here (MEMBRANE, EXCITABLE, LICHTENBERG's Laplace solve) has
+ *  been strictly second-order.
+ *
+ *  Architecture: two-pass fourth-order finite difference, factored into
+ *  two ordinary (second-order) Laplacian passes so no shader needs a
+ *  13-tap wide stencil. Pass 1 reads the ping-ponged composition
+ *  texture c, takes its 5-point Laplacian, and writes the chemical
+ *  potential mu = c^3 - c - kappa*lap(c) to its own texture. Pass 2
+ *  reads mu, takes ITS 5-point Laplacian, and advances c by
+ *  dt * M * lap(mu). Same ping-pong-texture technique as every earlier
+ *  GPU simulation in this gallery, just chained through an extra
+ *  intermediate buffer.
+ *
+ *  Explicit-Euler stability for a biharmonic term is brutal: the
+ *  linearized growth rate at the Nyquist mode (5-point Laplacian
+ *  eigenvalue -8, dx=1) is M*(8 - 64*kappa), so dt*M*|8-64*kappa| <= 2
+ *  is required or the high-frequency modes blow up in a few dozen
+ *  frames. Verified numerically offline in plain JS before committing to
+ *  shader constants (ch_sim.js — the same discipline FLAME used for its
+ *  xform sets): kappa=1, dt=0.036 diverges to NaN within 400 steps;
+ *  dt=0.02 stays bounded through 30000.
+ *
+ *  Two real bugs only showed up once the verified scheme actually ran
+ *  on the GPU, neither of them the numerics. First: an early SIM=384
+ *  grid rendered as a flat, textureless field forever — WebGL1 requires
+ *  power-of-two textures for REPEAT wrapping, and 384 isn't one, so the
+ *  toroidal composition texture was silently "incomplete" and every
+ *  sample read back zero. Second, after fixing that (SIM=512): the
+ *  pattern visibly got FINER over the first ~15 seconds instead of
+ *  coarser, domain size dropping every frame, which looked exactly like
+ *  the runaway blowup the stability bound warns about. It wasn't one —
+ *  cross-checking against the SAME plain-JS reference at matching grid
+ *  size (not the smaller 96x96 grid ch_sim.js had verified stability on)
+ *  reproduced the identical trajectory: this is the genuine linear
+ *  SPINODAL growth phase, still short of saturation, and a denser grid
+ *  just packs more repeats of the same physical wavelength into view —
+ *  finer-looking texture, not instability. The real fix was tuning
+ *  kappa up (a wider, more legible wavelength) and the grid down to 256
+ *  (verified this doesn't change the physics, just how many wavelengths
+ *  fit on screen), with LINEAR filtering standing in for the resolution
+ *  NEAREST would otherwise cost it.
+ *
+ *  The measurable, "novel and unexpected" fact this piece is built to
+ *  show live: an initially FEATURELESS random field organizes itself
+ *  into a specific characteristic wavelength within moments (linear
+ *  spinodal theory: the fastest-growing mode has wavelength propto
+ *  sqrt(kappa)), and that pattern then coarsens — domains merging,
+ *  smaller ones feeding larger ones through the SAME curvature-driven
+ *  bulk diffusion mechanism as Ostwald ripening — with domain size
+ *  growing as a POWER LAW in time, L(t) ~ t^(1/3), the Lifshitz-Slyozov
+ *  (1961) exponent. It never approaches a static equilibrium the way
+ *  MEMBRANE or EXCITABLE's patterns settle; it keeps slowly coarsening
+ *  for as long as it runs. The live L / alpha readout (top right) is
+ *  this gallery's now-standard answer to SANDPILE's own session-8 flag
+ *  that a power law "implicit in the visuals" should be measured, not
+ *  just implied — same discipline as LICHTENBERG's fractal dimension,
+ *  ISING's magnetization, ATTRACTOR's Lyapunov exponent, GYRUS's GI.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const lValEl = document.getElementById('lVal');
+const aValEl = document.getElementById('aVal');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('Float textures unavailable');
+const colorBufferFloatExt = gl.getExtension('WEBGL_color_buffer_float');
+// LINEAR sampling of a FLOAT texture is a distinct capability from just having float
+// textures at all — needs its own extension, or every fetch above silently returns 0.
+const floatLinearOk = !!gl.getExtension('OES_texture_float_linear');
+const SIM_FILTER = floatLinearOk ? gl.LINEAR : gl.NEAREST;
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── modes ──────────────────────────────────────────────
+   One shared PDE, five (kappa, M, dt, c0, stir) points — the same
+   "one engine, different constants" economy CHLADNI/SANDPILE/ISING
+   established. c0 sets the quench composition; noise is the initial
+   fluctuation amplitude around it. */
+const MODES = [
+  { name:'CRITICAL',     desc:'SYMMETRIC QUENCH · BICONTINUOUS',   kappa:3.00, M:1.00, dt:0.008, c0:0.00, noise:0.06, stir:0.0, steps:8 },
+  { name:'OFF-CRITICAL', desc:'ASYMMETRIC QUENCH · MINORITY PHASE',kappa:3.00, M:1.00, dt:0.008, c0:0.25, noise:0.08, stir:0.0, steps:8 },
+  { name:'FINE QUENCH',  desc:'SHORT WAVELENGTH · DEEP QUENCH',    kappa:1.00, M:1.00, dt:0.020, c0:0.00, noise:0.06, stir:0.0, steps:8 },
+  { name:'STIRRED',      desc:'ADVECTED · FILAMENTARY BREAKUP',    kappa:3.00, M:1.00, dt:0.008, c0:0.00, noise:0.06, stir:1.6, steps:8 },
+  { name:'ARRESTED',     desc:'LOW MOBILITY · GLASSY COARSENING',  kappa:3.00, M:0.12, dt:0.008, c0:0.00, noise:0.06, stir:0.0, steps:8 },
+];
+const MODE_MS = 42000;
+// SIM must stay power-of-two (WebGL1 requires POT textures for REPEAT wrap). 256 rather
+// than a denser grid: verified offline (ch_tune.js) that this scheme's characteristic
+// spinodal wavelength is only ~15 grid units for kappa=3 — a much higher-resolution grid
+// just packs in more repeats of the same wavelength (finer on-screen texture), it doesn't
+// change the physics. LINEAR filtering (safe here: every simulation sample lands exactly
+// on a texel center, where LINEAR and NEAREST agree) keeps the coarser grid from reading
+// as blocky on screen.
+const SIM = 256;
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+// Pass 1: chemical potential mu = c^3 - c - kappa*lap(c)
+const MU_FS = `
+precision highp float;
+uniform sampler2D uC;
+uniform vec2      uPx;
+uniform float     uKappa;
+varying vec2 uv;
+void main(){
+  float c = texture2D(uC, uv).r;
+  float lap =
+      texture2D(uC, uv+vec2( uPx.x, 0.)).r
+    + texture2D(uC, uv+vec2(-uPx.x, 0.)).r
+    + texture2D(uC, uv+vec2(0.,  uPx.y)).r
+    + texture2D(uC, uv+vec2(0., -uPx.y)).r
+    - 4.0 * c;
+  float mu = c*c*c - c - uKappa * lap;
+  gl_FragColor = vec4(mu, 0., 0., 1.);
+}
+`;
+
+// Pass 2: c_new = c + dt*( M*lap(mu) - stir*(u . grad c) )
+const UPDATE_FS = `
+precision highp float;
+uniform sampler2D uC;
+uniform sampler2D uMu;
+uniform vec2      uPx;
+uniform float     uM, uDt, uStir;
+uniform vec2      uSeed;
+uniform float     uSeeding, uSeedR, uSeedTime;
+varying vec2 uv;
+
+void main(){
+  float c = texture2D(uC, uv).r;
+
+  float lapMu =
+      texture2D(uMu, uv+vec2( uPx.x, 0.)).r
+    + texture2D(uMu, uv+vec2(-uPx.x, 0.)).r
+    + texture2D(uMu, uv+vec2(0.,  uPx.y)).r
+    + texture2D(uMu, uv+vec2(0., -uPx.y)).r
+    - 4.0 * texture2D(uMu, uv).r;
+
+  float dc = uM * lapMu;
+
+  // STIRRED: fixed analytic cellular (Taylor-Green-like) flow field
+  // advecting the conserved field on top of its own diffusive dynamics —
+  // "stirred Cahn-Hilliard" (cf. Berti et al.), stretching domains into
+  // filaments instead of letting them relax to round blobs.
+  if (uStir > 0.0) {
+    vec2 p = uv * 3.0;
+    vec2 u = vec2( sin(6.28318*p.x)*cos(6.28318*p.y),
+                  -cos(6.28318*p.x)*sin(6.28318*p.y));
+    float cxp = texture2D(uC, uv+vec2( uPx.x, 0.)).r;
+    float cxm = texture2D(uC, uv+vec2(-uPx.x, 0.)).r;
+    float cyp = texture2D(uC, uv+vec2(0.,  uPx.y)).r;
+    float cym = texture2D(uC, uv+vec2(0., -uPx.y)).r;
+    vec2 gradC = vec2((cxp-cxm)*0.5, (cyp-cym)*0.5);
+    dc -= uStir * dot(u, gradC);
+  }
+
+  float cn = c + uDt * dc;
+
+  // Local re-quench: stamp a fresh noisy patch at the pointer, reset to
+  // near-zero composition — a spot instantly "re-melted and re-quenched",
+  // free to decompose on its own from scratch while the rest of the
+  // field keeps coarsening from where it already was.
+  if (uSeeding > 0.5) {
+    float d = length(uv - uSeed);
+    if (d < uSeedR) {
+      float h = fract(sin(dot(uv*991.7 + uSeedTime, vec2(12.9898,78.233))) * 43758.5453);
+      cn = (h*2.0-1.0) * 0.12;
+    }
+  }
+
+  gl_FragColor = vec4(cn, 0., 0., 1.);
+}
+`;
+
+// Render: duotone by composition, gold rim-light on interfaces
+// (the domain wall is literally where kappa|grad c|^2 stores the
+// system's interfacial energy — lighting it up isn't decoration, it's
+// showing where the free energy actually lives)
+const DRAW_FS = `
+precision highp float;
+uniform sampler2D uC;
+uniform vec2      uPx;
+varying vec2 uv;
+
+void main(){
+  float c = texture2D(uC, uv).r;
+  float t = clamp(c*0.5+0.5, 0., 1.);
+
+  vec3 cold0 = vec3(0.015, 0.045, 0.075);
+  vec3 cold1 = vec3(0.03, 0.24, 0.36);
+  vec3 warm1 = vec3(0.46, 0.22, 0.06);
+  vec3 warm0 = vec3(0.95, 0.60, 0.20);
+
+  vec3 col = mix(cold0, cold1, smoothstep(0.06, 0.46, t));
+  col = mix(col, warm1, smoothstep(0.42, 0.58, t));
+  col = mix(col, warm0, smoothstep(0.58, 0.94, t));
+
+  float cxp = texture2D(uC, uv+vec2( uPx.x, 0.)).r;
+  float cxm = texture2D(uC, uv+vec2(-uPx.x, 0.)).r;
+  float cyp = texture2D(uC, uv+vec2(0.,  uPx.y)).r;
+  float cym = texture2D(uC, uv+vec2(0., -uPx.y)).r;
+  float gmag = length(vec2((cxp-cxm)*0.5, (cyp-cym)*0.5));
+  col += vec3(1.0, 0.86, 0.5) * smoothstep(0.06, 0.42, gmag) * 0.85;
+
+  vec2 q = uv * 2. - 1.;
+  col *= 1. - smoothstep(0.55, 1.35, dot(q,q));
+
+  gl_FragColor = vec4(col, 1.);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────── */
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p); return p;
+}
+
+const pMu     = mkProg(VS, MU_FS);
+const pUpdate = mkProg(VS, UPDATE_FS);
+const pDraw   = mkProg(VS, DRAW_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  // LINEAR (when OES_texture_float_linear is available) is safe for the simulation
+  // passes too: every texture2D() offset in these shaders is an exact +-1-texel step
+  // from a fragment that itself lands on a texel center (full-screen quad rendered at
+  // SIM x SIM), so LINEAR never actually blends — it just avoids the blocky look
+  // NEAREST would give this comparatively coarse grid.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, SIM_FILTER);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, SIM_FILTER);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function randomField(c0, noise) {
+  const d = new Float32Array(SIM * SIM * 4);
+  for (let i = 0; i < SIM * SIM; i++) {
+    d[i*4] = c0 + (Math.random() * 2 - 1) * noise;
+    d[i*4+1] = 0; d[i*4+2] = 0; d[i*4+3] = 1;
+  }
+  return d;
+}
+
+let texA = mkTex(randomField(0, 0.06)), texB = mkTex(null), texMu = mkTex(null);
+let fbA  = mkFB(texA), fbB = mkFB(texB), fbMu = mkFB(texMu);
+
+/* ── simulation state ───────────────────────────────────── */
+let modeIdx = 0;
+let modeStart = performance.now();
+let simTime = 0;           // accumulated PDE time since last quench
+let seedUV = null, isSeeding = false;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, randomField(m.c0, m.noise));
+  simTime = 0;
+  growthSamples.length = 0;
+}
+
+/* ── render setup ───────────────────────────────────────── */
+function resize() {
+  C.width = window.innerWidth;
+  C.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const muU  = locs(pMu,     ['uC','uPx','uKappa']);
+const upU  = locs(pUpdate, ['uC','uMu','uPx','uM','uDt','uStir','uSeed','uSeeding','uSeedR','uSeedTime']);
+const drU  = locs(pDraw,   ['uC','uPx']);
+
+function simStep() {
+  const m = MODES[modeIdx];
+
+  for (let i = 0; i < m.steps; i++) {
+    // pass 1: mu
+    gl.useProgram(pMu); bindQuad(pMu);
+    gl.viewport(0, 0, SIM, SIM);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbMu);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(muU.uC, 0);
+    gl.uniform2f(muU.uPx, 1/SIM, 1/SIM);
+    gl.uniform1f(muU.uKappa, m.kappa);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // pass 2: advance c
+    gl.useProgram(pUpdate); bindQuad(pUpdate);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbB);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(upU.uC, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texMu);
+    gl.uniform1i(upU.uMu, 1);
+    gl.uniform2f(upU.uPx, 1/SIM, 1/SIM);
+    gl.uniform1f(upU.uM, m.M);
+    gl.uniform1f(upU.uDt, m.dt);
+    gl.uniform1f(upU.uStir, m.stir);
+    gl.uniform1f(upU.uSeeding, (i === 0 && isSeeding) ? 1.0 : 0.0);
+    if (isSeeding && seedUV) gl.uniform2f(upU.uSeed, seedUV.x, seedUV.y);
+    gl.uniform1f(upU.uSeedR, 0.035);
+    gl.uniform1f(upU.uSeedTime, performance.now() * 0.001);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    [texA, texB] = [texB, texA];
+    [fbA, fbB] = [fbB, fbA];
+    simTime += m.dt;
+  }
+  isSeeding = false;
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(pDraw); bindQuad(pDraw);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(drU.uC, 0);
+  gl.uniform2f(drU.uPx, 1/SIM, 1/SIM);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ── Live domain-size / coarsening-exponent readout ────────
+   L ~ area / total-variation is a threshold-free proxy for interface
+   length (works for OFF-CRITICAL's asymmetric composition too, where a
+   naive "c=0 crossing" count would miss most of the boundary): each
+   pixel's TV contribution is |c - c_right| + |c - c_down|, summed over
+   the readback grid. Domain size is inversely proportional to interface
+   density. Growth exponent alpha is the least-squares slope of
+   log(L) vs log(simTime) over the samples collected since the last
+   quench — the same log-log linear-fit technique LICHTENBERG uses for
+   its box-counted fractal dimension, aimed at a different critical
+   exponent here. */
+let readOk = colorBufferFloatExt !== null;
+const readBuf = new Float32Array(SIM * SIM * 4);
+const growthSamples = [];
+
+function readGrowth() {
+  if (!readOk) return;
+  try {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbA);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { readOk = false; return; }
+    gl.readPixels(0, 0, SIM, SIM, gl.RGBA, gl.FLOAT, readBuf);
+  } catch (e) { readOk = false; return; }
+
+  let tv = 0;
+  for (let y = 0; y < SIM; y++) {
+    const yn = (y + 1) % SIM;
+    for (let x = 0; x < SIM; x++) {
+      const xn = (x + 1) % SIM;
+      const c0 = readBuf[(y*SIM + x)*4];
+      const cx = readBuf[(y*SIM + xn)*4];
+      const cy = readBuf[(yn*SIM + x)*4];
+      tv += Math.abs(c0 - cx) + Math.abs(c0 - cy);
+    }
+  }
+  if (tv <= 0) { lValEl.textContent = '—'; return; }
+  const L = (2 * SIM * SIM) / tv;
+  lValEl.textContent = L.toFixed(2);
+
+  if (simTime > 1.0) {
+    growthSamples.push([Math.log(simTime), Math.log(L)]);
+    if (growthSamples.length > 80) growthSamples.shift();
+  }
+  if (growthSamples.length >= 6) {
+    let sx=0, sy=0, sxx=0, sxy=0;
+    const n = growthSamples.length;
+    for (const [x, y] of growthSamples) { sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; }
+    const denom = n*sxx - sx*sx;
+    const slope = denom !== 0 ? (n*sxy - sx*sy) / denom : 0;
+    aValEl.textContent = Math.max(0, slope).toFixed(2);
+  } else {
+    aValEl.textContent = '—';
+  }
+}
+
+/* ── main loop ──────────────────────────────────────────── */
+let frameCount = 0;
+function loop(now) {
+  if (now - modeStart > MODE_MS) {
+    modeStart = now;
+    applyMode(modeIdx + 1);
+  }
+  simStep();
+  drawFrame();
+  if (++frameCount % 12 === 0) readGrowth();
+  requestAnimationFrame(loop);
+}
+applyMode(0);
+requestAnimationFrame(loop);
+
+/* ── interaction ────────────────────────────────────────── */
+function onPointer(e) {
+  const x = (e.clientX ?? e.touches[0].clientX) / window.innerWidth;
+  const y = 1 - (e.clientY ?? e.touches[0].clientY) / window.innerHeight;
+  seedUV = { x, y };
+  isSeeding = true;
+}
+C.addEventListener('mousedown', onPointer);
+C.addEventListener('mousemove', e => { if (e.buttons) onPointer(e); });
+C.addEventListener('touchstart', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+C.addEventListener('touchmove', e => { e.preventDefault(); onPointer(e); }, { passive: false });
+</script>
+</body>
+</html>
