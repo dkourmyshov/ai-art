@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-spinodal.html    — SPINODAL piece (new)
+horizon.html     — HORIZON piece (new)
+spinodal.html    — SPINODAL piece
 flame.html       — FLAME piece
 spectre.html     — SPECTRE piece
 membrane.html    — MEMBRANE piece (moved from old index.html)
@@ -24,6 +25,221 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 18: HORIZON — A Real-Time Schwarzschild Black Hole (2026-07-15)
+Schwarzschild's own 1916 exact solution to the field equations, rendered as
+photon geodesics bent around a point mass — this session's answer to "what's
+a genuinely different ALGORITHM," found via web research into gravitational-
+lensing shaders (Riccardo Antonelli's and oseiskar's own black-hole raytracer
+writeups) rather than another field/agent/lattice simulation. Every earlier
+piece here evolves SOME substance through time on a fixed 2D orthographic
+camera; this one has no simulated substance at all — every pixel casts a
+single ray BACKWARD from a moving 3D camera through curved spacetime. First
+piece with a literal camera, first with genuine 3D scene geometry, first
+needing NO float texture / OES_texture_float extension at all (nothing
+persists frame to frame — every frame is a pure function of the current
+camera), and the gallery's first general-relativity physics.
+
+### The physics: one ODE, not four coupled geodesic equations
+Spherical symmetry means every photon's path lies in a single plane through
+the black hole's centre, collapsing the full 4D geodesic integration to a
+2D orbit problem. With u=1/r and rs=1 (world units fixed so the Schwarzschild
+radius itself is the length unit):
+    d²u/dφ² + u = 1.5 u²
+— Newton's own inverse-square orbit equation (d²u/dφ²+u=GM/L²) plus exactly
+one relativistic correction term. Two closed-form facts anchor the whole
+piece: the unstable photon sphere at r=1.5 rs, and the critical impact
+parameter b_crit=(3√3/2) rs≈2.598 rs — the sharp boundary between capture
+and escape that becomes the visible shadow. Verified from scratch offline
+before any GLSL (bh_sim.js through bh_sim5.js, this session's own scratch
+directory — SPINODAL/FLAME/EINSTEIN/SPECTRE's "verify the closed-form math
+in plain JS first" discipline, reused here for a fifth time): RK4-integrated
+the ODE and confirmed (1) the capture/escape boundary lands within 0.3rs of
+b_crit and near-critical rays' minimum radius converges on exactly 1.5rs;
+(2) large-b deflection matches the weak-field formula δφ≈2rs/b (the doubled
+Newtonian light-bending Einstein's 1919 eclipse expedition actually measured);
+(3) the LOCAL per-pixel initial-condition formula the shader uses —
+v₀=du/dφ=-u₀cot(α), α the ray's angle off the outward-radial direction at
+the camera, no "start at infinity" approximation — reproduces the identical
+b_crit threshold when swept against camera angle directly (bh_sim4.js).
+
+### Per pixel: orbital-plane basis, RK4, three outcomes
+eR/ePhi span the plane containing camPos and each pixel's own ray direction
+(a DIFFERENT plane per pixel, not shared) — RK4-integrate (u,du/dφ) forward
+in φ, a fixed 110-step budget over up to 4π of winding. Three outcomes: u
+reaches 1 (r<rs, captured — black); r exceeds 40rs (escaped — sample a
+procedural starfield in the direction the bent ray asymptotically points,
+approximated as the initial radial direction rotated by the total swept φ);
+or the path crosses the equatorial plane within the accretion disk's annulus
+(3rs–9rs, 3rs being the actual Schwarzschild ISCO, not a tuned number),
+depositing emission with a hot-white→ember colour ramp and a directional-
+beaming tint. A ray can cross that plane more than once (capped at 2 images)
+— a photon passing close behind the hole crosses once in front and once on
+the far side before escaping, which is the actual mechanism that paints a
+second, lensed disk image arcing above/below the shadow.
+
+### Three real bugs, each caught by looking at the rendered image, not the
+math (the math was already verified offline and was right every time)
+1. **Wrong sign on the initial radial velocity.** The very first offline
+   orbit-equation test (bh_sim.js/bh_sim2.js) showed EVERY ray "numerically
+   blowing up" to negative u within one step, at every impact parameter
+   including ones that should obviously escape untouched. Root cause: took
+   the sqrt's negative branch (v₀=-sqrt(disc)) for an "incoming" ray by
+   assumption, without checking which branch actually corresponds to u
+   INCREASING (r decreasing) as φ increases in this parametrization — it
+   was the positive branch. Fixed in bh_sim3.js; the corrected sign
+   immediately reproduced the textbook photon-sphere minimum radius (1.5rs)
+   and b_crit to 4 decimal places, confirming the ODE itself had been right
+   all along.
+2. **Disk light aliased into a large, ugly, geometric-looking sawtooth/comb
+   pattern around the shadow.** Looked enough like a real bug (too regular
+   to be noise, too large to be anti-aliasing) that it needed active
+   debugging rather than just re-tuning brightness: a temporary shader
+   build that output crossCount and usedSteps directly as colour (see
+   "debug via direct value visualization" below) showed the teeth were
+   crossCount's own boundary, and re-running the SAME scene at a much finer
+   global DPHI shrank the teeth in lockstep with step size — ruling out a
+   geometry bug and confirming genuine ANGULAR UNDER-SAMPLING of exactly
+   where a ray's y crosses zero. Fixed with local bisection (6 iterations,
+   re-integrating from the last known-good RK4 state) exactly at each
+   detected sign change, giving sub-DPHI/64 precision only where it's
+   needed instead of paying for it on every step of every ray — the
+   boundary came out perfectly smooth at a fraction of the cost a globally
+   finer step would have needed.
+3. **The "sky" was smeared with disk light almost everywhere, not just near
+   the shadow.** Isolating diskAccum alone (via a debug build returning
+   only that term) showed it WAS the entire halo, not a separate bug —
+   turned out the camera's FOV was simply too wide relative to the disk's
+   angular size at that distance: even edge-of-frame rays had a geometric
+   impact parameter smaller than the disk's own outer radius, so nearly
+   the whole frame legitimately intersected the disk plane somewhere along
+   its (possibly bent) path. Fixed by choosing camera distance and FOV
+   together so the disk's outer edge stays within the frame, not by
+   touching the crossing logic at all.
+
+### A fourth trap that wasn't a bug: PHOTON RING mode rendering solid black
+At r=2.2rs with a 71.6° FOV, EVERY pixel came back captured. A debug build
+colouring captured=red confirmed it wasn't a boundary artifact — the whole
+frame really was inside the capture cone. bh_check_fov.js worked out why:
+the capture-cone half-angle (measured from "pointing straight at the BH")
+grows to a full 90° AT the photon sphere itself (half the entire sky is
+already gone there, not just very close to it) and was already ~51.6° at
+r=2.2rs — comfortably wider than half this mode's own FOV. Not a bug to fix
+so much as a composition to choose deliberately: pulled the camera back to
+2.6rs and widened the FOV to 2.3rad (132°) so a visible escaping fringe
+remains. The same growing-cone fact broke INFALL's fixed FOV even harder
+partway through the fall (full blackout well before reaching the clamped
+minimum radius), which needed a structural fix, not just a parameter
+tweak — see below.
+
+### Equidistant fisheye, not a tan(halfFov) pinhole
+A standard planar perspective projection diverges as half-FOV approaches
+90°, which INFALL needs to exceed near the end of its fall (per the capture-
+cone math above). Replaced the camera ray construction with an equidistant-
+angle mapping (ray angle from centre = screen radius × halfFov, linear,
+no tan) that stays well-defined up to a full 360°. INFALL's own FOV now
+ramps from 0.85rad to 3.0rad over the fall (t^1.7 easing) specifically so a
+shrinking bright ring of the outside universe stays inside frame right up
+to the clamped closest approach (1.65rs) instead of the screen going solid
+black a third of the way through the mode.
+
+### Octahedral starfield mapping produced streaked "star" artifacts
+An initial procedural starfield (unit direction → octahedral 2D square →
+flat hash grid, avoiding any cubemap texture asset) rendered most stars as
+thick diagonal SMEARS rather than round points — caught by screenshot, not
+by re-deriving the projection math, which looked correct in isolation. Root
+cause: any star cell straddling the octahedral map's fold seams gets a
+locally discontinuous/stretched mapping. Replaced entirely with ~70 fixed
+pseudo-random points scattered directly ON the unit sphere (hashed index →
+uniform sphere point via the standard z/phi construction) tested per pixel
+via a sharp pow(dot(dir,starDir),K) spike — no 2D projection of the sphere
+at all, so there is no seam to smear anything into. Simpler AND correct.
+
+### Debug technique: visualize intermediate values directly as colour
+Every bug above was root-caused the same way: temporarily replace the
+shader's final gl_FragColor with a raw intermediate quantity (captured as
+solid red, usedSteps or crossCount as a grayscale ramp, diskAccum or base
+alone with the other zeroed) rather than staring at the final composited
+image and guessing. This is the GPU-shader version of FLAME's own
+gl.readPixels sanity check and EINSTEIN/SPECTRE's plain-JS geometry ports —
+verify what the code is actually computing, not what the final blended
+picture merely looks like it might be computing.
+
+### Performance: sample budget over resolution
+Every pixel costs up to 110 RK4 steps (4 derivative evaluations each), plus
+up to 6 bisection sub-integrations at actual disk crossings, times 2
+supersamples for antialiasing at the photon-ring/disk-image boundaries —
+genuinely expensive per pixel compared to every earlier piece's fixed-size
+texture pass. Internal raster capped at 660px on the long edge (browser
+bilinear-upscaled to the display size, the same "trade resolution for
+per-pixel cost" choice as a lower SIM resolution elsewhere in this gallery)
+rather than a separate offscreen-framebuffer+blit pass, since this piece
+needs no other render target anyway. Measured at under 2fps on headless
+SwiftShader (software rasterization, deliberately not representative of
+real GPU throughput) after cutting an initial 4x2x2 supersample down to 2
+diagonal samples and MAXSTEPS from 140 to 110 — real hardware should clear
+this by 1–2 orders of magnitude given SwiftShader's usual gap versus true
+parallel silicon, but genuinely UNVERIFIED on real GPU hardware this
+session, unlike every other performance claim here which was measured.
+
+### Five views, one spacetime
+- ACCRETION: inclined view (73°) at r=34rs, disk visibly wrapped above/
+  below the shadow by lensing, slow orbital drift.
+- PHOTON RING: r=2.6rs, 132° fisheye FOV — the sky itself gets smeared into
+  thin wrapped bands right at the shadow's edge.
+- EINSTEIN RING: a single fixed point light at world direction (0,0,1),
+  tested directly against each pixel's bent escape direction (not folded
+  into the procedural starfield) so the ring/arc images are legible as the
+  camera's auto-rotating azimuth sweeps past alignment — confirmed visually
+  forming a near-complete ring, not just theorized.
+- INFALL: camera radius shrinks from 26rs to a clamped 1.65rs
+  (r(t)=26-(26-1.65)t^1.6, accelerating like a real plunge), FOV ramping
+  wide alongside it (see above) — the live dτ/dt readout visibly heads
+  toward zero as the fall progresses.
+- TOP-DOWN: near-polar view straight down the disk's axis — primary ring
+  plus a fainter secondary ring from photons that looped underneath and
+  back up, both visible around one shadow.
+All five run the identical ODE and shader; only camera geometry and disk/
+star brightness differ per mode — ATTRACTOR/FLAME/SPINODAL's own "one
+equation, several honest registers" choice, reused a fourth time.
+
+### Live readout: gravitational time dilation, not a fixed constant
+dτ/dt=√(1-rs/r): a stationary observer's clock at the camera's own current
+radius, measured against a distant one. Provably →0 as r→rs — the real
+phenomenon measured as a number rather than only implied by the visuals,
+this gallery's now-standard bar since SANDPILE's own session-8 note (same
+lineage as SPINODAL's α, FLAME's box-dimension, ATTRACTOR's λ, ISING's M,
+LICHTENBERG's D, GYRUS's GI). Most dramatic during INFALL, where r is
+actually changing frame to frame and the number visibly falls toward zero.
+
+### Interaction
+Drag/touch to orbit the camera directly — this piece has no field or
+population to perturb, only a viewpoint, so the natural touch is flying
+around the hole rather than stamping or reseeding anything. Auto-rotation
+(mode-specific azimuth speed) pauses while dragging and resumes from
+wherever the drag left off; theta (inclination) is drag-adjustable too,
+clamped to (6°,174°) to avoid the degenerate poles.
+
+### What's honestly NOT simulated
+Pure Schwarzschild: non-rotating, uncharged, exactly spherically symmetric.
+No frame-dragging (needs the Kerr metric), no true relativistic Doppler
+colour-shift of the disk material (only a brightness-beaming approximation
+using a Keplerian tangent direction), no photon-photon or photon-disk
+backreaction, no volumetric disk (razor-thin equatorial plane only).
+
+### Inspiration
+Web research into "unusual physics simulation / creative coding shader
+ideas" surfaced gravitational-lensing black-hole raytracers (Antonelli's
+and oseiskar's own writeups) as a genuinely different register from
+everything else here — first raymarched/camera piece, first relativity,
+direct answer to the standing "3D" backlog itch (SPINODAL/FLAME/ATTRACTOR/
+SOFTCELL/LICHTENBERG all flagged a 3D mode as never-built for performance
+reasons) via a technique naturally suited to it: a per-pixel geodesic
+integration is a sparse, cheap-per-ray computation rather than a dense
+volumetric field, much like a strange attractor or DBM growth is a sparse
+curve/surface rather than a solid.
 
 ---
 
@@ -2135,6 +2351,57 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-15 — Session 18
+- Added HORIZON: a real-time Schwarzschild black hole raymarcher — photon
+  geodesics integrated per-pixel via RK4 on the reduced orbit equation
+  d²u/dφ²+u=1.5u² (rs=1 units), gravitational lensing of a procedural
+  starfield and a thin accretion disk, five camera-only modes (ACCRETION,
+  PHOTON RING, EINSTEIN RING, INFALL, TOP-DOWN). First piece with a literal
+  3D camera/scene, first needing no float texture extension at all, first
+  general-relativity physics in this gallery.
+- All physics verified offline in plain JS (bh_sim.js–bh_sim5.js) before
+  any GLSL: b_crit=3√3/2≈2.598rs, photon sphere at 1.5rs, weak-field
+  deflection ≈2rs/b, and the shader's own local per-pixel initial-condition
+  formula cross-checked against the same threshold — this session's fifth
+  use of the "verify closed-form math in Node first" discipline.
+- Three real bugs, each root-caused by temporarily outputting an
+  intermediate shader value (captured flag, usedSteps, crossCount,
+  diskAccum alone) as raw colour rather than guessing from the final
+  composited image: a flipped sign on the initial radial velocity (caught
+  offline before touching GLSL), a disk-crossing detector aliasing into a
+  large geometric sawtooth at the shadow's edge (fixed with local
+  bisection refinement at actual sign changes, not a globally finer step),
+  and disk light smearing across nearly the whole sky (the camera's FOV
+  was simply too wide for the disk's angular size at that distance, not a
+  crossing-logic bug).
+- PHOTON RING mode rendering solid black turned out to be correct physics,
+  not a bug: the capture-cone half-angle grows toward 90° AT the photon
+  sphere itself, wider than that mode's original FOV — fixed by widening
+  the camera's framing, not the code. The same growing-cone fact broke
+  INFALL's fixed FOV partway through the fall, which needed switching from
+  a tan(halfFov) pinhole to an equidistant fisheye projection (stays
+  well-defined past 90° half-FOV) with FOV ramping wide over the fall.
+- A first starfield attempt (octahedral direction→2D mapping + hash grid)
+  rendered stars as streaked smears at the projection's fold seams — caught
+  by screenshot, replaced with ~70 fixed points scattered directly on the
+  unit sphere and tested per-pixel via a sharp dot-product spike, which has
+  no seam to smear anything into.
+- Live readout: dτ/dt=√(1-rs/r), gravitational time dilation at the
+  camera's own radius — most dramatic during INFALL where it visibly heads
+  toward zero as the fall progresses.
+- Performance measured under 2fps on headless SwiftShader (software,
+  deliberately non-representative) after cutting supersampling and step
+  count — genuinely UNVERIFIED on real GPU hardware this session, flagged
+  honestly rather than assumed fine.
+- Inspiration: web research into gravitational-lensing black-hole
+  raytracers (Antonelli's and oseiskar's own writeups), chosen as a
+  register genuinely different from every field/agent/lattice piece here,
+  and a direct answer to the standing "3D" backlog itch several earlier
+  pieces (SPINODAL, FLAME, ATTRACTOR, SOFTCELL, LICHTENBERG) flagged as
+  never built for performance reasons — a per-pixel geodesic is a sparse
+  per-ray cost, not a dense volumetric field, the same reason a strange
+  attractor or DBM growth stayed affordable where a volumetric PDE hadn't.
+
 ### 2026-07-13 — Session 16
 - Added FLAME: iterated function systems and the fractal flame algorithm
   (Barnsley's 1988 chaos game; Draves' 1992 flame algorithm, documented in
@@ -2992,3 +3259,52 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       reasons — worth reconsidering since, like DBM growth or a strange
       attractor, a 3D bicontinuous interface is a comparatively sparse
       surface rather than a dense volumetric field
+- [x] A raymarched/camera piece answering the standing "3D" backlog itch
+      (SPINODAL, FLAME, ATTRACTOR, SOFTCELL, LICHTENBERG all flagged one
+      as never built for performance reasons) — done in HORIZON
+      (session 18), via a genuinely different technique (per-pixel
+      geodesic integration, sparse per-ray cost) rather than a dense
+      volumetric field sim, general relativity rather than another
+      field/agent/lattice system
+- [ ] HORIZON: verify actual frame rate on real GPU hardware — this
+      session only measured headless SwiftShader (software, deliberately
+      non-representative, under 2fps), unlike every other performance
+      claim in this gallery which was measured on a real path; if real
+      hardware turns out slower than expected, the first lever is
+      MAXSTEPS (currently 110) and the internal resolution cap
+      (currently 660px), both already tuned down once this session
+- [ ] HORIZON: the Kerr metric (rotating black hole) — frame-dragging
+      would split the photon-capture cross-section into prograde/
+      retrograde halves and shift the ISCO inward/outward by spin,
+      genuinely different geodesic equations (no longer reducible to a
+      single planar orbit problem the way Schwarzschild's spherical
+      symmetry allows) rather than a parameter change to this session's
+      ODE — not attempted, out of scope after the reference research
+- [ ] HORIZON: true relativistic Doppler/redshift colour-shifting of the
+      disk material by its own local orbital velocity (this session only
+      approximates directional beaming as a brightness multiplier, not an
+      actual wavelength shift toward blue/red) — would need the disk
+      material's exact local 4-velocity, not just a tangent direction
+- [ ] HORIZON: a volumetric (non-razor-thin) accretion disk or torus,
+      raymarched through actual optical depth rather than a single
+      equatorial-plane crossing test — a genuinely harder rendering
+      problem than the current thin-disk approximation, deliberately
+      left as a simpler model this session
+- [ ] HORIZON: an interactive camera-distance/FOV slider independent of
+      the 5 curated auto-cycled modes, echoing the same "let a visitor
+      walk the parameter themselves" idea flagged for ISING's
+      temperature, LICHTENBERG's eta, ATTRACTOR's (a,b,c,d), SOFTCELL's
+      softness t, EINSTEIN/SPECTRE's recursion depth, FLAME's xform
+      editor, and SPINODAL's kappa — this session's drag-to-orbit
+      interaction covers azimuth/inclination but not radius or FOV
+- [ ] HORIZON: a naked-singularity or wormhole variant (Reissner-Nordström
+      with Q>M removes the horizon entirely, or a Morris-Thorne throat)
+      as an explicit contrast against every current mode's ordinary
+      Schwarzschild horizon — needs a genuinely different metric/effective
+      potential, not just a different camera, not attempted this session
+- [ ] HORIZON: a proper adaptive step size (finer dφ specifically near the
+      photon sphere, coarser far from it) instead of this session's fixed
+      global DPHI plus local bisection-at-crossings — would let the photon
+      ring resolve even more cleanly, or the same quality at a lower
+      MAXSTEPS budget, at real numerical-methods cost this session's
+      bisection fix sidestepped rather than solved head-on

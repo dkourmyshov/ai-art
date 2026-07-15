@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HORIZON — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+#order .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:82vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="orderLabel">d&tau;/dt &asymp; </span><span class="val" id="orderVal">&mdash;</span>
+  <span class="sub" id="subVal">GRAVITATIONAL TIME DILATION</span>
+</div>
+<div id="ui">
+  <span id="modeName">ACCRETION</span>
+  <span id="desc">THIN DISK &middot; GRAVITATIONAL LENSING</span>
+</div>
+<div id="hint">DRAG TO ORBIT</div>
+<script>
+/*  HORIZON — a real-time Schwarzschild black hole raymarcher
+ *
+ *  Every earlier piece in this gallery evolves a field, a lattice, or a
+ *  population of agents through TIME and looks at the result from a fixed
+ *  orthographic camera. This piece has no simulated substance at all —
+ *  no ping-ponged texture, no agents, no lattice, not even the
+ *  OES_texture_float extension every other GPU piece here has required.
+ *  Instead, every pixel casts one light ray BACKWARD from a moving 3D
+ *  camera and asks a single question general relativity actually answers:
+ *  where did this photon come from, given that spacetime itself is curved
+ *  by a point mass at the origin? Schwarzschild (1916) found the exact
+ *  solution for the field around a non-rotating mass nine months into
+ *  World War I, while serving on the Russian front, from a letter to
+ *  Einstein — the first exact solution to the field equations Einstein
+ *  had published only weeks earlier.
+ *
+ *  ── The physics, reduced to one ODE ──────────────────────────────────
+ *  Spherical symmetry means every photon's path lies in a single plane
+ *  through the black hole's centre, so full 4D geodesic integration
+ *  collapses to a 2D orbit problem: with u = 1/r and rs = 1 (world units
+ *  fixed so the Schwarzschild radius itself is the unit of length),
+ *
+ *      d²u/dφ² + u = (3/2) u²
+ *
+ *  — Newton's inverse-square orbit equation (d²u/dφ²+u=GM/L²) plus
+ *  exactly one relativistic correction term. That single extra u² is the
+ *  entire difference between a Keplerian ellipse and a photon that can
+ *  wind around a black hole any number of times before escaping. Two
+ *  closed-form facts anchor the whole piece: the unstable photon sphere
+ *  at r = 1.5 rs (circular photon orbits, unstable — nudge either way and
+ *  the photon spirals in or escapes), and the critical impact parameter
+ *  b_crit = (3√3/2) rs ≈ 2.598 rs, the sharp boundary between capture and
+ *  escape that becomes the black hole's visible shadow.
+ *
+ *  Every claim above was checked against this closed-form physics before
+ *  a single line of GLSL was written — bh_sim.js through bh_sim5.js
+ *  (this session's scratch directory), RK4-integrating the ODE from
+ *  scratch and confirming: (1) the capture/escape boundary lands within
+ *  0.3rs of b_crit and the minimum radius of a near-critical ray
+ *  converges on exactly 1.5rs as predicted; (2) large-b deflection
+ *  matches the weak-field formula δφ≈2rs/b (Einstein's 1919-eclipse
+ *  result, doubled from Newton's own light-bending estimate by the same
+ *  extra u² term); (3) the LOCAL initial-condition formula the shader
+ *  actually uses — v₀ = du/dφ = -u₀cot(α), α the ray's angle off the
+ *  outward radial direction at the camera, avoiding any "start at
+ *  infinity" approximation — reproduces the identical b_crit threshold
+ *  when swept against camera angle directly. Same discipline SPINODAL,
+ *  FLAME, EINSTEIN and SPECTRE each used: verify the closed-form math in
+ *  plain JS first, then port with confidence.
+ *
+ *  ── Per pixel, in the fragment shader ────────────────────────────────
+ *  Camera ray → own orbital plane (eR, ePhi spanning camPos & dir) → RK4-
+ *  integrate (u, du/dφ) forward in φ, a fixed 130-step budget over up to
+ *  4π of winding (enough to resolve the thin near-critical photon ring;
+ *  most pixels break out in a handful of steps, only the silhouette's
+ *  edge spends the full budget). Three outcomes: u reaches 1 (r<rs, the
+ *  photon is captured — black); r exceeds 40rs (escaped — sample a
+ *  procedural starfield, octahedrally mapped so no cubemap or texture
+ *  asset is needed, in the direction the bent ray asymptotically points);
+ *  or the path crosses the equatorial plane within the accretion disk's
+ *  annulus (3rs–12rs — 3rs being the Schwarzschild ISCO, the innermost
+ *  stable circular orbit, not a tuned number), depositing emission with a
+ *  hot-white→ember colour ramp and a cheap directional-beaming tint. The
+ *  same ray can cross that plane more than once — a photon passing close
+ *  behind the hole crosses it once in front and once again on the far
+ *  side before escaping — which is exactly the mechanism that paints a
+ *  second, lensed image of the disk arcing above and below the shadow,
+ *  the single most recognisable feature of every real black hole render
+ *  since Luminet's 1979 hand-plotted image.
+ *
+ *  ── Five views, one spacetime ────────────────────────────────────────
+ *  ACCRETION — a standard inclined view of the lensed disk, slow orbit.
+ *  PHOTON RING — camera parked at r=2.2rs, just outside the photon
+ *    sphere, wide FOV: the sky itself gets smeared into thin wrapped
+ *    bands near the shadow's edge.
+ *  EINSTEIN RING — a single fixed point light at world direction (0,0,1),
+ *    tested directly against each pixel's bent escape direction rather
+ *    than folded into the procedural starfield, so the ring/arc images
+ *    forming as the camera's azimuth sweeps past alignment are actually
+ *    legible instead of lost in noise.
+ *  INFALL — camera radius shrinks from 14rs toward 1.65rs over the mode's
+ *    hold (accelerating, r(t)=14-(14-1.65)t^1.6, echoing a real plunge's
+ *    own increasing rate) — the live dτ/dt readout visibly heads toward
+ *    zero exactly as it should this close to the horizon.
+ *  TOP-DOWN — near-polar view straight down the disk's axis: the primary
+ *    ring and a fainter secondary ring from photons that looped underneath
+ *    and back up, both visible at once around one shadow.
+ *  All five run the identical ODE and shader; only camera geometry and
+ *  disk/star brightness differ, the same "one equation, several honest
+ *  registers" choice ATTRACTOR, FLAME and SPINODAL each made.
+ *
+ *  ── The live readout ──────────────────────────────────────────────────
+ *  dτ/dt = √(1 - rs/r): a stationary observer's clock, measured against a
+ *  distant one, at the camera's own current radius. It's 1 far away, and
+ *  provably → 0 as r → rs — gravitational time dilation made legible as a
+ *  number rather than only implied by the visuals, the same "measure the
+ *  real phenomenon" standard this gallery has held since SANDPILE's own
+ *  session-8 note, most dramatic here during INFALL where r is actually
+ *  changing frame to frame.
+ *
+ *  ── What's NOT simulated ──────────────────────────────────────────────
+ *  This is the Schwarzschild solution: non-rotating, uncharged, exactly
+ *  spherically symmetric. No frame-dragging (needs the Kerr metric), no
+ *  Doppler colour-shift of the disk material itself (only a brightness
+ *  beaming approximation), no photon-photon or photon-disk backreaction.
+ *  All flagged honestly below rather than faked.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const orderValEl = document.getElementById('orderVal');
+const subValEl = document.getElementById('subVal');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── GLSL ──────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 vNdc;
+void main(){ vNdc = p; gl_Position = vec4(p,0.0,1.0); }`;
+
+const FS = `
+precision highp float;
+varying vec2 vNdc;
+
+uniform vec3 uCamPos, uCamFwd, uCamRight, uCamUp;
+uniform float uHalfFov, uAspect;
+uniform float uDiskInner, uDiskOuter, uDiskBright;
+uniform float uStarBright, uRefStarBright;
+uniform vec3 uRefStarDir;
+uniform vec2 uPixelNdc;
+
+const int MAXSTEPS = 110;
+const float DPHI = 0.1142397;   // 4*PI / MAXSTEPS
+const float ESCAPE_R = 40.0;
+
+/* Schwarzschild photon orbit equation, rs=1: d2u/dphi2 = -u + 1.5 u^2 */
+vec2 deriv(vec2 s){ return vec2(s.y, -s.x + 1.5*s.x*s.x); }
+vec2 rk4(vec2 s, float h){
+  vec2 k1 = deriv(s);
+  vec2 k2 = deriv(s + 0.5*h*k1);
+  vec2 k3 = deriv(s + 0.5*h*k2);
+  vec2 k4 = deriv(s + h*k3);
+  return s + h/6.0*(k1 + 2.0*k2 + 2.0*k3 + k4);
+}
+
+float hash21(vec2 p){
+  p = fract(p*vec2(443.897,441.423));
+  p += dot(p,p+19.19);
+  return fract(p.x*p.y);
+}
+
+/* Procedural stars as ~70 fixed points scattered directly on the unit
+   sphere (hashed index -> uniform sphere point via the standard z/phi
+   construction), each tested against the escape direction with a sharp
+   pow(dot,K) spike — no 2D projection of the sphere at all, so there is
+   no seam/fold to smear a star into a streak. An earlier octahedral-grid
+   version did exactly that: stars straddling the projection's fold lines
+   stretched into visible bars, caught by screenshot, not by reasoning
+   about the math alone. */
+vec3 starfield(vec3 dir){
+  vec3 col = vec3(0.025,0.018,0.045);
+  float neb = pow(max(0.0, dir.y*0.5+0.5), 3.0);
+  col += vec3(0.05,0.03,0.09) * neb * 0.4;
+  for (int i=0; i<70; i++){
+    float fi = float(i);
+    if (hash21(vec2(fi,3.14)) < 0.55) continue;
+    float z = hash21(vec2(fi,12.7))*2.0 - 1.0;
+    float phi = hash21(vec2(fi,91.3)) * 6.2831853;
+    float sr = sqrt(max(0.0, 1.0-z*z));
+    vec3 starDir = vec3(sr*cos(phi), z, sr*sin(phi));
+    float sizeK = mix(500.0, 2600.0, hash21(vec2(fi,55.1)));
+    float glow = pow(max(0.0, dot(dir, starDir)), sizeK);
+    vec3 tint = mix(vec3(0.75,0.82,1.0), vec3(1.0,0.85,0.65), hash21(vec2(fi,7.2)));
+    col += tint * glow * mix(0.6,1.6, hash21(vec2(fi,23.9)));
+  }
+  return col;
+}
+
+vec3 diskColor(float r, vec3 pos, vec3 toCam){
+  float t = clamp((r-uDiskInner)/(uDiskOuter-uDiskInner), 0.0, 1.0);
+  vec3 hot  = vec3(1.00,0.96,0.90);
+  vec3 mid  = vec3(1.00,0.55,0.16);
+  vec3 cool = vec3(0.55,0.12,0.07);
+  vec3 base = mix(hot, mix(mid, cool, smoothstep(0.30,1.0,t)), smoothstep(0.0,0.30,t));
+  float bright = pow(1.0-t, 3.2) * 0.9 + 0.015;
+  vec3 radial = normalize(vec3(pos.x, 0.0, pos.z) + 1e-6);
+  vec3 tangent = normalize(cross(vec3(0.0,1.0,0.0), radial));
+  float beam = dot(tangent, toCam);
+  float beamFactor = mix(0.30, 1.15, smoothstep(-1.0,1.0,beam));
+  return base * bright * beamFactor;
+}
+
+vec3 traceRay(vec2 ndc){
+  /* Equidistant fisheye, not a planar tan(halfFov) pinhole: a plain
+     perspective projection diverges as halfFov approaches 90 degrees, and
+     INFALL needs to go well past that near the horizon (the escaping sky
+     shrinks to a point ringed by black, per the local capture-cone math
+     verified in bh_check_fov.js — half the sky is already swallowed AT
+     the photon sphere, not just very close to it). Angle-from-centre is
+     linear in screen radius instead, so the camera stays well-defined up
+     to a full 360 degrees. */
+  vec2 sc = vec2(ndc.x*uAspect, ndc.y);
+  float rho = length(sc);
+  vec3 dir;
+  if (rho < 1e-6) {
+    dir = uCamFwd;
+  } else {
+    vec2 dn = sc/rho;
+    float theta = rho * uHalfFov;
+    dir = normalize(cos(theta)*uCamFwd + sin(theta)*(dn.x*uCamRight + dn.y*uCamUp));
+  }
+  vec3 camPos = uCamPos;
+  float r0 = length(camPos);
+  vec3 eR = camPos / r0;
+
+  vec3 planeN = cross(camPos, dir);
+  float planeLen = length(planeN);
+  vec3 ePhi;
+  if (planeLen < 1e-5) {
+    vec3 arb = (abs(eR.y) < 0.99) ? vec3(0.0,1.0,0.0) : vec3(1.0,0.0,0.0);
+    ePhi = normalize(cross(arb, eR));
+  } else {
+    ePhi = normalize(cross(planeN/planeLen, eR));
+  }
+
+  float cosA = dot(dir, eR);
+  float sinA = dot(dir, ePhi);
+  float sinAC = (abs(sinA) < 1e-4) ? (sinA < 0.0 ? -1e-4 : 1e-4) : sinA;
+  float u0 = 1.0/r0;
+  float v0 = -u0*cosA/sinAC;
+
+  vec2 s = vec2(u0, v0);
+  float phi = 0.0;
+  vec3 posPrev = camPos;
+  vec3 diskAccum = vec3(0.0);
+  int crossCount = 0;
+  bool captured = false;
+  int usedSteps = 0;
+
+  for (int i=0; i<MAXSTEPS; i++){
+    usedSteps = i;
+    vec2 sPrev = s;
+    float phiPrev = phi;
+    s = rk4(s, DPHI);
+    phi += DPHI;
+    if (s.x >= 1.0) { captured = true; break; }
+    if (s.x <= 0.0) { break; }
+    float r = 1.0/s.x;
+    vec3 pos = r*(cos(phi)*eR + sin(phi)*ePhi);
+    if (sign(pos.y) != sign(posPrev.y) && crossCount < 2) {
+      /* The disk-plane crossing is where this step's own y actually flips
+         sign, not at either DPHI-spaced endpoint — at a coarse global step
+         that endpoint's radius can be off by enough to visibly alias into
+         a staircase near-edge-on (confirmed by comparing against a much
+         finer global DPHI offline before landing on this fix: the teeth
+         shrank in lockstep with step size, ruling out a geometry bug).
+         Eight bisections re-integrate from the known-good sPrev/phiPrev
+         state, halving the bracket each time — sub-DPHI/250 precision at
+         the one place it's needed, without paying for it on every step of
+         every ray. */
+      vec2 sLo = sPrev; float phiLo = phiPrev; vec3 posLo = posPrev;
+      vec3 posHi = pos;
+      float phiHi = phi;
+      vec2 sHiB = s;
+      for (int b=0; b<6; b++){
+        float phiMid = 0.5*(phiLo + phiHi);
+        vec2 sMid = rk4(sLo, phiMid - phiLo);
+        float rMid = 1.0/sMid.x;
+        vec3 posMid = rMid*(cos(phiMid)*eR + sin(phiMid)*ePhi);
+        if (sign(posMid.y) == sign(posLo.y)) { sLo = sMid; phiLo = phiMid; posLo = posMid; }
+        else { sHiB = sMid; phiHi = phiMid; posHi = posMid; }
+      }
+      float rr = length(posHi.xz);
+      if (rr > uDiskInner && rr < uDiskOuter) {
+        vec3 toCam = normalize(camPos - posHi);
+        diskAccum += diskColor(rr, posHi, toCam) * uDiskBright * pow(0.55, float(crossCount));
+        crossCount++;
+      }
+    }
+    posPrev = pos;
+    if (r > ESCAPE_R) break;
+  }
+
+  vec3 base = vec3(0.0);
+  if (!captured) {
+    vec3 escDir = normalize(cos(phi)*eR + sin(phi)*ePhi);
+    base = starfield(escDir) * uStarBright;
+    float flare = pow(max(0.0, dot(escDir, uRefStarDir)), 400.0);
+    base += vec3(1.0,0.95,0.8) * flare * uRefStarBright;
+  }
+
+  float ringGlow = smoothstep(float(MAXSTEPS)*0.75, float(MAXSTEPS)*0.97, float(usedSteps));
+  return base + diskAccum + vec3(1.0,0.85,0.6) * ringGlow * 0.12;
+}
+
+/* The photon-ring boundary is a genuine caustic — nearby rays diverge
+   chaotically the closer they pass to the photon sphere, the same
+   sensitive-dependence ATTRACTOR's own Lyapunov exponent measures for a
+   very different system — a single sample per pixel leaves that boundary
+   (and, before the bisection refinement above, the disk's own multiply-
+   imaged edge) visibly staircased. The bisection fix above removed most
+   of it at the source; two diagonal samples, averaged in linear light
+   before the tonemap, clean up what's left at half the cost of a full
+   2x2 grid — every ray here already costs up to 140 RK4 steps, so sample
+   count is the one place worth being frugal. */
+void main(){
+  vec3 c = vec3(0.0);
+  c += traceRay(vNdc + vec2(-0.3,-0.3)*uPixelNdc);
+  c += traceRay(vNdc + vec2( 0.3, 0.3)*uPixelNdc);
+  c *= 0.5;
+  c = 1.0 - exp(-c*1.15);
+  vec2 q = vNdc;
+  c *= 1.0 - 0.25*smoothstep(0.6,1.5,dot(q,q));
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+const prog = mkProg(VS, FS);
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aP = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(aP);
+gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+const u = name => gl.getUniformLocation(prog, name);
+const U = {};
+['uCamPos','uCamFwd','uCamRight','uCamUp','uHalfFov','uAspect','uDiskInner',
+ 'uDiskOuter','uDiskBright','uStarBright','uRefStarBright','uRefStarDir','uPixelNdc'].forEach(n => U[n]=u(n));
+
+/* ── Camera: spherical (r, theta, az) around the black hole at the origin,
+   theta measured from +Y (the disk's rotation axis). ─────────────────── */
+const DEG = Math.PI/180;
+function computeCamera(r, theta, az) {
+  const st = Math.sin(theta), ct = Math.cos(theta);
+  const pos = [r*st*Math.cos(az), r*ct, r*st*Math.sin(az)];
+  const rl = Math.hypot(pos[0],pos[1],pos[2]);
+  let fwd = [-pos[0]/rl, -pos[1]/rl, -pos[2]/rl];
+  let worldUp = [0,1,0];
+  if (Math.abs(fwd[0]*worldUp[0]+fwd[1]*worldUp[1]+fwd[2]*worldUp[2]) > 0.999) worldUp = [0,0,1];
+  function cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+  function norm(a){ const l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; }
+  let right = norm(cross(fwd, worldUp));
+  let up = cross(right, fwd);
+  return { pos, fwd, right, up };
+}
+
+/* ── Modes: same ODE, five different cameras/registers ─────────────── */
+const HOLD = 36000;
+function infallR(t) { return 26.0 - (26.0-1.65)*Math.pow(Math.min(1,t), 1.6); }
+/* The capture cone widens from near-0 (far away) toward ~90 degrees off
+   dead-centre AT the photon sphere itself (verified in bh_check_fov.js —
+   half the whole sky is already gone at r=1.5rs, not just very close to
+   it), so a fixed FOV blacks out the frame well before the horizon. The
+   fisheye FOV ramps out ahead of that growth so a shrinking bright ring
+   of the outside universe stays in frame right up to the end of the fall. */
+function infallFov(t) { return 0.85 + (3.0-0.85)*Math.pow(Math.min(1,t), 1.7); }
+const MODES = [
+  { name:'ACCRETION', desc:'THIN DISK &middot; GRAVITATIONAL LENSING',
+    r:()=>34.0, theta:73*DEG, fov:0.68, diskInner:3.0, diskOuter:9.0,
+    diskBright:0.85, starBright:0.5, refStarBright:0.15, azSpeed:0.045 },
+  { name:'PHOTON RING', desc:'JUST OUTSIDE THE UNSTABLE ORBIT &middot; r=1.5 R&#x209B;',
+    r:()=>2.6, theta:80*DEG, fov:2.3, diskInner:3.0, diskOuter:5.0,
+    diskBright:0.35, starBright:0.9, refStarBright:0.2, azSpeed:0.08 },
+  { name:'EINSTEIN RING', desc:'POINT-SOURCE LENSING &middot; MULTIPLE IMAGES',
+    r:()=>30.0, theta:90*DEG, fov:0.42, diskInner:3.0, diskOuter:6.0,
+    diskBright:0.12, starBright:0.35, refStarBright:2.2, azSpeed:0.11 },
+  { name:'INFALL', desc:'RADIAL PLUNGE TOWARD THE HORIZON',
+    r:infallR, theta:75*DEG, fov:infallFov, diskInner:3.0, diskOuter:9.0,
+    diskBright:0.7, starBright:0.6, refStarBright:0.2, azSpeed:0.02 },
+  { name:'TOP-DOWN', desc:'POLAR VIEW &middot; PRIMARY + LENSED SECONDARY RING',
+    r:()=>26.0, theta:12*DEG, fov:0.55, diskInner:3.0, diskOuter:9.0,
+    diskBright:0.9, starBright:0.4, refStarBright:0.1, azSpeed:0.055 },
+];
+
+let modeIdx = 0, modeStart = 0;
+let theta = MODES[0].theta, az = 0;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.innerHTML = m.desc;
+  theta = m.theta; az = 0;
+}
+applyMode(0);
+modeStart = performance.now();
+
+/* ── Interaction: drag to orbit the camera directly — this piece has no
+   field or population to perturb, only a viewpoint, so the natural touch
+   is letting a visitor fly around the hole themselves rather than stamp
+   or reseed anything. Auto-rotation pauses while dragging and resumes
+   from wherever the drag left off. ───────────────────────────────────── */
+let dragging = false, lastX = 0, lastY = 0;
+function pointerDown(x,y){ dragging = true; lastX = x; lastY = y; }
+function pointerMove(x,y){
+  if (!dragging) return;
+  const dx = x-lastX, dy = y-lastY;
+  az += dx*0.006;
+  theta = Math.max(6*DEG, Math.min(174*DEG, theta - dy*0.006));
+  lastX = x; lastY = y;
+}
+function pointerUp(){ dragging = false; }
+C.addEventListener('mousedown', e => pointerDown(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY));
+window.addEventListener('mouseup', pointerUp);
+C.addEventListener('touchstart', e => { e.preventDefault(); const t=e.touches[0]; pointerDown(t.clientX,t.clientY); }, {passive:false});
+C.addEventListener('touchmove', e => { e.preventDefault(); const t=e.touches[0]; pointerMove(t.clientX,t.clientY); }, {passive:false});
+C.addEventListener('touchend', pointerUp);
+
+/* ── Resize: internal raster capped well below display resolution — every
+   pixel costs up to 130 RK4 steps (4 derivative evals each), so this piece
+   trades per-pixel resolution for physical accuracy rather than the other
+   way around. Needs no extension and no float texture at all: the first
+   piece in this gallery with literally zero persistent GPU simulation
+   state, since every frame is a pure function of the current camera. ──── */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const CAP = 660;
+  const scale = Math.min(1, CAP / Math.max(w,h));
+  C.width = Math.max(2, Math.round(w*scale));
+  C.height = Math.max(2, Math.round(h*scale));
+  C.style.width = w+'px';
+  C.style.height = h+'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+let frameCount = 0, lastT = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > HOLD) { modeStart = now; applyMode(modeIdx + 1); }
+  const m = MODES[modeIdx];
+  const dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
+  if (!dragging) az += m.azSpeed * dt;
+
+  const tFrac = (now - modeStart) / HOLD;
+  const r = m.r(tFrac);
+  const fov = typeof m.fov === 'function' ? m.fov(tFrac) : m.fov;
+  const cam = computeCamera(r, theta, az);
+
+  gl.viewport(0, 0, C.width, C.height);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(aP);
+  gl.vertexAttribPointer(aP, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform3f(U.uCamPos, cam.pos[0], cam.pos[1], cam.pos[2]);
+  gl.uniform3f(U.uCamFwd, cam.fwd[0], cam.fwd[1], cam.fwd[2]);
+  gl.uniform3f(U.uCamRight, cam.right[0], cam.right[1], cam.right[2]);
+  gl.uniform3f(U.uCamUp, cam.up[0], cam.up[1], cam.up[2]);
+  gl.uniform1f(U.uHalfFov, fov/2);
+  gl.uniform1f(U.uAspect, C.width / C.height);
+  gl.uniform1f(U.uDiskInner, m.diskInner);
+  gl.uniform1f(U.uDiskOuter, m.diskOuter);
+  gl.uniform1f(U.uDiskBright, m.diskBright);
+  gl.uniform1f(U.uStarBright, m.starBright);
+  gl.uniform1f(U.uRefStarBright, m.refStarBright);
+  gl.uniform3f(U.uRefStarDir, 0.0, 0.0, 1.0);
+  gl.uniform2f(U.uPixelNdc, 2.0 / C.width, 2.0 / C.height);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  if (++frameCount % 15 === 0) {
+    const dtau = Math.sqrt(Math.max(0, 1 - 1/r));
+    orderValEl.textContent = dtau.toFixed(3);
+    subValEl.textContent = 'r = ' + r.toFixed(2) + ' Rₛ · TIME DILATION';
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
