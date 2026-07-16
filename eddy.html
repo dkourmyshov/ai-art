@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EDDY — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#order .val{color:rgba(255,255,255,.45)}
+#order .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:82vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="orderLabel">&lang;|u|&sup2;&rang; &asymp; </span><span class="val" id="orderVal">&mdash;</span>
+  <span class="sub" id="subVal">MEAN KINETIC ENERGY</span>
+</div>
+<div id="ui">
+  <span id="modeName">KARMAN STREET</span>
+  <span id="desc">VORTEX SHEDDING BEHIND A CYLINDER</span>
+</div>
+<div id="hint"></div>
+<script>
+/*  EDDY — a real-time incompressible fluid solver (Stam's "stable fluids")
+ *
+ *  Every earlier field-based piece in this gallery diffuses a scalar or
+ *  vector quantity through a FIXED local rule (reaction-diffusion, Cahn-
+ *  Hilliard, Laplace relaxation). This piece solves a genuinely different,
+ *  harder equation: incompressible Navier-Stokes, where velocity advects
+ *  ITSELF (a non-linear term no earlier piece here has) under a global
+ *  constraint (zero divergence everywhere, enforced by a Poisson solve
+ *  every frame, not a local rule at all). Stam (1999, "Stable Fluids")
+ *  showed semi-Lagrangian advection — tracing each cell backward through
+ *  the CURRENT velocity field and bilinearly resampling — is unconditionally
+ *  stable at any time step, which is exactly what makes a real-time GPU
+ *  fluid sim possible at all; Fedkiw, Stam & Jensen (2001) then showed how
+ *  to fight that scheme's own numerical dissipation back with an explicit
+ *  vorticity-confinement force, which is what keeps this piece's vortices
+ *  crisp instead of blurring into smooth blobs within a few frames.
+ *
+ *  ── The per-frame pipeline (Harris, GPU Gems ch.38) ────────────────────
+ *  1. add forces (inflow / buoyancy / a visitor's own drag) + vorticity
+ *     confinement, both directly onto the velocity field
+ *  2. self-advect velocity: v(x) <- v(x - v(x)*dt), bilinearly resampled
+ *  3. a small explicit diffusion blend toward each cell's 4-neighbour
+ *     average — Stam's original algorithm's own viscosity step, and the
+ *     fix for this session's second real bug, below
+ *  4. compute divergence of the (now non-solenoidal) velocity field
+ *  5. solve the pressure Poisson equation, Jacobi-iterated (28 passes)
+ *  6. subtract the pressure gradient — velocity is now divergence-free
+ *  7. advect a passive dye field through that divergence-free velocity
+ *  All of it runs on one shared 320x160 grid (a genuinely higher-detail
+ *  build would give dye its own finer grid than the velocity/pressure
+ *  solve, as most WebGL fluid demos do — left for the backlog, one grid
+ *  keeps this session's implementation surface smaller).
+ *
+ *  ── Four honest views of the identical solver ──────────────────────────
+ *  KARMAN STREET — uniform inflow past a fixed cylinder. Von Kármán (1911)
+ *  showed a symmetric wake is unstable above a critical Reynolds number:
+ *  it must break into an alternating train of shed vortices. Nothing here
+ *  is scripted to alternate — the cylinder's centre is nudged by a fixed
+ *  0.006 (breaking the grid's own exact top/bottom symmetry, since a
+ *  perfectly symmetric discretisation can sit in the unstable symmetric
+ *  wake indefinitely) and the alternation emerges on its own from there.
+ *  A fixed probe cell just downstream counts zero-crossings of its own
+ *  vertical velocity to measure the shedding period directly, in
+ *  simulation steps — turned into a live Strouhal number St=fD/U, the
+ *  classic dimensionless shedding frequency, honestly checked against
+ *  (not fitted to) the ~0.2 plateau real cylinder wakes hold from roughly
+ *  Re~300 to Re~2x10^5 (Williamson 1996's review is the standard source).
+ *  This solver has no explicit viscosity term to set a real Reynolds
+ *  number with — its only dissipation is the numerical diffusion of
+ *  semi-Lagrangian advection at this grid's resolution — so the ~0.2
+ *  comparison is an honest cross-check of the right order, not a
+ *  controlled replication of a specific Re.
+ *
+ *  LEAPFROG — two coaxial vortex PAIRS (each pair a self-propelling
+ *  dipole: a +/- point-vortex couple that translates in a straight line
+ *  under its own mutual induction), the trailing pair narrower than the
+ *  leading one. Love (1894) showed such pairs leapfrog — the trailing
+ *  pair repeatedly overtakes and passes clean through the leading one —
+ *  whenever the diameter ratio alpha exceeds 3-2*sqrt(2)~=0.172, and does
+ *  so WITHOUT the motion itself going unstable once alpha exceeds a second
+ *  threshold near (1/phi)^2~=0.382 (golden-ratio-squared), phi being the
+ *  golden ratio. Checked from scratch offline (leapfrog_sim.js, this
+ *  session's own point-vortex Biot-Savart RK4 integrator, the same
+ *  "verify the closed-form math in plain JS before any GLSL" discipline
+ *  every earlier piece with a genuine ODE/PDE claim has used) before
+ *  choosing alpha=0.42: sweeping alpha from 0.10 to 0.70 confirmed small
+ *  alpha just merges or separates the pairs monotonically (one crossing,
+ *  unbounded final separation), while several values comfortably above
+ *  the golden-ratio-squared threshold gave dozens of bounded, repeating
+ *  crossings with no blow-up — alpha=0.42 sits in that regime with margin
+ *  on both sides (0.38 and 0.44 both proved fragile in the same sweep).
+ *  The initial condition here is the closed-form desingularised
+ *  (Lamb-Oseen core) Biot-Savart field of exactly those four point
+ *  vortices, evaluated once on the CPU and uploaded straight into the
+ *  velocity texture — the verified offline math IS the seed, not just a
+ *  reference for tuning a separately-built shader effect.
+ *
+ *  PLUME — a fixed nozzle continuously injects dye and a small upward
+ *  kick; a buoyancy force proportional to local dye density (density
+ *  standing in for temperature, the standard simplification) pushes the
+ *  plume upward, and the identical vorticity-confinement force that keeps
+ *  KARMAN STREET's wake crisp is what rolls the rising plume's edges into
+ *  the paired counter-rotating puffs real smoke shows.
+ *
+ *  STIR — a visitor's own drag injects both velocity and coloured dye
+ *  directly, the same additive Gaussian-falloff "splat" PLUME's nozzle
+ *  uses, driven by a pointer instead of a fixed source.
+ *
+ *  ── Two real bugs, both caught by watching the render, not the math ────
+ *  1. Missing grid-spacing factor in vorticity confinement. The Fedkiw/
+ *     Stam/Jensen (2001) force is f=eps*h*(N x omega), h the grid spacing,
+ *     included specifically so eps stays a resolution-independent dial.
+ *     Omitting h was this session's first build: within a few seconds
+ *     every mode dissolved into fine salt-and-pepper grid noise. The
+ *     discrete grad(|curl|) term is built from two nested central
+ *     differences, each its own 1/(2h) — without the compensating h
+ *     factor it amplifies single-cell noise by close to 1/(4h^2), several
+ *     thousand times at this grid's resolution, and since confinement by
+ *     design reinforces whatever looks like small-scale rotation, single-
+ *     cell noise is exactly what it amplifies fastest. Confirmed by
+ *     forcing eps to 0: the wake stayed smooth and bounded with no grid
+ *     noise at all, isolating confinement, not advection or the pressure
+ *     projection, as the actual source.
+ *  2. Even with the h factor restored, KARMAN STREET stayed stable while
+ *     the three closed-box modes (no inflow to advect perturbations off
+ *     the open right edge the way KARMAN STREET's mean flow does) still
+ *     slowly grew a checkerboard over 10-20+ seconds at the same eps —
+ *     confinement fighting semi-Lagrangian advection's own numerical
+ *     dissipation is a real, if narrower, source of the identical
+ *     instability, not just a magnitude bug. Fixed two ways at once: an
+ *     explicit DIFFUSE_FS pass (a small blend toward each cell's 4-
+ *     neighbour average, unconditionally damping the exact grid-Nyquist
+ *     content confinement amplifies) added back the viscosity term Stam's
+ *     original algorithm has and this session's first build skipped, and
+ *     eps/the diffusion coefficient both ended up genuinely PER-MODE, not
+ *     one shared constant — KARMAN STREET's strong mean inflow gives it
+ *     far more stability margin than the three unforced closed-box modes,
+ *     and LEAPFROG's much weaker point-vortex velocities needed their own
+ *     gentler diffusion and a boosted render-only colour gain besides, or
+ *     the same fixed damping fraction that safely controls noise at
+ *     KARMAN STREET's scale was strong enough to visibly erase LEAPFROG's
+ *     own genuine, correct motion within a couple of seconds.
+ *
+ *  ── What's simplified, left honest ──────────────────────────────────────
+ *  The cylinder and every wall are enforced by directly zeroing velocity
+ *  inside/at them each pass (an immersed-boundary penalisation) rather
+ *  than a proper Neumann pressure condition at the solid boundary — the
+ *  pressure field inside the cylinder is not physically meaningful, only
+ *  the velocity field outside it, which is re-clamped to zero at the
+ *  solid every single pass regardless of what the (possibly wrong) local
+ *  pressure gradient there would otherwise do. The explicit diffusion
+ *  pass above is a single blend-toward-neighbour-average, not a proper
+ *  implicit viscosity solve; no separate higher-resolution dye grid; no
+ *  3D; LEAPFROG's pairs visibly fade over its ~30s hold rather than
+ *  leapfrogging indefinitely — an honest limit of this grid's numerical
+ *  dissipation, not scripted, and not unlike how real viscous vortex
+ *  rings also only leapfrog a finite number of times before decaying.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const orderValEl = document.getElementById('orderVal');
+const subValEl = document.getElementById('subVal');
+const hintEl = document.getElementById('hint');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+if (!gl.getExtension('OES_texture_float')) fatal('OES_texture_float required');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── grid ─────────────────────────────────────────────── */
+const SIM_W = 320, SIM_H = 160;
+const SIM_ASPECT = SIM_W / SIM_H;   // 2.0 — kept exact so grid cells are physically square
+const CELL_H = 1.0 / SIM_H;         // physical cell spacing (domain height = 1.0)
+const JACOBI_ITERS = 28;
+const DYE_DECAY = 0.996;
+const DIFF_K = 0.16;   // default explicit grid-scale damping — see DIFFUSE_FS note below
+
+/* ── GLSL ─────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 vUv;
+void main(){ vUv = p*0.5+0.5; gl_Position = vec4(p,0.0,1.0); }`;
+
+const HEAD = `
+precision highp float;
+varying vec2 vUv;
+uniform vec2 uTexel;
+uniform float uAspect;
+uniform float uH;
+
+vec2 toPhys(vec2 uv){ return uv * vec2(uAspect, 1.0); }
+
+vec4 bilerp(sampler2D tex, vec2 uv, vec2 texel){
+  vec2 tsize = 1.0/texel;
+  vec2 st = uv*tsize - 0.5;
+  vec2 i = floor(st);
+  vec2 f = st - i;
+  vec2 base = (i+0.5)*texel;
+  vec4 a = texture2D(tex, base);
+  vec4 b = texture2D(tex, base + vec2(texel.x,0.0));
+  vec4 c = texture2D(tex, base + vec2(0.0,texel.y));
+  vec4 d = texture2D(tex, base + texel);
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+`;
+
+const FORCE_FS = HEAD + `
+uniform sampler2D uVel, uDye;
+uniform float uDt, uVortEps, uBuoyancy;
+uniform float uInflowOn, uInflowWidth;
+uniform vec2 uInflowVel;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+
+float curlAt(vec2 uv){
+  float vyR = texture2D(uVel, uv+vec2(uTexel.x,0.0)).y;
+  float vyL = texture2D(uVel, uv-vec2(uTexel.x,0.0)).y;
+  float vxU = texture2D(uVel, uv+vec2(0.0,uTexel.y)).x;
+  float vxD = texture2D(uVel, uv-vec2(0.0,uTexel.y)).x;
+  return ((vyR-vyL)-(vxU-vxD)) / (2.0*uH);
+}
+
+void main(){
+  vec2 vel = texture2D(uVel, vUv).xy;
+
+  float w  = curlAt(vUv);
+  float wR = curlAt(vUv+vec2(uTexel.x,0.0));
+  float wL = curlAt(vUv-vec2(uTexel.x,0.0));
+  float wU = curlAt(vUv+vec2(0.0,uTexel.y));
+  float wD = curlAt(vUv-vec2(0.0,uTexel.y));
+  vec2 gradAbsW = vec2(abs(wR)-abs(wL), abs(wU)-abs(wD)) / (2.0*uH);
+  float glen = length(gradAbsW) + 1e-5;
+  vec2 N = gradAbsW/glen;
+  /* The standard Fedkiw/Stam/Jensen (2001) formula carries an explicit
+     grid-spacing factor h here (f = eps*h*(N x omega)) specifically so
+     epsilon stays a resolution-independent dial — omitting it was this
+     session's first real bug: caught not by reasoning about the math but
+     by screenshotting the actual render, which showed the whole grid
+     dissolve into fine salt-and-pepper noise within seconds. Without the
+     h factor, the discrete grad(|curl|) term (itself built from two
+     nested central differences, each carrying its own 1/(2h)) amplifies
+     ANY single-cell noise by close to 1/(4h^2) before epsilon is even
+     applied — several thousand times at this grid's resolution — and
+     since the confinement force explicitly reinforces whatever looks
+     like small-scale rotation, single-cell noise is exactly what it
+     amplifies fastest, a runaway feedback loop. Confirmed by re-running
+     with vortEps forced to 0: the wake stayed smooth and bounded, no
+     grid noise at all — isolating vorticity confinement, not advection
+     or the pressure projection, as the actual source. */
+  vec2 force = uVortEps * uH * vec2(N.y*w, -N.x*w);
+
+  force += uBuoyancy * vec2(0.0,1.0) * texture2D(uDye, vUv).r;
+
+  vel += force*uDt;
+
+  vec2 pp = toPhys(vUv);
+  if (uInflowOn > 0.5 && pp.x < uInflowWidth) vel = uInflowVel;
+  if (uObstacleR > 0.0 && distance(pp,uObstacleCenter) < uObstacleR) vel = vec2(0.0);
+  if (vUv.y < uTexel.y*1.5 || vUv.y > 1.0-uTexel.y*1.5) vel.y = 0.0;
+
+  gl_FragColor = vec4(vel,0.0,1.0);
+}`;
+
+const ADVECT_VEL_FS = HEAD + `
+uniform sampler2D uVel;
+uniform float uDt;
+uniform float uInflowOn, uInflowWidth;
+uniform vec2 uInflowVel;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+
+void main(){
+  vec2 vel = texture2D(uVel, vUv).xy;
+  vec2 phys = toPhys(vUv);
+  vec2 backPhys = phys - vel*uDt;
+  vec2 backUv = clamp(backPhys/vec2(uAspect,1.0), 0.0, 1.0);
+  vec2 newVel = bilerp(uVel, backUv, uTexel).xy;
+
+  vec2 pp = toPhys(vUv);
+  if (uInflowOn > 0.5 && pp.x < uInflowWidth) newVel = uInflowVel;
+  if (uObstacleR > 0.0 && distance(pp,uObstacleCenter) < uObstacleR) newVel = vec2(0.0);
+  if (vUv.y < uTexel.y*1.5 || vUv.y > 1.0-uTexel.y*1.5) newVel.y = 0.0;
+
+  gl_FragColor = vec4(newVel,0.0,1.0);
+}`;
+
+const DIVERGENCE_FS = HEAD + `
+uniform sampler2D uVel;
+void main(){
+  float vxR = texture2D(uVel, vUv+vec2(uTexel.x,0.0)).x;
+  float vxL = texture2D(uVel, vUv-vec2(uTexel.x,0.0)).x;
+  float vyU = texture2D(uVel, vUv+vec2(0.0,uTexel.y)).y;
+  float vyD = texture2D(uVel, vUv-vec2(0.0,uTexel.y)).y;
+  float div = (vxR-vxL+vyU-vyD) / (2.0*uH);
+  gl_FragColor = vec4(div,0.0,0.0,1.0);
+}`;
+
+const JACOBI_FS = HEAD + `
+uniform sampler2D uPressure, uDivergence;
+void main(){
+  float pL = texture2D(uPressure, vUv-vec2(uTexel.x,0.0)).x;
+  float pR = texture2D(uPressure, vUv+vec2(uTexel.x,0.0)).x;
+  float pD = texture2D(uPressure, vUv-vec2(0.0,uTexel.y)).x;
+  float pU = texture2D(uPressure, vUv+vec2(0.0,uTexel.y)).x;
+  float div = texture2D(uDivergence, vUv).x;
+  float pNew = (pL+pR+pD+pU - uH*uH*div) * 0.25;
+  gl_FragColor = vec4(pNew,0.0,0.0,1.0);
+}`;
+
+const SUBGRAD_FS = HEAD + `
+uniform sampler2D uVel, uPressure;
+uniform float uInflowOn, uInflowWidth;
+uniform vec2 uInflowVel;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+
+void main(){
+  float pL = texture2D(uPressure, vUv-vec2(uTexel.x,0.0)).x;
+  float pR = texture2D(uPressure, vUv+vec2(uTexel.x,0.0)).x;
+  float pD = texture2D(uPressure, vUv-vec2(0.0,uTexel.y)).x;
+  float pU = texture2D(uPressure, vUv+vec2(0.0,uTexel.y)).x;
+  vec2 grad = vec2(pR-pL, pU-pD) / (2.0*uH);
+  vec2 vel = texture2D(uVel, vUv).xy - grad;
+
+  vec2 pp = toPhys(vUv);
+  if (uInflowOn > 0.5 && pp.x < uInflowWidth) vel = uInflowVel;
+  if (uObstacleR > 0.0 && distance(pp,uObstacleCenter) < uObstacleR) vel = vec2(0.0);
+  if (vUv.y < uTexel.y*1.5 || vUv.y > 1.0-uTexel.y*1.5) vel.y = 0.0;
+
+  gl_FragColor = vec4(vel,0.0,1.0);
+}`;
+
+const DIFFUSE_FS = HEAD + `
+uniform sampler2D uVel;
+uniform float uDiffK;
+uniform float uInflowOn, uInflowWidth;
+uniform vec2 uInflowVel;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+void main(){
+  vec2 c = texture2D(uVel, vUv).xy;
+  vec2 l = texture2D(uVel, vUv-vec2(uTexel.x,0.0)).xy;
+  vec2 r = texture2D(uVel, vUv+vec2(uTexel.x,0.0)).xy;
+  vec2 d = texture2D(uVel, vUv-vec2(0.0,uTexel.y)).xy;
+  vec2 u = texture2D(uVel, vUv+vec2(0.0,uTexel.y)).xy;
+  vec2 avg = 0.25*(l+r+d+u);
+  vec2 vel = mix(c, avg, uDiffK);
+
+  vec2 pp = toPhys(vUv);
+  if (uInflowOn > 0.5 && pp.x < uInflowWidth) vel = uInflowVel;
+  if (uObstacleR > 0.0 && distance(pp,uObstacleCenter) < uObstacleR) vel = vec2(0.0);
+  if (vUv.y < uTexel.y*1.5 || vUv.y > 1.0-uTexel.y*1.5) vel.y = 0.0;
+
+  gl_FragColor = vec4(vel,0.0,1.0);
+}`;
+
+const ADVECT_DYE_FS = HEAD + `
+uniform sampler2D uDye, uVel;
+uniform float uDt, uDecay;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+
+void main(){
+  vec2 vel = texture2D(uVel, vUv).xy;
+  vec2 phys = toPhys(vUv);
+  vec2 backPhys = phys - vel*uDt;
+  vec2 backUv = clamp(backPhys/vec2(uAspect,1.0), 0.0, 1.0);
+  vec3 dye = bilerp(uDye, backUv, uTexel).xyz * uDecay;
+  if (uObstacleR > 0.0 && distance(phys,uObstacleCenter) < uObstacleR) dye = vec3(0.0);
+  gl_FragColor = vec4(dye,1.0);
+}`;
+
+const SPLAT_VEL_FS = HEAD + `
+uniform sampler2D uVel;
+uniform vec2 uSplatPos, uSplatVel;
+uniform float uSplatRadius, uActive;
+void main(){
+  vec2 vel = texture2D(uVel, vUv).xy;
+  vec2 pp = toPhys(vUv);
+  float d2 = dot(pp-uSplatPos, pp-uSplatPos);
+  float falloff = exp(-d2/(uSplatRadius*uSplatRadius));
+  vel += uActive*uSplatVel*falloff;
+  gl_FragColor = vec4(vel,0.0,1.0);
+}`;
+
+const SPLAT_DYE_FS = HEAD + `
+uniform sampler2D uDye;
+uniform vec2 uSplatPos;
+uniform vec3 uSplatColor;
+uniform float uSplatRadius, uActive;
+void main(){
+  vec3 dye = texture2D(uDye, vUv).xyz;
+  vec2 pp = toPhys(vUv);
+  float d2 = dot(pp-uSplatPos, pp-uSplatPos);
+  float falloff = exp(-d2/(uSplatRadius*uSplatRadius));
+  dye += uActive*uSplatColor*falloff;
+  gl_FragColor = vec4(dye,1.0);
+}`;
+
+const PROBE_FS = HEAD + `
+uniform sampler2D uVel;
+uniform vec2 uProbeUv;
+uniform float uProbeRange;
+void main(){
+  vec2 v = texture2D(uVel, uProbeUv).xy;
+  float enc = clamp(v.y/uProbeRange*0.5+0.5, 0.0, 1.0);
+  gl_FragColor = vec4(enc,0.0,0.0,1.0);
+}`;
+
+const ENERGY_FS = HEAD + `
+uniform sampler2D uVel;
+uniform float uEnergyMax;
+void main(){
+  float sum = 0.0;
+  const int N = 12;
+  for (int i=0;i<N;i++){
+    for (int j=0;j<N;j++){
+      vec2 uv = (vec2(float(i),float(j))+0.5)/float(N);
+      vec2 v = texture2D(uVel, uv).xy;
+      sum += dot(v,v);
+    }
+  }
+  float avg = sum/float(N*N);
+  gl_FragColor = vec4(clamp(avg/uEnergyMax,0.0,1.0),0.0,0.0,1.0);
+}`;
+
+const RENDER_FS = HEAD + `
+uniform sampler2D uVel, uDye;
+uniform float uColorMode;
+uniform vec2 uLetterboxScale;
+uniform float uObstacleR;
+uniform vec2 uObstacleCenter;
+uniform float uColorGain;
+
+vec3 vortColor(vec2 uv){
+  float vyR = texture2D(uVel, uv+vec2(uTexel.x,0.0)).y;
+  float vyL = texture2D(uVel, uv-vec2(uTexel.x,0.0)).y;
+  float vxU = texture2D(uVel, uv+vec2(0.0,uTexel.y)).x;
+  float vxD = texture2D(uVel, uv-vec2(0.0,uTexel.y)).x;
+  float w = ((vyR-vyL)-(vxU-vxD)) / (2.0*uH);
+  float s = clamp(w*0.085*uColorGain, -1.0, 1.0);
+  vec3 pos = vec3(1.0,0.38,0.15);
+  vec3 neg = vec3(0.18,0.5,1.0);
+  return mix(vec3(0.02,0.02,0.028), s>0.0?pos:neg, pow(abs(s),0.6));
+}
+
+void main(){
+  vec2 uv = (vUv-0.5)/uLetterboxScale + 0.5;
+  if (uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }
+
+  vec3 col;
+  if (uColorMode < 0.5) {
+    col = vortColor(uv);
+  } else {
+    vec3 dye = bilerp(uDye, uv, uTexel).xyz;
+    col = 1.0 - exp(-dye*1.3);
+  }
+
+  vec2 pp = uv*vec2(uAspect,1.0);
+  if (uObstacleR > 0.0) {
+    float d = distance(pp, uObstacleCenter);
+    float inside = smoothstep(uObstacleR+0.003, uObstacleR-0.003, d);
+    col = mix(col, vec3(0.05,0.05,0.06), inside);
+  }
+  gl_FragColor = vec4(col,1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+function locs(p, names) { const o = {}; names.forEach(n => o[n] = gl.getUniformLocation(p, n)); return o; }
+
+const pForce   = mkProg(VS, FORCE_FS);
+const pAdvVel  = mkProg(VS, ADVECT_VEL_FS);
+const pDiffuse = mkProg(VS, DIFFUSE_FS);
+const pDiv     = mkProg(VS, DIVERGENCE_FS);
+const pJacobi  = mkProg(VS, JACOBI_FS);
+const pSubGrad = mkProg(VS, SUBGRAD_FS);
+const pAdvDye  = mkProg(VS, ADVECT_DYE_FS);
+const pSplatV  = mkProg(VS, SPLAT_VEL_FS);
+const pSplatD  = mkProg(VS, SPLAT_DYE_FS);
+const pProbe   = mkProg(VS, PROBE_FS);
+const pEnergy  = mkProg(VS, ENERGY_FS);
+const pRender  = mkProg(VS, RENDER_FS);
+
+const uForce   = locs(pForce,   ['uVel','uDye','uTexel','uAspect','uH','uDt','uVortEps','uBuoyancy','uInflowOn','uInflowWidth','uInflowVel','uObstacleR','uObstacleCenter']);
+const uAdvVel  = locs(pAdvVel,  ['uVel','uTexel','uAspect','uH','uDt','uInflowOn','uInflowWidth','uInflowVel','uObstacleR','uObstacleCenter']);
+const uDiffuse = locs(pDiffuse, ['uVel','uTexel','uAspect','uH','uDiffK','uInflowOn','uInflowWidth','uInflowVel','uObstacleR','uObstacleCenter']);
+const uDiv     = locs(pDiv,     ['uVel','uTexel','uAspect','uH']);
+const uJacobi  = locs(pJacobi,  ['uPressure','uDivergence','uTexel','uAspect','uH']);
+const uSubGrad = locs(pSubGrad, ['uVel','uPressure','uTexel','uAspect','uH','uInflowOn','uInflowWidth','uInflowVel','uObstacleR','uObstacleCenter']);
+const uAdvDye  = locs(pAdvDye,  ['uDye','uVel','uTexel','uAspect','uH','uDt','uDecay','uObstacleR','uObstacleCenter']);
+const uSplatV  = locs(pSplatV,  ['uVel','uTexel','uAspect','uH','uSplatPos','uSplatVel','uSplatRadius','uActive']);
+const uSplatD  = locs(pSplatD,  ['uDye','uTexel','uAspect','uH','uSplatPos','uSplatColor','uSplatRadius','uActive']);
+const uProbe   = locs(pProbe,   ['uVel','uTexel','uAspect','uH','uProbeUv','uProbeRange']);
+const uEnergy  = locs(pEnergy,  ['uVel','uTexel','uAspect','uH','uEnergyMax']);
+const uRender  = locs(pRender,  ['uVel','uDye','uTexel','uAspect','uH','uColorMode','uLetterboxScale','uObstacleR','uObstacleCenter','uColorGain']);
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+function bindQuad(prog) {
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+/* ── textures / framebuffers ─────────────────────────────
+   NEAREST + manual bilerp() throughout: no OES_texture_float_linear
+   dependency, robust across the same D3D9-era ANGLE backends HORIZON's
+   own backlog flagged as unverified for extension support. */
+function mkTex(w, h, data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkTexU8(w, h) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+function makePair(w, h, data) {
+  const tex = [mkTex(w, h, data), mkTex(w, h, null)];
+  const fb = [mkFB(tex[0]), mkFB(tex[1])];
+  return { tex, fb, cur: 0 };
+}
+function resetPair(pair, w, h, data) {
+  gl.bindTexture(gl.TEXTURE_2D, pair.tex[0]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, data || null);
+  gl.bindTexture(gl.TEXTURE_2D, pair.tex[1]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  pair.cur = 0;
+}
+
+let velPair  = makePair(SIM_W, SIM_H, null);
+let presPair = makePair(SIM_W, SIM_H, null);
+let dyePair  = makePair(SIM_W, SIM_H, null);
+const divTex = mkTex(SIM_W, SIM_H, null), divFb = mkFB(divTex);
+const probeTex = mkTexU8(1, 1), probeFb = mkFB(probeTex);
+const energyTex = mkTexU8(1, 1), energyFb = mkFB(energyTex);
+
+/* ── Love (1894) leapfrogging vortex-pair initial condition ─────────────
+   Verified offline first (leapfrog_sim.js, a 4-point-vortex Biot-Savart
+   RK4 integrator): sweeping the diameter ratio alpha from 0.10 to 0.70
+   showed small alpha just merges/separates the pairs (one crossing, then
+   unbounded separation) while several values comfortably above the
+   literature's golden-ratio-squared stability threshold (~0.382) gave
+   dozens of bounded, repeating crossings with no blow-up. alpha=0.42 was
+   chosen from that sweep for sitting solidly in the stable band with
+   margin either side (0.38 and 0.44 both proved fragile there).
+   Desingularised (Lamb-Oseen core) Biot-Savart, evaluated once on the
+   CPU at every grid cell and uploaded directly as the seed velocity. */
+function leapfrogIC() {
+  const GAMMA = 0.006, CORE = 0.025;
+  const dA = 0.22, dB = 0.42 * dA;
+  const xFront = 0.55, xBack = 0.25, yC = 0.5;
+  const vortices = [
+    { x: xFront, y: yC + dA/2, g:  GAMMA },
+    { x: xFront, y: yC - dA/2, g: -GAMMA },
+    { x: xBack,  y: yC + dB/2, g:  GAMMA },
+    { x: xBack,  y: yC - dB/2, g: -GAMMA },
+  ];
+  const data = new Float32Array(SIM_W * SIM_H * 4);
+  for (let j = 0; j < SIM_H; j++) {
+    for (let i = 0; i < SIM_W; i++) {
+      const px = (i + 0.5) / SIM_W * SIM_ASPECT;
+      const py = (j + 0.5) / SIM_H;
+      let vx = 0, vy = 0;
+      for (const v of vortices) {
+        const dx = px - v.x, dy = py - v.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 1e-5) continue;
+        const vtheta = (v.g / (2*Math.PI*d)) * (1 - Math.exp(-(d*d)/(CORE*CORE)));
+        vx += -vtheta * (dy/d);
+        vy +=  vtheta * (dx/d);
+      }
+      const idx = (j*SIM_W + i) * 4;
+      data[idx] = vx; data[idx+1] = vy; data[idx+2] = 0; data[idx+3] = 1;
+    }
+  }
+  return data;
+}
+
+/* ── modes ────────────────────────────────────────────── */
+const HOLD = 32000;
+const MODES = [
+  { name:'KARMAN STREET', desc:'VORTEX SHEDDING BEHIND A CYLINDER',
+    obstacle:true,  obstacleR:0.075, obstacleCenter:[0.55,0.506],
+    inflow:true,    inflowVel:[0.022,0], inflowWidth:0.028,
+    buoyancy:0,      vortEps:0.20, colorMode:0, splat:'none', probe:true, hint:'' },
+  { name:'LEAPFROG', desc:"LOVE'S (1894) VORTEX-PAIR CRITERION",
+    obstacle:false, obstacleR:-1, obstacleCenter:[0,0],
+    inflow:false,   inflowVel:[0,0], inflowWidth:0,
+    buoyancy:0,      vortEps:0.03, colorMode:0, splat:'none', probe:false,
+    seed:true, diffK:0.06, colorGain:6.0, energyMax:0.0012, hint:'' },
+  { name:'PLUME', desc:'BUOYANT SMOKE & VORTICITY ROLL-UP',
+    obstacle:false, obstacleR:-1, obstacleCenter:[0,0],
+    inflow:false,   inflowVel:[0,0], inflowWidth:0,
+    buoyancy:0.0022, vortEps:0.08, colorMode:1, splat:'nozzle', probe:false, hint:'' },
+  { name:'STIR', desc:'DRAG TO INJECT VELOCITY & DYE',
+    obstacle:false, obstacleR:-1, obstacleCenter:[0,0],
+    inflow:false,   inflowVel:[0,0], inflowWidth:0,
+    buoyancy:0,      vortEps:0.07, colorMode:1, splat:'pointer', probe:false, hint:'DRAG TO STIR' },
+];
+
+let modeIdx = 0, modeStart = 0;
+let stepCount = 0;
+let lastProbeSign = 0, crossingSteps = [], strouhalVal = null;
+let energyVal = 0;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  hintEl.textContent = m.hint;
+
+  resetPair(presPair, SIM_W, SIM_H, null);
+  if (m.seed) {
+    resetPair(velPair, SIM_W, SIM_H, leapfrogIC());
+    resetPair(dyePair, SIM_W, SIM_H, null);
+  } else {
+    resetPair(velPair, SIM_W, SIM_H, null);
+    resetPair(dyePair, SIM_W, SIM_H, null);
+  }
+  crossingSteps = []; lastProbeSign = 0; strouhalVal = null;
+}
+applyMode(0);
+modeStart = performance.now();
+
+/* ── per-pass draw functions ─────────────────────────────*/
+const TEXEL = [1/SIM_W, 1/SIM_H];
+
+function passForce(m, dt) {
+  gl.useProgram(pForce); bindQuad(pForce);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uForce.uVel,0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dyePair.tex[dyePair.cur]); gl.uniform1i(uForce.uDye,1);
+  gl.uniform2f(uForce.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uForce.uAspect, SIM_ASPECT);
+  gl.uniform1f(uForce.uH, CELL_H);
+  gl.uniform1f(uForce.uDt, dt);
+  gl.uniform1f(uForce.uVortEps, m.vortEps);
+  gl.uniform1f(uForce.uBuoyancy, m.buoyancy);
+  gl.uniform1f(uForce.uInflowOn, m.inflow?1:0);
+  gl.uniform1f(uForce.uInflowWidth, m.inflowWidth);
+  gl.uniform2f(uForce.uInflowVel, m.inflowVel[0], m.inflowVel[1]);
+  gl.uniform1f(uForce.uObstacleR, m.obstacleR);
+  gl.uniform2f(uForce.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velPair.fb[1-velPair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  velPair.cur ^= 1;
+}
+
+function passAdvectVel(m, dt) {
+  gl.useProgram(pAdvVel); bindQuad(pAdvVel);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uAdvVel.uVel,0);
+  gl.uniform2f(uAdvVel.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uAdvVel.uAspect, SIM_ASPECT);
+  gl.uniform1f(uAdvVel.uH, CELL_H);
+  gl.uniform1f(uAdvVel.uDt, dt);
+  gl.uniform1f(uAdvVel.uInflowOn, m.inflow?1:0);
+  gl.uniform1f(uAdvVel.uInflowWidth, m.inflowWidth);
+  gl.uniform2f(uAdvVel.uInflowVel, m.inflowVel[0], m.inflowVel[1]);
+  gl.uniform1f(uAdvVel.uObstacleR, m.obstacleR);
+  gl.uniform2f(uAdvVel.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velPair.fb[1-velPair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  velPair.cur ^= 1;
+}
+
+function passDiffuse(m, k) {
+  gl.useProgram(pDiffuse); bindQuad(pDiffuse);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uDiffuse.uVel,0);
+  gl.uniform2f(uDiffuse.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uDiffuse.uAspect, SIM_ASPECT);
+  gl.uniform1f(uDiffuse.uH, CELL_H);
+  gl.uniform1f(uDiffuse.uDiffK, k);
+  gl.uniform1f(uDiffuse.uInflowOn, m.inflow?1:0);
+  gl.uniform1f(uDiffuse.uInflowWidth, m.inflowWidth);
+  gl.uniform2f(uDiffuse.uInflowVel, m.inflowVel[0], m.inflowVel[1]);
+  gl.uniform1f(uDiffuse.uObstacleR, m.obstacleR);
+  gl.uniform2f(uDiffuse.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velPair.fb[1-velPair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  velPair.cur ^= 1;
+}
+
+function passDivergence() {
+  gl.useProgram(pDiv); bindQuad(pDiv);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uDiv.uVel,0);
+  gl.uniform2f(uDiv.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uDiv.uAspect, SIM_ASPECT);
+  gl.uniform1f(uDiv.uH, CELL_H);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, divFb);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+
+function passJacobi() {
+  gl.useProgram(pJacobi); bindQuad(pJacobi);
+  gl.uniform2f(uJacobi.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uJacobi.uAspect, SIM_ASPECT);
+  gl.uniform1f(uJacobi.uH, CELL_H);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, divTex); gl.uniform1i(uJacobi.uDivergence,1);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  for (let it=0; it<JACOBI_ITERS; it++) {
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, presPair.tex[presPair.cur]); gl.uniform1i(uJacobi.uPressure,0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, presPair.fb[1-presPair.cur]);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    presPair.cur ^= 1;
+  }
+}
+
+function passSubGrad(m) {
+  gl.useProgram(pSubGrad); bindQuad(pSubGrad);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uSubGrad.uVel,0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, presPair.tex[presPair.cur]); gl.uniform1i(uSubGrad.uPressure,1);
+  gl.uniform2f(uSubGrad.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uSubGrad.uAspect, SIM_ASPECT);
+  gl.uniform1f(uSubGrad.uH, CELL_H);
+  gl.uniform1f(uSubGrad.uInflowOn, m.inflow?1:0);
+  gl.uniform1f(uSubGrad.uInflowWidth, m.inflowWidth);
+  gl.uniform2f(uSubGrad.uInflowVel, m.inflowVel[0], m.inflowVel[1]);
+  gl.uniform1f(uSubGrad.uObstacleR, m.obstacleR);
+  gl.uniform2f(uSubGrad.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velPair.fb[1-velPair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  velPair.cur ^= 1;
+}
+
+function passAdvectDye(m, dt) {
+  gl.useProgram(pAdvDye); bindQuad(pAdvDye);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dyePair.tex[dyePair.cur]); gl.uniform1i(uAdvDye.uDye,0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uAdvDye.uVel,1);
+  gl.uniform2f(uAdvDye.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uAdvDye.uAspect, SIM_ASPECT);
+  gl.uniform1f(uAdvDye.uH, CELL_H);
+  gl.uniform1f(uAdvDye.uDt, dt);
+  gl.uniform1f(uAdvDye.uDecay, DYE_DECAY);
+  gl.uniform1f(uAdvDye.uObstacleR, m.obstacleR);
+  gl.uniform2f(uAdvDye.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dyePair.fb[1-dyePair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  dyePair.cur ^= 1;
+}
+
+function passSplat(pos, vel, color, radius, active) {
+  gl.useProgram(pSplatV); bindQuad(pSplatV);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uSplatV.uVel,0);
+  gl.uniform2f(uSplatV.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uSplatV.uAspect, SIM_ASPECT);
+  gl.uniform1f(uSplatV.uH, CELL_H);
+  gl.uniform2f(uSplatV.uSplatPos, pos[0], pos[1]);
+  gl.uniform2f(uSplatV.uSplatVel, vel[0], vel[1]);
+  gl.uniform1f(uSplatV.uSplatRadius, radius);
+  gl.uniform1f(uSplatV.uActive, active);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velPair.fb[1-velPair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  velPair.cur ^= 1;
+
+  gl.useProgram(pSplatD); bindQuad(pSplatD);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dyePair.tex[dyePair.cur]); gl.uniform1i(uSplatD.uDye,0);
+  gl.uniform2f(uSplatD.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uSplatD.uAspect, SIM_ASPECT);
+  gl.uniform1f(uSplatD.uH, CELL_H);
+  gl.uniform2f(uSplatD.uSplatPos, pos[0], pos[1]);
+  gl.uniform3f(uSplatD.uSplatColor, color[0], color[1], color[2]);
+  gl.uniform1f(uSplatD.uSplatRadius, radius);
+  gl.uniform1f(uSplatD.uActive, active);
+  gl.viewport(0,0,SIM_W,SIM_H);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dyePair.fb[1-dyePair.cur]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  dyePair.cur ^= 1;
+}
+
+/* ── live readouts: single-pixel UNSIGNED_BYTE probes, not float
+   readPixels (WebGL1 float readback support is inconsistent across
+   drivers) — every value is byte-encoded on the GPU and decoded on the
+   CPU, the same "measure the real phenomenon" discipline every earlier
+   piece's own live readout has used, adapted for portability. ────────── */
+function updateProbe(m) {
+  const D = 2*m.obstacleR;
+  const probePhys = [m.obstacleCenter[0]+3.0*m.obstacleR, m.obstacleCenter[1]+0.4*m.obstacleR];
+  const probeUv = [probePhys[0]/SIM_ASPECT, probePhys[1]];
+
+  gl.useProgram(pProbe); bindQuad(pProbe);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uProbe.uVel,0);
+  gl.uniform2f(uProbe.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uProbe.uAspect, SIM_ASPECT);
+  gl.uniform1f(uProbe.uH, CELL_H);
+  gl.uniform2f(uProbe.uProbeUv, probeUv[0], probeUv[1]);
+  gl.uniform1f(uProbe.uProbeRange, 0.05);
+  gl.viewport(0,0,1,1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, probeFb);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  const buf = new Uint8Array(4);
+  gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+  const enc = buf[0]/255;
+  const sign = enc>0.52 ? 1 : (enc<0.48 ? -1 : 0);
+  if (sign !== 0 && lastProbeSign !== 0 && sign !== lastProbeSign) {
+    crossingSteps.push(stepCount);
+    if (crossingSteps.length > 8) crossingSteps.shift();
+    if (crossingSteps.length >= 3) {
+      const diffs = [];
+      for (let i=1;i<crossingSteps.length;i++) diffs.push(crossingSteps[i]-crossingSteps[i-1]);
+      const meanHalfPeriod = diffs.reduce((a,b)=>a+b,0)/diffs.length;
+      const periodSteps = meanHalfPeriod*2;
+      strouhalVal = (1/periodSteps) * D / m.inflowVel[0];
+    }
+  }
+  if (sign !== 0) lastProbeSign = sign;
+}
+
+function updateEnergy(m) {
+  /* LEAPFROG's whole velocity scale sits roughly an order of magnitude
+     below the other three modes' (a much weaker pair of point-vortex
+     dipoles, tuned for a slow multi-cycle show rather than KARMAN-scale
+     speed) — a single shared byte-quantisation ceiling pinned it at a
+     flat, misleadingly-zero readout even while clearly visible motion
+     was on screen. A per-mode ceiling keeps the same honest measurement
+     technique with resolution matched to each mode's own scale. */
+  const energyMax = m.energyMax !== undefined ? m.energyMax : 0.02;
+  gl.useProgram(pEnergy); bindQuad(pEnergy);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uEnergy.uVel,0);
+  gl.uniform2f(uEnergy.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uEnergy.uAspect, SIM_ASPECT);
+  gl.uniform1f(uEnergy.uH, CELL_H);
+  gl.uniform1f(uEnergy.uEnergyMax, energyMax);
+  gl.viewport(0,0,1,1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, energyFb);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  const buf = new Uint8Array(4);
+  gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+  energyVal = (buf[0]/255) * energyMax;
+}
+
+/* ── interaction: drag to stir (STIR mode only) ─────────── */
+let letterboxScale = [1,1];
+let pointerDown = false, lastPhys = null;
+let splatPos = [1.0, 0.5], splatVel = [0,0], splatColor = [0,0,0], splatActive = 0;
+let huePhase = 0;
+
+function screenToPhys(clientX, clientY) {
+  const rect = C.getBoundingClientRect();
+  const sx = (clientX-rect.left)/rect.width;
+  const sy = 1 - (clientY-rect.top)/rect.height;
+  const uvx = (sx-0.5)/letterboxScale[0] + 0.5;
+  const uvy = (sy-0.5)/letterboxScale[1] + 0.5;
+  return [uvx*SIM_ASPECT, uvy];
+}
+function hsv2rgb(h,s,v) {
+  const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c;
+  let r,g,b;
+  if (h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;}
+  return [r+m,g+m,b+m];
+}
+function onDown(x,y) {
+  if (MODES[modeIdx].splat !== 'pointer') return;
+  pointerDown = true; lastPhys = screenToPhys(x,y);
+}
+function onMove(x,y) {
+  if (!pointerDown) return;
+  const phys = screenToPhys(x,y);
+  const dx = phys[0]-lastPhys[0], dy = phys[1]-lastPhys[1];
+  let vx = dx*3.0, vy = dy*3.0;
+  const len = Math.hypot(vx,vy);
+  if (len > 0.15) { vx *= 0.15/len; vy *= 0.15/len; }
+  splatPos = phys; splatVel = [vx,vy]; splatActive = 1;
+  splatColor = hsv2rgb((huePhase*40)%360, 0.55, 0.9);
+  lastPhys = phys;
+}
+function onUp() { pointerDown = false; splatActive = 0; }
+C.addEventListener('mousedown', e => onDown(e.clientX,e.clientY));
+window.addEventListener('mousemove', e => onMove(e.clientX,e.clientY));
+window.addEventListener('mouseup', onUp);
+C.addEventListener('touchstart', e => { e.preventDefault(); const t=e.touches[0]; onDown(t.clientX,t.clientY); }, {passive:false});
+C.addEventListener('touchmove', e => { e.preventDefault(); const t=e.touches[0]; onMove(t.clientX,t.clientY); }, {passive:false});
+C.addEventListener('touchend', onUp);
+
+/* ── resize / letterbox ──────────────────────────────────*/
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  C.width = w; C.height = h; C.style.width = w+'px'; C.style.height = h+'px';
+  const ca = w/h;
+  if (ca > SIM_ASPECT) { letterboxScale = [SIM_ASPECT/ca, 1]; }
+  else { letterboxScale = [1, ca/SIM_ASPECT]; }
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── main loop ────────────────────────────────────────── */
+let frameCount = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > HOLD) { modeStart = now; applyMode(modeIdx + 1); }
+  const m = MODES[modeIdx];
+  const dt = 1.0;
+
+  passForce(m, dt);
+  passAdvectVel(m, dt);
+  passDiffuse(m, m.diffK !== undefined ? m.diffK : DIFF_K);
+  passDivergence();
+  passJacobi();
+  passSubGrad(m);
+  passAdvectDye(m, dt);
+
+  huePhase += 0.004;
+  if (m.splat === 'nozzle') {
+    const nozzlePos = [SIM_ASPECT*0.5, 0.045];
+    const nozzleVel = [0, 0.026];
+    const nozzleColor = hsv2rgb((huePhase*25)%360, 0.55, 0.95);
+    passSplat(nozzlePos, nozzleVel, nozzleColor, 0.05, 1.0);
+  } else if (m.splat === 'pointer') {
+    passSplat(splatPos, splatVel, splatColor, 0.045, splatActive);
+    splatVel = [splatVel[0]*0.85, splatVel[1]*0.85];
+  }
+
+  stepCount++;
+  if (m.probe) updateProbe(m);
+  if (frameCount % 6 === 0) updateEnergy(m);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0,0,C.width,C.height);
+  gl.useProgram(pRender); bindQuad(pRender);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, velPair.tex[velPair.cur]); gl.uniform1i(uRender.uVel,0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dyePair.tex[dyePair.cur]); gl.uniform1i(uRender.uDye,1);
+  gl.uniform2f(uRender.uTexel, TEXEL[0], TEXEL[1]);
+  gl.uniform1f(uRender.uAspect, SIM_ASPECT);
+  gl.uniform1f(uRender.uH, CELL_H);
+  gl.uniform1f(uRender.uColorMode, m.colorMode);
+  gl.uniform1f(uRender.uColorGain, m.colorGain !== undefined ? m.colorGain : 1.0);
+  gl.uniform2f(uRender.uLetterboxScale, letterboxScale[0], letterboxScale[1]);
+  gl.uniform1f(uRender.uObstacleR, m.obstacleR);
+  gl.uniform2f(uRender.uObstacleCenter, m.obstacleCenter[0], m.obstacleCenter[1]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  if (++frameCount % 15 === 0) {
+    orderValEl.textContent = (energyVal*1000).toFixed(2) + '×10⁻³';
+    if (m.probe) {
+      subValEl.textContent = strouhalVal!==null
+        ? 'St ≈ ' + strouhalVal.toFixed(3) + ' · LIT. ≈ 0.20'
+        : 'St ≈ — (SHEDDING NOT YET ESTABLISHED)';
+    } else {
+      subValEl.textContent = 'MEAN KINETIC ENERGY';
+    }
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

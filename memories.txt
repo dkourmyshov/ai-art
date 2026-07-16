@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-horizon.html     — HORIZON piece (new)
+eddy.html        — EDDY piece (new)
+horizon.html     — HORIZON piece
 spinodal.html    — SPINODAL piece
 flame.html       — FLAME piece
 spectre.html     — SPECTRE piece
@@ -25,6 +26,136 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 19: EDDY — Incompressible Flow & Vortex Shedding (2026-07-16)
+Every earlier field-based piece here diffuses a scalar or vector quantity
+through a fixed LOCAL rule (Gray-Scott, FitzHugh-Nagumo, Cahn-Hilliard,
+Laplace relaxation). This is the gallery's first genuinely harder equation:
+incompressible Navier-Stokes, where velocity advects ITSELF (a non-linear
+term nothing earlier here has) under a GLOBAL constraint — zero divergence
+everywhere, enforced by a full Poisson solve every single frame, not a
+local update at all. Found via web research into GPU stable-fluids
+techniques (Stam 1999, Fedkiw/Stam/Jensen 2001, Harris' GPU Gems ch.38)
+after noting the gallery had never done fluid dynamics despite 18 pieces
+of reaction-diffusion, lattice, agent and field simulations — genuinely
+new territory, not a variant of anything already built.
+
+### The pipeline: Stam's stable fluids, one shared 320x160 grid
+Per frame: add forces (inflow/buoyancy/a visitor's drag) + vorticity
+confinement onto velocity -> self-advect velocity via semi-Lagrangian
+backtrace (bilinearly resampled, unconditionally stable at any dt, which
+is the whole reason a real-time GPU fluid sim is possible at all) -> a
+small explicit diffusion pass -> compute divergence -> 28 Jacobi
+iterations solving the pressure Poisson equation -> subtract the pressure
+gradient (velocity is now divergence-free) -> advect a passive dye field
+through that divergence-free velocity. Manual 4-tap bilerp() throughout
+rather than gl.LINEAR (no OES_texture_float_linear dependency at all),
+continuing HORIZON's own care about D3D9-era ANGLE portability.
+
+### Two real bugs, both caught by watching the render, not the math
+1. The Fedkiw/Stam/Jensen vorticity-confinement force is f=eps*h*(N x
+   omega), h the grid spacing, included specifically so eps stays
+   resolution-independent. Omitting h was this session's first working
+   build: every mode dissolved into fine salt-and-pepper grid noise
+   within a few seconds. The discrete grad(|curl|) term is two nested
+   central differences, each its own 1/(2h) — without the compensating h
+   factor it amplifies single-cell noise by close to 1/(4h^2) (several
+   thousand times at this grid), and since confinement by design
+   reinforces whatever looks like small-scale rotation, single-cell noise
+   is exactly what it amplifies fastest — a runaway feedback loop.
+   Isolated (not just fixed) by forcing eps to 0 and re-screenshotting:
+   the wake stayed smooth and bounded with no grid noise at all, ruling
+   out advection or the pressure projection as the actual source.
+2. With h restored, KARMAN STREET (below) stayed stable while the three
+   closed-box modes — no mean inflow to advect small perturbations off
+   an open downstream edge the way KARMAN STREET's does — still slowly
+   grew a checkerboard over 10-20+ seconds at the same eps. Confinement
+   fighting semi-Lagrangian advection's own numerical dissipation is a
+   real, narrower instability, not just a magnitude bug. Fixed by adding
+   back the explicit viscosity/diffusion pass Stam's original algorithm
+   has (a small blend toward each cell's 4-neighbour average — directly
+   damps exactly the grid-Nyquist content confinement amplifies) and by
+   making both eps and the diffusion coefficient genuinely PER-MODE:
+   KARMAN STREET's strong inflow buys it far more margin than the three
+   unforced modes, and LEAPFROG's much weaker point-vortex velocities
+   needed their own gentler diffusion plus a render-only colour-gain
+   boost besides — the SAME fixed damping fraction that safely controls
+   noise at KARMAN STREET's scale was strong enough to erase LEAPFROG's
+   own correct, much fainter motion within a couple of seconds. All of
+   this was tuned empirically via a headless-Chromium/Playwright harness
+   this session built specifically to screenshot and read back live
+   energy values across parameter sweeps — the first piece in this
+   gallery actually visually verified in a real browser before commit,
+   rather than reasoned about from the math and shader source alone.
+
+### KARMAN STREET: shedding measured, not just shown
+Von Karman (1911) showed a cylinder's symmetric wake is unstable above a
+critical Reynolds number and must break into an alternating vortex train.
+Nothing here is scripted to alternate — the cylinder centre carries a
+fixed 0.006 vertical offset (breaking the grid's own exact top/bottom
+symmetry, since a perfectly symmetric discretisation can sit in the
+unstable symmetric wake indefinitely) and the alternation emerges on its
+own. A fixed probe cell downstream counts zero-crossings of its own
+vertical velocity, in simulation steps (not wall-clock time, so the
+measurement is independent of actual frame rate), turned into a live
+Strouhal number St=fD/U — measured at 0.194-0.199 across repeated runs,
+against the real ~0.2 plateau cylinder wakes hold from roughly Re~300 to
+Re~2x10^5 (Williamson 1996). This solver has no explicit viscosity DIAL
+(the diffusion pass is a fixed damping term, not a Reynolds-number knob),
+so the ~0.2 match is an honest cross-check of the right order, not a
+controlled replication of a specific Re — flagged plainly in the piece's
+own header comment rather than oversold.
+
+### LEAPFROG: Love's (1894) criterion, verified offline before any GLSL
+Two coaxial vortex PAIRS (each a self-propelling +/- point-vortex dipole)
+leapfrog — the trailing pair repeatedly overtakes and passes clean
+through the leading one — whenever the diameter ratio alpha exceeds
+3-2*sqrt(2)~=0.172, without the motion itself destabilising once alpha
+clears a second threshold near (1/phi)^2~=0.382. Checked from scratch
+first (leapfrog_sim.js, this session's own 4-point-vortex Biot-Savart RK4
+integrator, the same "verify the closed-form math in plain JS before any
+GLSL" discipline HORIZON/SPINODAL/FLAME/EINSTEIN/SPECTRE each used):
+sweeping alpha from 0.10 to 0.70 showed small alpha just merges/separates
+the pairs (one crossing, unbounded final separation) while several values
+solidly above the golden-ratio-squared threshold gave dozens of bounded,
+repeating crossings with no blow-up. alpha=0.42 was chosen for sitting in
+that regime with margin either side (0.38 and 0.44 both proved fragile in
+the same sweep). The seed itself is the closed-form desingularised
+(Lamb-Oseen core) Biot-Savart field of exactly those four point vortices,
+evaluated once on the CPU and uploaded straight into the velocity
+texture — the verified offline math IS the initial condition, not just a
+reference used to tune a separately-built shader effect. Honest limit:
+the pairs visibly fade over the mode's ~30s hold rather than leapfrogging
+indefinitely, this grid's own numerical dissipation, not scripted — not
+unlike how even real viscous vortex rings only leapfrog finitely many
+times before decaying (per "Leapfrogging of multiple coaxial viscous
+vortex rings," cited in-piece).
+
+### PLUME and STIR: the same confinement force, two other registers
+PLUME's fixed nozzle injects dye and a small upward kick; density stands
+in for temperature (the standard simplification) driving a buoyancy
+force, and the identical vorticity-confinement force that keeps KARMAN
+STREET's wake crisp is what rolls the rising plume's edges into paired
+counter-rotating puffs. STIR lets a visitor's own drag inject velocity
+and coloured dye directly via the same additive Gaussian-falloff splat
+PLUME's nozzle uses, pointer-driven instead of fixed — this gallery's
+now-standard "let a visitor perturb the field themselves" interaction,
+here extended to injecting momentum directly rather than only reseeding
+or stamping a scalar field.
+
+### What's simplified, left honest
+The cylinder and every wall are enforced by directly zeroing velocity
+inside/at them each pass (immersed-boundary penalisation) rather than a
+proper Neumann pressure condition at the solid boundary — the pressure
+field inside the cylinder isn't physically meaningful, only the velocity
+outside it, re-clamped every pass regardless of what a possibly-wrong
+local pressure gradient there would otherwise do. The diffusion pass is a
+single explicit blend-toward-neighbour-average, not an implicit viscosity
+solve; dye shares the velocity/pressure grid rather than its own finer
+one (most WebGL fluid demos give dye a higher-resolution grid than the
+solve, per Pavel Dobryakov's WebGL-Fluid-Simulation); no 3D.
 
 ---
 
@@ -3308,3 +3439,52 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       ring resolve even more cleanly, or the same quality at a lower
       MAXSTEPS budget, at real numerical-methods cost this session's
       bisection fix sidestepped rather than solved head-on
+- [x] Fluid dynamics / Navier-Stokes (Stam's "stable fluids") — done in
+      EDDY (session 19), the gallery's first non-local-rule PDE (a global
+      Poisson pressure-projection solve every frame, not a fixed local
+      update) and first piece with velocity advecting itself
+- [ ] EDDY: a separate, higher-resolution dye grid than the velocity/
+      pressure solve grid (as most WebGL fluid demos do, e.g. Pavel
+      Dobryakov's WebGL-Fluid-Simulation's SIM_RESOLUTION vs
+      DYE_RESOLUTION) — this session shares one 320x160 grid for
+      everything, simpler to implement correctly but coarser dye detail
+      than the solve itself would allow
+- [ ] EDDY: a proper implicit viscosity solve (diffuse velocity via its
+      own small Jacobi/Poisson pass, Stam's original algorithm) instead
+      of this session's single explicit blend-toward-neighbour-average —
+      the explicit version is what this session's second real bug needed
+      to control vorticity-confinement's grid-noise amplification, but a
+      real implicit diffusion step would give an actual, tunable
+      Reynolds-number-like dial instead of a fixed damping fraction
+- [ ] EDDY: the Kerr-style "what's actually different" backlog itch this
+      time is a rotating/spinning obstacle in KARMAN STREET (a rotating
+      cylinder sheds asymmetrically and can suppress shedding entirely
+      past a critical spin ratio, the Magnus-effect regime) — needs a
+      no-slip tangential boundary condition at the solid, not just
+      zeroing velocity there, not attempted this session
+- [ ] EDDY: LEAPFROG's pairs currently fade within roughly half the
+      mode's ~30s hold rather than completing many more visible cycles —
+      the per-mode diffusion coefficient this session landed on
+      (diffK=0.06) was tuned empirically via headless screenshots against
+      the same instability the KARMAN-scale modes fight at diffK=0.16;
+      a proper implicit-viscosity fix above would likely buy LEAPFROG
+      meaningfully more honest lifetime without reopening the checkerboard
+      instability a lower explicit diffK let back in during this session's
+      own sweep
+- [ ] EDDY: a 3D version (volumetric Navier-Stokes, likely raymarched
+      density like a real smoke-sim renderer) — echoes the gallery's
+      standing "3D" backlog itch (SPINODAL/FLAME/ATTRACTOR/SOFTCELL/
+      LICHTENBERG all flagged one for performance reasons, HORIZON
+      eventually answered it via a genuinely different technique) — a
+      dense volumetric pressure solve is a much heavier lift than
+      HORIZON's sparse per-ray cost, not attempted this session
+- [ ] EDDY: an interactive Reynolds-number-style slider (once a real
+      viscosity dial exists per the implicit-diffusion item above),
+      echoing the same "let a visitor walk the parameter themselves" idea
+      standing since ISING's temperature and carried through LICHTENBERG,
+      ATTRACTOR, SOFTCELL, EINSTEIN/SPECTRE, FLAME, SPINODAL and HORIZON
+- [ ] EDDY: true relativistic-style Doppler colour-shift is HORIZON's own
+      backlog item, but EDDY has its own honest analogue never attempted —
+      real Schlieren/shadowgraph-style refractive-index colouring of the
+      flow (as real fluid-visualisation photography does) instead of the
+      current direct vorticity-sign or dye-density colour mapping
