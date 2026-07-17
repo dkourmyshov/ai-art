@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PERCOLATE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#order{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.22em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#order .val{color:rgba(255,255,255,.5)}
+#order .sub{display:block;margin-top:.4em;font-size:8px;opacity:.75}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #order{max-width:60vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="order">
+  <span id="pLabel">p = </span><span class="val" id="pVal">0.000</span>
+  <span class="sub" id="spanVal">—</span>
+  <span class="sub" id="scaleVal"></span>
+</div>
+<div id="ui">
+  <span id="modeName">SQUARE BOND</span>
+  <span id="desc">p_c = 1/2 · Kesten 1980</span>
+</div>
+<div id="hint">drag to sweep p</div>
+<script>
+/*  PERCOLATE — random connectivity and the percolation phase transition
+ *
+ *  Broadbent & Hammersley (1957) posed the question in its purest form:
+ *  scatter edges (or sites) onto a lattice independently at random with
+ *  probability p — at what p does a cluster first span the whole lattice?
+ *  Below a sharp threshold p_c almost every cluster stays microscopic;
+ *  above it one cluster suddenly dominates the entire system. This is a
+ *  genuine continuous (second-order) phase transition, in the same
+ *  universality class as ISING's own thermal one (session 10) — but
+ *  reached by an entirely different route: no temperature, no energy, no
+ *  Metropolis dynamics deciding anything against a Boltzmann weight. It
+ *  is pure combinatorics: a graph's connectivity, decided once and for
+ *  all by which edges happen to be present. This gallery has diffused
+ *  fields (MEMBRANE/LENIA/EXCITABLE), solved boundary-value problems
+ *  (LICHTENBERG), integrated forces (PHYSARUM/GYRUS/SWARMALATOR/EDDY),
+ *  Metropolis-sampled a Boltzmann distribution (ISING) and RK4-integrated
+ *  geodesics (HORIZON) — this is the first piece with no local update
+ *  rule and no dynamics of any kind. What you watch grow frame to frame
+ *  is not physics evolving in time; it is a fixed, already-decided random
+ *  graph being REVEALED to you one edge at a time, in a random order — a
+ *  visualization device, not a simulated process. The only thing that is
+ *  ever computed live is *connectivity*, via a weighted-union-with-path-
+ *  compression union-find (Newman & Ziff, Phys. Rev. E 64, 016706, 2001)
+ *  that lets every edge be added in amortized constant time and lets a
+ *  drag gesture jump p anywhere and rebuild the whole graph in a few
+ *  milliseconds, not by re-deciding physics, just by replaying a fixed
+ *  random order up to a different point.
+ *
+ *  Three of the four lattices below carry an EXACT, rigorously proven
+ *  critical threshold — a rarity in statistical mechanics, where most
+ *  critical points (ISING's own included, for anything but the special
+ *  2D square case) are only known numerically:
+ *    SQUARE bonds:      p_c = 1/2                    (Kesten 1980, via
+ *                        the square lattice's exact self-duality)
+ *    TRIANGULAR bonds:  p_c = 2 sin(pi/18) = 0.34730  (Wierman 1981)
+ *    HONEYCOMB bonds:   p_c = 1 - 2 sin(pi/18) = 0.65270  (dual of the
+ *                        triangular lattice's own threshold above)
+ *  SQUARE SITE percolation is the deliberate honest counterpoint: unlike
+ *  every bond case above, no closed form is known for it at all, only a
+ *  high-precision numerical estimate (Newman & Ziff 2000: p_c=0.5927460);
+ *  the SITE mode's own on-screen label says so rather than implying a
+ *  false equivalence with the other three. All four thresholds were
+ *  verified offline first (perc_sim.js, this session's own Newman-Ziff
+ *  union-find port in plain Node, the same "verify the closed-form math
+ *  before any canvas code" discipline HORIZON/SPINODAL/FLAME/EINSTEIN/
+ *  SPECTRE each used) — the measured spanning-probability crossing landed
+ *  within 1-2% of every value above at N=96, 300 trials each.
+ *
+ *  SCALING is this gallery's own answer to a gap flagged and left open
+ *  twice before: SANDPILE (session 8) and ISING (session 10) each noted
+ *  that their own power-law critical statistics were "implicit in the
+ *  visuals, not measured." Frozen exactly at the square lattice's p_c,
+ *  this mode live box-counts the largest cluster's fractal dimension and
+ *  fits the cluster-size histogram's power-law slope against the exact
+ *  2D percolation universality-class values D=91/48~1.8958 and Fisher
+ *  exponent tau=187/91~2.0549 (den Nijs 1979, using the discovered
+ *  Coulomb-gas mapping). Offline verification (perc_scaling.js, N=1000,
+ *  pooled over 8 realizations) measured tau=2.046 (within 0.5%) and
+ *  D=1.846 (about 2.6% low) — the D undershoot is a known artifact of
+ *  box-counting a FREE-boundary sample-spanning cluster at finite size,
+ *  not a bug; the piece's own live readout, on a much smaller grid for
+ *  real-time performance, is honestly noisier still.
+ *
+ *  Interaction: drag horizontally to set p directly and watch the
+ *  transition happen under your own hand — the "let a visitor walk the
+ *  parameter themselves" idea flagged and left undone in nine earlier
+ *  pieces' own backlog notes (ISING's temperature onward through EDDY's
+ *  Reynolds-style dial), finally implemented here, and for the cheapest
+ *  possible reason: Newman-Ziff's whole point is that revisiting any
+ *  earlier p is just replaying a prefix of one fixed random order.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const pValEl = document.getElementById('pVal');
+const spanValEl = document.getElementById('spanVal');
+const scaleValEl = document.getElementById('scaleVal');
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── union-find, weighted, path-compressed, size-tracked ─────────────── */
+class UF {
+  constructor(n) {
+    this.parent = new Int32Array(n);
+    this.rank = new Int8Array(n);
+    this.size = new Int32Array(n).fill(1);
+    for (let i = 0; i < n; i++) this.parent[i] = i;
+  }
+  find(x) {
+    while (this.parent[x] !== x) { this.parent[x] = this.parent[this.parent[x]]; x = this.parent[x]; }
+    return x;
+  }
+  union(a, b) {
+    a = this.find(a); b = this.find(b);
+    if (a === b) return;
+    if (this.rank[a] < this.rank[b]) { const t = a; a = b; b = t; }
+    this.parent[b] = a;
+    this.size[a] += this.size[b];
+    if (this.rank[a] === this.rank[b]) this.rank[a]++;
+  }
+}
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+}
+
+/* ── lattices ──────────────────────────────────────────────────────────
+   'bond-square'/'site-square' share the plain 4-neighbor square graph
+   (site percolation's adjacency IS the square lattice; only which SITES
+   count as occupied is random, not the edges). 'bond-tri' adds the third
+   diagonal to make every site 6-connected. 'bond-honey' is the standard
+   "brick wall" representation: every honeycomb (3-connected, bipartite)
+   lattice is graph-isomorphic to a square lattice with every horizontal
+   bond kept but only alternating-parity vertical bonds — a well-known
+   equivalence, used here for both the union-find graph AND the render
+   coordinates (offset alternate rows, reading as a brick/woven pattern)
+   rather than literal hexagon tiling — an honest topological stand-in,
+   not a geometric one, kept simple deliberately. */
+function buildLattice(kind, N) {
+  const n = N * N;
+  const id = (x, y) => y * N + x;
+  const coords = new Array(n);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let px = x, py = y;
+    if (kind === 'bond-tri')   { px = x + (y % 2) * 0.5; py = y * 0.8660254; }
+    if (kind === 'bond-honey') { px = x + (y % 2) * 0.5; py = y; }
+    coords[id(x, y)] = { x: px, y: py };
+  }
+  const bonds = [];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const a = id(x, y);
+    if (kind === 'bond-honey') {
+      if (x < N - 1) bonds.push([a, id(x + 1, y)]);
+      if (y < N - 1 && (x + y) % 2 === 0) bonds.push([a, id(x, y + 1)]);
+    } else {
+      if (x < N - 1) bonds.push([a, id(x + 1, y)]);
+      if (y < N - 1) bonds.push([a, id(x, y + 1)]);
+      if (kind === 'bond-tri' && x < N - 1 && y > 0) bonds.push([a, id(x + 1, y - 1)]);
+    }
+  }
+  const topMask = new Uint8Array(n), botMask = new Uint8Array(n);
+  for (let x = 0; x < N; x++) { topMask[id(x, 0)] = 1; botMask[id(x, N - 1)] = 1; }
+  let neighbors = null;
+  if (kind === 'site-square') {
+    neighbors = Array.from({ length: n }, () => []);
+    for (const [a, b] of bonds) { neighbors[a].push(b); neighbors[b].push(a); }
+  }
+  return { n, coords, bonds, topMask, botMask, neighbors, kind };
+}
+
+const GRID = 96;
+
+/* ── modes ─────────────────────────────────────────────────────────── */
+const PI18 = Math.PI / 18;
+const MODES = [
+  { name: 'SQUARE BOND', kind: 'bond-square', pc: 0.5,
+    desc: 'p_c = 1/2 · Kesten 1980', hueBase: 0.55 },
+  { name: 'TRIANGULAR BOND', kind: 'bond-tri', pc: 2 * Math.sin(PI18),
+    desc: 'p_c = 2 sin(π/18) ≈ 0.3473 · Wierman 1981', hueBase: 0.07 },
+  { name: 'HONEYCOMB BOND', kind: 'bond-honey', pc: 1 - 2 * Math.sin(PI18),
+    desc: 'p_c = 1 − 2 sin(π/18) ≈ 0.6527 · Wierman 1981', hueBase: 0.78 },
+  { name: 'SQUARE SITE', kind: 'site-square', pc: 0.5927460,
+    desc: 'p_c ≈ 0.592746 · no closed form known', hueBase: 0.33 },
+  { name: 'SCALING', kind: 'scaling', pc: 0.5,
+    desc: 'held at p_c · live D & τ vs. exact 91/48, 187/91', hueBase: 0.55, interactive: false },
+];
+const RUN_SECONDS = 9, HOLD_SECONDS = 2.2, RUNS_PER_MODE = 2;
+const MODE_HOLD_MS = (RUN_SECONDS + HOLD_SECONDS) * RUNS_PER_MODE * 1000 + 1500;
+
+let modeIdx = 0, modeStart = 0;
+let lattice, uf, order, total, revealed, bondOcc, siteOcc, TOP, BOT;
+let spanned = false, spannedP = null;
+let runStart = 0, runIndex = 0;
+let dragging = false, dragP = 0, dragIdleUntil = 0;
+
+function startRun(mode) {
+  const kind = mode.kind === 'scaling' ? 'bond-square' : mode.kind;
+  lattice = buildLattice(kind, GRID);
+  TOP = lattice.n; BOT = lattice.n + 1;
+  uf = new UF(lattice.n + 2);
+  if (kind === 'site-square') {
+    order = lattice.coords.map((_, i) => i);
+    siteOcc = new Uint8Array(lattice.n);
+    bondOcc = null;
+  } else {
+    for (let i = 0; i < lattice.n; i++) {
+      if (lattice.topMask[i]) uf.union(TOP, i);
+      if (lattice.botMask[i]) uf.union(BOT, i);
+    }
+    order = lattice.bonds.map((_, i) => i);
+    bondOcc = new Uint8Array(lattice.bonds.length);
+    siteOcc = null;
+  }
+  shuffle(order);
+  total = order.length;
+  revealed = 0;
+  spanned = false; spannedP = null;
+}
+
+function rebuildRun(mode) {
+  const kind = mode.kind === 'scaling' ? 'bond-square' : mode.kind;
+  uf = new UF(lattice.n + 2);
+  if (kind === 'site-square') {
+    siteOcc.fill(0);
+  } else {
+    for (let i = 0; i < lattice.n; i++) {
+      if (lattice.topMask[i]) uf.union(TOP, i);
+      if (lattice.botMask[i]) uf.union(BOT, i);
+    }
+    bondOcc.fill(0);
+  }
+  revealed = 0; spanned = false; spannedP = null;
+}
+
+function revealTo(mode, target) {
+  target = Math.max(0, Math.min(total, target | 0));
+  if (target < revealed) rebuildRun(mode);
+  const kind = mode.kind === 'scaling' ? 'bond-square' : mode.kind;
+  const isSite = kind === 'site-square';
+  while (revealed < target) {
+    const idx = order[revealed];
+    if (isSite) {
+      siteOcc[idx] = 1;
+      if (lattice.topMask[idx]) uf.union(TOP, idx);
+      if (lattice.botMask[idx]) uf.union(BOT, idx);
+      for (const j of lattice.neighbors[idx]) if (siteOcc[j]) uf.union(idx, j);
+    } else {
+      const [a, b] = lattice.bonds[idx];
+      uf.union(a, b);
+      bondOcc[idx] = 1;
+    }
+    revealed++;
+    if (!spanned && uf.find(TOP) === uf.find(BOT)) { spanned = true; spannedP = revealed / total; }
+  }
+}
+
+function applyMode(idx) {
+  modeIdx = idx;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  scaleValEl.textContent = '';
+  runIndex = 0;
+  startRun(m);
+  runStart = performance.now();
+}
+applyMode(0);
+
+/* ── scaling-mode measurement (largest cluster, frozen at p_c) ──────── */
+function siteTouched() {
+  const occ = new Uint8Array(lattice.n);
+  for (let i = 0; i < revealed; i++) { const [a, b] = lattice.bonds[order[i]]; occ[a] = 1; occ[b] = 1; }
+  return occ;
+}
+function largestClusterMask() {
+  const occ = siteTouched();
+  let bestRoot = -1, bestSize = 0;
+  for (let i = 0; i < lattice.n; i++) if (occ[i]) {
+    const r = uf.find(i);
+    if (uf.size[r] > bestSize) { bestSize = uf.size[r]; bestRoot = r; }
+  }
+  const mask = new Uint8Array(lattice.n);
+  if (bestRoot < 0) return mask;
+  for (let i = 0; i < lattice.n; i++) if (occ[i] && uf.find(i) === bestRoot) mask[i] = 1;
+  return mask;
+}
+function clusterSizesNow() {
+  const occ = siteTouched();
+  const rootSize = new Map();
+  for (let i = 0; i < lattice.n; i++) if (occ[i]) {
+    const r = uf.find(i);
+    if (!rootSize.has(r)) rootSize.set(r, uf.size[r]);
+  }
+  return [...rootSize.values()];
+}
+function boxCountDim(mask, N, boxSizes) {
+  const xs = [], ys = [];
+  for (const b of boxSizes) {
+    let count = 0;
+    for (let by = 0; by < N; by += b) for (let bx = 0; bx < N; bx += b) {
+      let hit = false;
+      for (let y = by; y < Math.min(by + b, N) && !hit; y++)
+        for (let x = bx; x < Math.min(bx + b, N); x++) if (mask[y * N + x]) { hit = true; break; }
+      if (hit) count++;
+    }
+    if (count > 0) { xs.push(Math.log(1 / b)); ys.push(Math.log(count)); }
+  }
+  const n = xs.length;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+  const denom = n * sxx - sx * sx;
+  return denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+}
+function clusterExponent(sizes, sMin, sMax) {
+  const bins = new Map();
+  for (const s of sizes) {
+    if (s < sMin || s > sMax) continue;
+    const b = Math.floor(Math.log2(s));
+    bins.set(b, (bins.get(b) || 0) + 1);
+  }
+  const xs = [], ys = [];
+  for (const [b, count] of bins) {
+    const sMid = Math.pow(2, b + 0.5), width = Math.pow(2, b + 1) - Math.pow(2, b);
+    xs.push(Math.log(sMid)); ys.push(Math.log(count / width));
+  }
+  const n = xs.length;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+  const denom = n * sxx - sx * sx;
+  return denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+}
+const D_SAMPLES = [];
+let sizePool = [];
+let lastScalingRefresh = 0;
+function updateScaling(now) {
+  if (now - lastScalingRefresh < 2200) return;
+  lastScalingRefresh = now;
+  const m = MODES[modeIdx];
+  startRun(m);
+  revealTo(m, Math.round(total * 0.5));
+  const mask = largestClusterMask();
+  const D = boxCountDim(mask, GRID, [2, 4, 8, 16, 24]);
+  if (D > 0) { D_SAMPLES.push(D); if (D_SAMPLES.length > 14) D_SAMPLES.shift(); }
+  sizePool.push(...clusterSizesNow());
+  if (sizePool.length > 60000) sizePool = sizePool.slice(-60000);
+  const avgD = D_SAMPLES.reduce((s, v) => s + v, 0) / (D_SAMPLES.length || 1);
+  const tau = -clusterExponent(sizePool, 4, (GRID * GRID) / 40);
+  scaleValEl.textContent = `D≈${avgD.toFixed(2)} (91/48=1.90) · τ≈${tau.toFixed(2)} (187/91=2.05)`;
+}
+
+/* ── rendering ────────────────────────────────────────────────────────
+   Every currently-revealed edge/site is re-bucketed by hue EVERY frame
+   (not cached), since a bond's cluster color can change the instant its
+   cluster merges with another — the whole point of watching clusters
+   coalesce live. Buckets keep draw calls to ~32 regardless of edge count
+   (the same "batch by discretized attribute, not by primitive" trick
+   GYRUS uses for curvature-shaded stroke buckets, LICHTENBERG's owner
+   hue-shift does per-fragment in GLSL instead since it never has this
+   CPU-side cost). */
+const NBUCKETS = 32;
+let cellSize, ox, oy;
+function layout() {
+  const marginFrac = 0.08;
+  const gw = Math.max(...lattice.coords.map(c => c.x)) + 1;
+  const gh = Math.max(...lattice.coords.map(c => c.y)) + 1;
+  const availW = W * (1 - marginFrac * 2), availH = H * (1 - marginFrac * 2);
+  cellSize = Math.min(availW / gw, availH / gh);
+  ox = (W - gw * cellSize) / 2;
+  oy = (H - gh * cellSize) / 2;
+}
+function px(c) { return ox + c.x * cellSize; }
+function py(c) { return oy + c.y * cellSize; }
+
+function render(mode, now) {
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+  layout();
+
+  const buckets = new Array(NBUCKETS);
+  const isSite = (mode.kind === 'scaling' ? 'bond-square' : mode.kind) === 'site-square';
+  let spanRoot = -1;
+  if (spanned) spanRoot = uf.find(TOP);
+
+  const spanPath = new Path2D();
+  const dotR = Math.max(0.8, cellSize * 0.16);
+
+  if (isSite) {
+    for (let i = 0; i < revealed; i++) {
+      const s = order[i];
+      const root = uf.find(s);
+      const b = Math.floor(((root * 0.61803398875) % 1) * NBUCKETS);
+      let path = buckets[b]; if (!path) path = buckets[b] = new Path2D();
+      const cx = px(lattice.coords[s]), cy = py(lattice.coords[s]);
+      path.moveTo(cx + dotR, cy); path.arc(cx, cy, dotR, 0, Math.PI * 2);
+      if (root === spanRoot) { spanPath.moveTo(cx + dotR * 1.6, cy); spanPath.arc(cx, cy, dotR * 1.6, 0, Math.PI * 2); }
+      for (const j of lattice.neighbors[s]) {
+        if (j <= s || !siteOcc[j]) continue;
+        path.moveTo(cx, cy); path.lineTo(px(lattice.coords[j]), py(lattice.coords[j]));
+        if (root === spanRoot) { spanPath.moveTo(cx, cy); spanPath.lineTo(px(lattice.coords[j]), py(lattice.coords[j])); }
+      }
+    }
+  } else {
+    for (let i = 0; i < revealed; i++) {
+      const idx = order[i];
+      const [a, b] = lattice.bonds[idx];
+      const root = uf.find(a);
+      const bi = Math.floor(((root * 0.61803398875) % 1) * NBUCKETS);
+      let path = buckets[bi]; if (!path) path = buckets[bi] = new Path2D();
+      const ax = px(lattice.coords[a]), ay = py(lattice.coords[a]);
+      const bx = px(lattice.coords[b]), by = py(lattice.coords[b]);
+      path.moveTo(ax, ay); path.lineTo(bx, by);
+      if (root === spanRoot) { spanPath.moveTo(ax, ay); spanPath.lineTo(bx, by); }
+    }
+  }
+
+  const lw = Math.max(0.8, cellSize * 0.13);
+  for (let b = 0; b < NBUCKETS; b++) {
+    if (!buckets[b]) continue;
+    const hue = (b / NBUCKETS + mode.hueBase) % 1;
+    const col = `hsl(${(hue * 360) | 0},68%,54%)`;
+    if (isSite) { ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.fill(buckets[b]); ctx.stroke(buckets[b]); }
+    else { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke(buckets[b]); }
+  }
+
+  if (spanned) {
+    const pulse = 0.65 + 0.35 * Math.sin(now * 0.005);
+    ctx.strokeStyle = `rgba(255,255,255,${pulse})`;
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.lineWidth = lw * 1.6;
+    ctx.stroke(spanPath);
+    if (isSite) ctx.fill(spanPath);
+  }
+}
+
+/* ── main loop ────────────────────────────────────────────────────── */
+function loop(now) {
+  requestAnimationFrame(loop);
+  const mode = MODES[modeIdx];
+
+  if (now - modeStart > MODE_HOLD_MS) { modeStart = now; applyMode((modeIdx + 1) % MODES.length); }
+  if (modeStart === 0) modeStart = now;
+
+  if (mode.kind === 'scaling') {
+    updateScaling(now);
+  } else if (!dragging) {
+    const elapsed = (now - runStart) / 1000;
+    const t = Math.min(1, elapsed / RUN_SECONDS);
+    revealTo(mode, Math.round(t * total));
+    if (elapsed > RUN_SECONDS + HOLD_SECONDS) {
+      runIndex++;
+      startRun(mode);
+      runStart = now;
+    }
+  }
+
+  render(mode, now);
+
+  const p = mode.kind === 'scaling' ? 0.5 : revealed / total;
+  pValEl.textContent = p.toFixed(3);
+  if (spanned) {
+    const err = ((spannedP - mode.pc) / mode.pc * 100);
+    spanValEl.textContent = `spanned @ p=${spannedP.toFixed(3)} vs p_c=${mode.pc.toFixed(4)} (${err >= 0 ? '+' : ''}${err.toFixed(1)}%)`;
+  } else if (mode.kind !== 'scaling') {
+    spanValEl.textContent = `p_c = ${mode.pc.toFixed(4)}`;
+  } else {
+    spanValEl.textContent = 'frozen at p_c = 0.5000';
+  }
+}
+requestAnimationFrame(loop);
+
+/* ── interaction: drag horizontally to set p directly ─────────────── */
+function pFromEvent(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+function onDown(clientX) {
+  const mode = MODES[modeIdx];
+  if (mode.interactive === false) return;
+  dragging = true;
+  dragP = pFromEvent(clientX);
+  revealTo(mode, Math.round(dragP * total));
+}
+function onMove(clientX) {
+  if (!dragging) return;
+  const mode = MODES[modeIdx];
+  dragP = pFromEvent(clientX);
+  revealTo(mode, Math.round(dragP * total));
+}
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  runStart = performance.now() - dragP * RUN_SECONDS * 1000;
+}
+canvas.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchend', onUp);
+</script>
+</body>
+</html>

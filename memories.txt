@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-eddy.html        — EDDY piece (new)
+percolate.html   — PERCOLATE piece (new)
+eddy.html        — EDDY piece
 horizon.html     — HORIZON piece
 spinodal.html    — SPINODAL piece
 flame.html       — FLAME piece
@@ -26,6 +27,121 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 20: PERCOLATE — Random Connectivity & the Percolation Threshold (2026-07-17)
+Broadbent & Hammersley (1957) posed percolation theory's founding question:
+scatter edges (or sites) onto a lattice independently at random with
+probability p — at what p does a cluster first span the whole system? This
+is the gallery's first piece built on pure combinatorics rather than any
+continuous dynamics: no field to diffuse, no boundary-value problem to
+solve, no force to integrate, no Metropolis energy to sample against. What
+grows on screen frame to frame is not physics evolving in time at all —
+it's a fixed, already-decided random graph being REVEALED one edge at a
+time in a random order, a visualization device, not a simulated process.
+The only thing ever computed live is *connectivity*, via a weighted
+union-find with path compression (Newman & Ziff 2001), the same algorithm
+that makes a drag gesture able to jump p anywhere and rebuild the whole
+graph from scratch in milliseconds — not by re-deciding any physics, just
+by replaying a fixed random order up to a different point. Second Canvas2D
+(no-WebGL) piece after GYRUS, for the same reason: union-find's inherently
+sequential, non-embarrassingly-parallel structure has no natural GPU
+shader mapping the way a diffusing field does.
+
+### Four lattices, three of them with an EXACT threshold
+A rarity in statistical mechanics, where most critical points (ISING's own
+included, for anything but the special 2D square case) are only known
+numerically:
+- SQUARE BOND: p_c = 1/2 exactly (Kesten 1980, via the square lattice's
+  own self-duality — the cleanest possible closed-form result to build a
+  piece around)
+- TRIANGULAR BOND: p_c = 2 sin(pi/18) ~= 0.34730 (Wierman 1981)
+- HONEYCOMB BOND: p_c = 1 - 2 sin(pi/18) ~= 0.65270, the exact dual of the
+  triangular threshold above
+- SQUARE SITE: deliberately the honest counterpoint — no closed form is
+  known at all for this one, only Newman & Ziff's own high-precision 2000
+  numerical estimate (0.5927460); the mode's own on-screen label says so
+  rather than implying a false equivalence with the other three
+All four were verified offline first (perc_sim.js, this session's own
+Newman-Ziff union-find port in plain Node — the "verify the closed-form
+math before any canvas code" discipline HORIZON/SPINODAL/FLAME/EINSTEIN/
+SPECTRE each used) before any of the geometry was ported into the piece:
+the measured spanning-probability crossing landed within 1-2% of every
+value above at N=96, 300 trials each. HONEYCOMB is rendered as the
+standard "brick wall" representation (every horizontal bond kept, only
+alternating-parity vertical bonds kept — a well-known graph-isomorphism to
+the true 3-connected honeycomb lattice), not literal hexagon tiling — an
+honest topological stand-in, not a geometric one, kept simple on purpose.
+
+### SCALING: finally closing a gap flagged twice and left open
+SANDPILE (session 8) and ISING (session 10) each noted in their own
+backlog that a real power-law critical statistic was "implicit in the
+visuals, not measured." SCALING mode freezes the square lattice exactly
+at p_c=0.5 and live box-counts the largest cluster's fractal dimension
+plus fits the cluster-size histogram's power-law slope against the exact
+2D percolation universality-class values: D=91/48~=1.8958 and Fisher
+exponent tau=187/91~=2.0549 (den Nijs 1979, via the Coulomb-gas mapping).
+Offline verification (perc_scaling.js, N=1000, pooled over 8
+realizations, box sizes restricted to a middle decade and the cluster
+histogram restricted to a middle size-range — both ends are known
+artifacts, lattice-scale discreteness at small s/box and finite-system
+cutoff at large s/box) measured tau=2.046 (within 0.5%) and D=1.846 (about
+2.6% low, a known artifact of box-counting a FREE-boundary sample-
+spanning cluster at finite size, not a bug). The piece's own live readout
+runs on a far smaller grid for real-time performance and is honestly
+noisier still (observed D~1.8-1.9, tau~2.2-2.3 across repeated headless
+runs) — flagged in-piece rather than dressed up as more precise than it
+is.
+
+### The interactive-parameter wish, finally cashed in
+Nine earlier pieces flagged and left undone some version of "let a
+visitor walk the parameter themselves" (ISING's temperature onward
+through LICHTENBERG's eta, ATTRACTOR's (a,b,c,d), SOFTCELL's softness t,
+EINSTEIN/SPECTRE's recursion depth, FLAME's xform editor, SPINODAL's
+kappa, HORIZON's camera distance/FOV, EDDY's Reynolds-style dial).
+PERCOLATE finally does it, for the cheapest possible reason: dragging
+horizontally sets p directly, and because Newman-Ziff's whole design
+point is that any earlier p is just a prefix of one fixed random order,
+revisiting it is a full union-find rebuild from scratch (a few ms even at
+this piece's ~20-30k edges) rather than needing any new engine.
+
+### Verified via headless Playwright: FPS, all five modes, drag, resize
+59-60fps sustained on Canvas2D/SwiftShader across all four bond/site
+lattices' full sweeps and the SCALING mode's periodic re-randomization,
+zero console errors beyond the usual benign favicon 404, drag-to-set-p
+tested to land the exact target p (0.600 requested, 0.600 measured),
+mode auto-cycling confirmed through all five modes in sequence, resize
+mid-run (desktop -> narrow mobile -> wide desktop) with no crash, and a
+390x844 mobile viewport with the bottom readout/hint panels kept legible
+via a max-width media query (EDDY's own pattern, reused here).
+
+### What's simplified, left honest
+No literal hexagon tiling for HONEYCOMB (brick-wall stand-in, above);
+SCALING's live D/tau are measured on a much smaller grid than the offline
+pre-verification and are correspondingly noisier; the "growth" animation
+sweeping p from 0 to 1 is pure visualization, not a claim that real
+percolation processes evolve through increasing p over time (the physics
+is a single frozen p, decided all at once — stated explicitly in the
+header comment, since this cuts directly against every earlier piece's
+own convention of dynamics being the whole point).
+
+### Inspiration
+Web research into percolation theory and the Newman-Ziff algorithm,
+following up on a research thread ("unusual mathematical simulation
+visualization... percolation") that surfaced percolation as a phase
+transition genuinely unlike ISING's own thermal one — no energy, no
+temperature, no stochastic dynamics deciding anything, just which edges
+happen to be present in one fixed random graph. Chosen specifically
+because three of its four natural lattice variants carry a rigorously
+exact closed-form threshold (rare in statistical mechanics) and because
+it let this session finally build the "measure the real critical
+phenomenon" and "interactive parameter" ideas that SANDPILE, ISING, and
+seven other pieces had each flagged and left undone across their own
+backlogs — continuing the gallery's own established practice (SPECTRE,
+FLAME and others) of building a flagged backlog item once the right
+piece is on the table, rather than always chasing an entirely fresh
+subject.
 
 ---
 
@@ -2482,6 +2598,45 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-17 — Session 20
+- Added PERCOLATE: random-graph connectivity and the percolation phase
+  transition (Broadbent & Hammersley 1957) — a weighted union-find with
+  path compression (Newman & Ziff 2001) sequentially reveals edges/sites
+  in a random order across four lattices, three with an EXACT proven
+  critical threshold (SQUARE BOND p_c=1/2 Kesten 1980; TRIANGULAR BOND
+  p_c=2sin(pi/18) Wierman 1981; HONEYCOMB BOND p_c=1-2sin(pi/18), its
+  exact dual) plus SQUARE SITE as an honest counterpoint (no closed form
+  known, numeric estimate only). First piece built on pure combinatorics
+  with no continuous dynamics at all — the on-screen growth is a
+  visualization device revealing one fixed random graph, not a simulated
+  physical process evolving in time. Second Canvas2D (non-WebGL) piece
+  after GYRUS, since union-find has no natural GPU-shader mapping.
+- All four thresholds verified offline first (perc_sim.js, Node,
+  Newman-Ziff union-find) within 1-2% of exact/numeric values before any
+  canvas code, this session's use of the "verify closed-form math first"
+  discipline. A fifth mode, SCALING, freezes at the square lattice's
+  p_c=0.5 and live-measures the spanning cluster's box-counting fractal
+  dimension and the cluster-size histogram's power-law exponent against
+  the exact 2D universality-class values D=91/48 and tau=187/91 — offline
+  pre-verification (perc_scaling.js, N=1000) landed tau within 0.5% and D
+  within 2.6% (a known finite-size box-counting artifact, not a bug),
+  finally closing a "measure the real critical phenomenon" gap SANDPILE
+  (session 8) and ISING (session 10) had each flagged and left open.
+- Drag-to-set-p interaction (Newman-Ziff makes revisiting any earlier p a
+  cheap from-scratch union-find rebuild) finally implements the
+  "interactive visitor-controlled parameter" idea nine earlier pieces had
+  flagged and left undone, from ISING's temperature through EDDY's own
+  Reynolds-style dial wish.
+- Verified via headless Playwright: 59-60fps across all five modes' full
+  p-sweeps, zero console errors beyond the usual benign favicon 404,
+  drag-to-p landing exactly on target, mode auto-cycling through the full
+  five-mode sequence, resize mid-run, and a 390x844 mobile viewport.
+- Inspiration: web research into percolation theory and the Newman-Ziff
+  algorithm, chosen for carrying a rigorously exact closed-form critical
+  threshold (rare in statistical mechanics) and for being a genuinely
+  different phase-transition mechanism than ISING's own thermal one —
+  pure graph connectivity, no energy or temperature at all.
+
 ### 2026-07-15 — Session 18
 - Added HORIZON: a real-time Schwarzschild black hole raymarcher — photon
   geodesics integrated per-pixel via RK4 on the reduced orbit equation
@@ -3488,3 +3643,59 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       real Schlieren/shadowgraph-style refractive-index colouring of the
       flow (as real fluid-visualisation photography does) instead of the
       current direct vorticity-sign or dye-density colour mapping
+- [x] Percolation theory / random-graph connectivity phase transition —
+      done in PERCOLATE (session 20), the gallery's first piece built on
+      pure combinatorics (union-find graph connectivity) rather than any
+      continuous field, force, or Monte Carlo dynamics
+- [x] "Let a visitor walk the parameter themselves," standing open since
+      ISING's temperature (session 10) and re-flagged in LICHTENBERG,
+      ATTRACTOR, SOFTCELL, EINSTEIN, SPECTRE, FLAME, SPINODAL, HORIZON
+      and EDDY's own backlog notes — done in PERCOLATE (session 20) via
+      drag-to-set-p, made cheap specifically by Newman-Ziff's own design
+      (revisiting any p is a from-scratch union-find replay, not a new
+      engine); still open for every OTHER piece's own specific parameter
+      (eta, (a,b,c,d), kappa, recursion depth, xform weights, Reynolds
+      number, camera FOV) — this closes the general idea's proof of
+      concept, not each piece's individual instance of it
+- [x] "Measure the real power-law/critical statistic instead of only
+      implying it visually," flagged and left open by SANDPILE (session
+      8, avalanche-size histogram) and ISING (session 10, susceptibility/
+      specific-heat divergence at Tc) — done in PERCOLATE (session 20)
+      SCALING mode's live box-counted D and cluster-histogram tau against
+      the exact 2D percolation universality-class values; SANDPILE's and
+      ISING's OWN specific statistics are each still their own open item
+      below, this only closes the general idea's proof of concept
+- [ ] PERCOLATE: literal hexagon tiling for HONEYCOMB BOND instead of the
+      graph-isomorphic "brick wall" stand-in this session used for both
+      the union-find graph and the render coordinates — would need real
+      axial hex-grid vertex/edge geometry, left as a deliberate
+      simplification this session, not attempted
+- [ ] PERCOLATE: a proper finite-size-scaling collapse (run several grid
+      sizes N, rescale (p-p_c)*N^(1/nu) on the x-axis) as a live or
+      pre-computed overlay, rather than only reporting a single-N
+      crossing offset — would turn the "measured within 1-2% at N=96"
+      offline verification into an actual demonstration of WHY it
+      converges to the exact threshold as N grows, not attempted this
+      session
+- [ ] PERCOLATE: an explicit "correlation length diverges at p_c" visual
+      demonstration — e.g. the second-largest cluster's own radius of
+      gyration peaking sharply right at p_c and collapsing away from it —
+      distinct from SCALING's fractal-dimension/tau readout, a second
+      independent critical signature this session didn't add
+- [ ] PERCOLATE: directed/oriented percolation (edges only traversable
+      one way, e.g. downward) as an explicit contrast mode — a genuinely
+      different universality class from the undirected percolation this
+      session built entirely, not attempted, out of scope after the
+      lattice-threshold research
+- [ ] PERCOLATE: a continuous (off-lattice) percolation mode — e.g. the
+      Poisson-disc / random-geometric-graph model (points scattered
+      uniformly, edges wherever two fall within a fixed radius) — a
+      different combinatorial substrate from every lattice mode here,
+      with its own distinct (non-exact, dimension-dependent) threshold,
+      not attempted this session
+- [ ] PERCOLATE: bootstrap or explosive percolation (edges added by a
+      biased rule favoring small-cluster merges, producing a genuinely
+      discontinuous-looking transition rather than the continuous one
+      every mode here shows) — a real, actively-researched variant this
+      session didn't attempt, out of scope after the classical-percolation
+      research
