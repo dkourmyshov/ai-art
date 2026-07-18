@@ -7,7 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-percolate.html   — PERCOLATE piece (new)
+axolotl.html     — AXOLOTL piece (new)
+percolate.html   — PERCOLATE piece
 eddy.html        — EDDY piece
 horizon.html     — HORIZON piece
 spinodal.html    — SPINODAL piece
