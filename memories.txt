@@ -7,7 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
-axolotl.html     — AXOLOTL piece (new)
+axolotl.html     — AXOLOTL piece
 percolate.html   — PERCOLATE piece
 eddy.html        — EDDY piece
 horizon.html     — HORIZON piece
@@ -31,7 +31,123 @@ einstein.html    — EINSTEIN piece
 
 ---
 
-## Piece 20: PERCOLATE — Random Connectivity & the Percolation Threshold (2026-07-17)
+## Piece 21: AXOLOTL — Growing Neural Cellular Automata (2026-07-18/19)
+After Mordvintsev, Randazzo, Niklasson & Levin (2020), "Growing Neural
+Cellular Automata" (distill.pub/2020/growing-ca). Every earlier field-based
+piece here evolves a HAND-DESIGNED local rule: Gray-Scott's reaction
+kinetics, Cahn-Hilliard's chemical potential, Stam's Navier-Stokes
+discretization, Lenia's convolution kernel. This piece's rule was never
+designed — it was TRAINED. A 16-channel cellular automaton (4 visible RGBA
+channels + 12 hidden "communication" channels) updates every cell through
+one shared neural network: a 48-dim local perception (each channel's own
+value plus its Sobel-x/Sobel-y gradient) feeding a 48-32-16 two-layer
+perceptron (2,096 weights), trained offline via hand-derived backprop
+through unrolled CA steps — no numpy or torch were available in this
+environment, so both the forward pass AND the full backward-through-time
+pass were written from scratch in plain Node (nca.js/rollout.js/train.js,
+this scratchpad, none of it committed — same convention as PERCOLATE's
+perc_sim.js and every offline verification script before it) and checked
+against finite-difference numerical gradients (60 sampled parameters
+across all four weight tensors, both a deterministic fire-rate=1 case and
+the real stochastic fire-rate=0.5 case, max relative error 3e-3) before
+any real training run — this gallery's "verify before you build"
+discipline applied to calculus instead of closed-form physics for the
+first time.
+
+### What was actually trained
+Pool + damage-augmented training, Mordvintsev et al.'s own "Experiment 3"
+recipe: a persistent pool of 16 32x32x16 grids, each iteration samples a
+batch of 8, replaces whichever sampled grid currently has the highest loss
+with a fresh single-seed grid, damages 1-2 of the REMAINING samples (a
+random zeroed circle, ~70% of iterations) before a T-step rollout
+(T uniform in [32,64]), and writes each rollout's own final state back
+into the pool — so the network is trained not against "grow this pattern
+once" but against grids at every stage from fresh seed through
+long-persisted through recently-wounded, all under the same loss. Target:
+a procedurally SDF-rasterized (signed-distance union of circles/ellipse/
+capsules, smooth-min blended, antialiased) axolotl silhouette — head,
+body, tapering tail, 4 leg nubs, 3-per-side gill nubs, one eye — in a
+warm leucistic pink, premultiplied by alpha per the paper's own loss
+convention. W2/b2 (the output layer) zero-initialized so the untrained
+rule starts as a no-op (ds=0), the paper's own trick for early training
+stability; W1/b1 small-random He-scaled. Adam (lr 1e-3 for the first 1500
+iterations, 2e-4 after) with each of the four weight tensors' gradient
+independently normalized by its own L2 norm before the optimizer step —
+the official repo's own fix for BPTT gradient blowup across ~50 unrolled
+steps, load-bearing here too: training was visibly unstable in early
+smoke tests without it.
+
+### Numbers, not just a picture that looked right
+Ran in two background rounds (70min/2320 iters, then resumed to
+60min/2081 more — 4,401 iterations total, ~130 minutes of real compute,
+this session's whole training budget) on a 32-cell training grid matching
+the inference grid exactly (no size-generalization gap to worry about).
+Loss (pixel MSE over the 4 visible RGBA channels only, the same metric
+the paper uses) fell from ~0.1-0.3 at initialization to an EMA of 0.0076
+by the end of round two, with diminishing returns already visible (round
+one: 10x reduction in 70min; round two: another 20% in 60min) — a
+reasonable place to stop rather than a hard convergence criterion. Beyond
+the training loss itself, this session verified the two properties that
+actually matter for a piece with GROW/REGENERATE/FERAL/HIDDEN modes:
+PERSISTENCE (loss stays in the same 0.0056-0.0071 band from T=64 out to
+T=500 steps with no reseed — the pattern is a genuine stable attractor,
+not something that grows once and then decays or explodes) and
+REGENERATION (a large damage circle punched through the head/body at
+T=120, then 80 more steps with no help: loss recovers to 0.0081, close to
+the undamaged steady state, and the ASCII/pixel diff shows the hole
+visibly closing rather than the rule just tolerating a permanent scar).
+
+### Inference vs. training — a fully separate implementation
+axolotl.html only ever RUNS the trained rule; it never trains. WebGL1 has
+no multiple-render-targets, so the 16 channels live in 4 ping-ponged
+RGBA32F texture pairs, and one CA step is two fragment-shader passes
+(mirroring the trainer's own pre/post-update split exactly): pass A
+computes perception+MLP+stochastic-fire into a raw unmasked new state (8
+draw calls, one outGroup x per-group texture), pass B computes the
+pre/post alive mask (3x3 max-pool of channel-3 on BOTH the input state
+and pass A's raw output, thresholded at 0.1, ANDed together) and applies
+it. Getting the weight-packing layout right mattered more than expected:
+the shader packs W1/W2 into an RGBA32F texture in units of 4 (fetchW
+returns a vec4), which only lines up with a plain row-major flat array if
+each texel's 4 components map to 4 CONSECUTIVE hidden/output units — this
+session reverse-engineered that layout from the existing shader (written
+the prior session) by tracing fetchW's index arithmetic by hand before
+writing a single line of the trainer, rather than guessing and finding
+out via a garbled render. Verified via headless Playwright screenshots
+across all four modes with zero console errors: GROW settles to ~34%
+alive fraction; REGENERATE visibly heals a click/drag wound within the
+same session's own screenshot pair; FERAL (multiple simultaneous seeds,
+explicitly billed on-screen as "beyond its training") merges into one
+large 82%-alive mass, a real extrapolation-failure demo rather than a
+disguised second GROW; HIDDEN's false-colour view of channels 4/8/12
+shows clearly differentiated red/yellow/magenta regions corresponding to
+head, neck and tail — the model's own internal channels really did
+specialize by body region, not stay uniform noise, the piece's central
+thesis (Levin's "no cell aware of the whole shape, just a shared local
+rule and neighbour communication") made visible without staging it.
+
+### Honest limitations
+At 32x32 with linear-filter upscaling the result reads as a soft,
+glowing organic blob with a body and tail-like extensions rather than a
+crisply legible axolotl portrait — the target's own finer features (4 leg
+nubs, 6 gill nubs, one eye) do not resolve individually at this
+resolution/blur, an inherent limit of the grid size chosen for real-time
+WebGL1 inference, not a training failure (the SDF target itself, checked
+via ASCII raster before any training, has all of them clearly separable
+at the pixel level). A small persistent colour anomaly sits exactly at
+the seed pixel in GROW/REGENERATE/FERAL — visible in every screenshot at
+the same grid location, most likely a "scar" the pool-based training
+schedule encouraged simply by revisiting that exact pixel across the
+seed/persisted/damaged state distribution far more than any other single
+cell; left as a genuine, mildly interesting trained artifact rather than
+patched away, in the same spirit as HORIZON's "verify, don't guess" stance
+on what's a bug versus what's real. 2,320+2,081 iterations is well short
+of the originally planned 3,000 in the prior session's own WIP commit
+message but landed past the point of diminishing loss returns; a third
+round would very likely sharpen the silhouette's edges further but was
+not run this session.
+
+
 Broadbent & Hammersley (1957) posed percolation theory's founding question:
 scatter edges (or sites) onto a lattice independently at random with
 probability p — at what p does a cluster first span the whole system? This
@@ -2599,6 +2715,45 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-18/19 — Session 21
+- Finished AXOLOTL: Growing Neural Cellular Automata (Mordvintsev et al.
+  2020), started as a WIP commit the prior session (inference engine,
+  shader, and modes complete but weights an early ~iter-400/3000
+  checkpoint from a training run that didn't survive the session
+  boundary). This session rewrote the offline trainer from scratch in
+  plain Node (no numpy/torch, same as before) — forward pass, full
+  backward-through-time, gradient-checked against finite differences
+  (max relative error 3e-3) — and ran pool+damage training for 4,401
+  total iterations across two ~65min background rounds (~130 min real
+  compute), landing EMA loss at 0.0076 down from ~0.1-0.3 at init.
+- Verified PERSISTENCE (loss stable 0.0056-0.0071 from T=64 to T=500, no
+  reseed) and REGENERATION (a punched-through damage circle heals back to
+  loss 0.0081 within 80 steps, close to steady state) numerically in Node
+  before touching the browser at all, then confirmed the real WebGL1
+  shader inference matches via headless Playwright screenshots across all
+  four modes (GROW/REGENERATE/FERAL/HIDDEN), zero console errors. HIDDEN
+  mode's false-colour internal-channel view shows genuinely differentiated
+  head/neck/tail regions — the model's own local rule really did specialize
+  by body region without ever being told to.
+- Target: a procedurally SDF-rasterized axolotl silhouette (head, body,
+  tail, legs, gill nubs, one eye), built and ASCII-verified in isolation
+  before any training run, same "verify before you build" discipline this
+  gallery has used for closed-form physics now applied to a training
+  target instead.
+- Honest gap: at 32x32 with linear-filter upscaling the result reads as a
+  soft organic blob rather than a crisp, legible axolotl — fine target
+  detail doesn't resolve at this grid size. A small colour anomaly persists
+  at the seed pixel across every mode, most likely a training-schedule
+  artifact (that exact cell gets revisited far more than any other across
+  the pool's seed/persisted/damaged state distribution) rather than a bug,
+  left in rather than patched over.
+- Inspiration: prior session's own explicit unfinished-promise (WIP commit
+  message) plus a web search on generative-art NCA/regeneration work,
+  which surfaced the planaria-regrowth framing (a real digital planarian,
+  cut into three, regrowing from each piece) as confirmation that the
+  REGENERATE mode's premise is the paper's own central motivating result,
+  not an embellishment.
+
 ### 2026-07-17 — Session 20
 - Added PERCOLATE: random-graph connectivity and the percolation phase
   transition (Broadbent & Hammersley 1957) — a weighted union-find with
@@ -3700,3 +3855,44 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       every mode here shows) — a real, actively-researched variant this
       session didn't attempt, out of scope after the classical-percolation
       research
+- [x] A piece whose local rule is TRAINED rather than hand-designed — done
+      in AXOLOTL (session 21), a 48-32-16 MLP fit via hand-derived backprop
+      through unrolled CA steps, the gallery's first piece built on
+      machine learning rather than closed-form physics/combinatorics
+- [ ] AXOLOTL: a higher-resolution inference grid (64x64 or larger) so the
+      target's finer features (leg nubs, gill nubs, the eye) actually
+      resolve instead of blurring into a soft blob at 32x32 — would need
+      re-training at the larger size (the rule doesn't automatically
+      sharpen just from rendering a trained-at-32 rule on more cells) and
+      a proportionally heavier per-step shader cost, not attempted this
+      session after the 32x32 training budget was already ~130 minutes
+- [ ] AXOLOTL: a third training round (loss was still falling, if slowly,
+      when this session's second 60-minute round hit its time budget) to
+      test whether the seed-pixel colour anomaly and the silhouette's soft
+      edges are a training-budget artifact that keeps improving, or a
+      genuine local optimum this exact architecture/target settles into
+      regardless of iteration count — not distinguished this session
+- [ ] AXOLOTL: an interactive recursion-depth-style dial — here, a visitor-
+      controlled fire-rate or step-rate slider — echoing the standing "let
+      a visitor walk the parameter themselves" idea (ISING onward through
+      PERCOLATE's drag-to-p); not attempted, since fire-rate is baked into
+      training rather than being a free runtime parameter the trained rule
+      was built to tolerate a range of
+- [ ] AXOLOTL: train a SECOND rule on a deliberately different target
+      (e.g. an explicit non-creature, like a simple polygon or a second
+      species entirely) and let a visitor switch which trained rule is
+      running, making the "the rule was learned, not designed" thesis
+      concrete via A/B comparison rather than only prose — would need a
+      second full training run and a second baked-in WEIGHTS blob
+- [ ] AXOLOTL: real per-pixel-normal-mapped lighting or a subtle bloom
+      pass on the RGBA output, since the current render is flat premultiplied
+      colour over a dark backdrop with only a radial vignette — every
+      other recent WebGL piece here (HORIZON, EDDY, SPINODAL) has some
+      form of tone-mapping/post-processing this one currently lacks
+- [ ] AXOLOTL: a 3D volumetric growing NCA (the paper's own update rule
+      generalizes to a 3D Sobel/perception stencil) — echoes the gallery's
+      standing "3D" backlog itch (SPINODAL/FLAME/ATTRACTOR/SOFTCELL/
+      LICHTENBERG/EDDY all flagged one, HORIZON eventually answered it via
+      a different technique) — a real volumetric NCA training run would be
+      substantially more expensive than this session's 32x32x16 2D grid,
+      not attempted
