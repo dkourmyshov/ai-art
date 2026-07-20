@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEMATIC — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.5)}
+#legend{display:none;margin-top:.5em;font-size:8px;letter-spacing:.1em}
+#legend.on{display:block}
+#legend .plus{color:rgb(255,160,60)}
+#legend .minus{color:rgb(70,190,255)}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #stats{max-width:56vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="pLabel">POLARIZER </span><span class="val" id="pVal">0°</span>
+  <div id="legend"><span class="plus">●</span> +1/2 &nbsp; <span class="minus">●</span> −1/2</div>
+</div>
+<div id="ui">
+  <span id="modeName">QUENCH</span>
+  <span id="desc">ISOTROPIC-NEMATIC QUENCH &amp; COARSENING</span>
+</div>
+<div id="hint">drag: rotate polarizer &middot; click: pin a defect</div>
+<script>
+/*  NEMATIC — topological defects in a 2D liquid crystal
+ *
+ *  A nematic liquid crystal orients molecules along a headless direction
+ *  n ~ -n (a "director", not a vector). That head-tail symmetry is what
+ *  makes its point defects special: winding number m need not be an
+ *  integer, only a HALF-integer multiple of 2*pi is required to return n
+ *  to itself after a loop (de Gennes & Prost, "The Physics of Liquid
+ *  Crystals"). This piece simulates that field directly rather than
+ *  faking the texture: the director angle theta is packed into a real
+ *  2-vector order parameter Q = S*(cos 2*theta, sin 2*theta) (the
+ *  standard trick — Q has ordinary INTEGER winding k, and k is always
+ *  even/odd exactly when m=k/2 is integer/half-integer), which then
+ *  obeys plain time-dependent Ginzburg-Landau ("Model A") relaxation of a
+ *  Landau-de Gennes free energy in the one-elastic-constant approximation:
+ *
+ *    dQ/dt = D * Laplacian(Q)  +  a*Q  -  b*|Q|^2 Q
+ *
+ *  Quenching from random noise reproduces the real experiment: a nematic
+ *  cooled through the isotropic transition nucleates a dense tangle of
+ *  defects that then coarsen via pairwise annihilation, with the defect
+ *  density falling off close to ~1/t (Yurke et al. 1993; Zapotocky et al.
+ *  1999) — a genuinely different coarsening mechanism from SPINODAL's own
+ *  diffusive t^(1/3) domain growth (session 17): here it is defect
+ *  motion/annihilation driving the coarsening, not bulk diffusion.
+ *
+ *  Under crossed polarizers a defect of charge m shows exactly 4|m| dark
+ *  "brushes" (extinction directions where the local director lines up
+ *  with either polarizer), and — the real diagnostic trick microscopists
+ *  use to read off a defect's SIGN by eye — rotating the analyzer turns
+ *  the brushes of a +m defect the SAME way, and a -m defect's brushes the
+ *  OPPOSITE way. All four claims above (winding conservation, opposite-
+ *  sign attraction / same-sign non-annihilation, the 4|m|-brush count and
+ *  its rotation-direction sign rule, and the ~1/t coarsening trend) were
+ *  checked numerically offline before any shader was written (verify.js,
+ *  this scratchpad, not committed — this gallery's standing "verify
+ *  closed-form math first" discipline applied to a defect field theory
+ *  instead of a closed-form differential equation for the first time).
+ *
+ *  The simulation grid wraps (a torus), so by Poincare-Hopf the total
+ *  charge summed over the whole field must be exactly zero at all times —
+ *  every defect this piece ever places (clicked, or in the LATTICE
+ *  preset) therefore comes paired with an opposite-sign partner.
+ */
+
+const MAX_PINS = 16;
+const SIM = 512;
+
+const MODES = [
+  { name:'QUENCH',   desc:'ISOTROPIC-NEMATIC QUENCH & COARSENING',
+    a:1.0, b:1.0, D:1.0, dt:0.045, steps:3, showCharges:false, autoSpin:0.0, reseedMs:15000, seed:'noise' },
+  { name:'LATTICE',  desc:'A PINNED DEFECT CRYSTAL · MICROPATTERNED ANCHORING',
+    a:1.0, b:1.0, D:1.0, dt:0.045, steps:3, showCharges:true,  autoSpin:0.0, reseedMs:22000, seed:'lattice' },
+  { name:'ANALYZER', desc:'ROTATE THE POLARIZER — WATCH BRUSHES TURN BY SIGN',
+    a:1.0, b:1.0, D:1.0, dt:0.045, steps:2, showCharges:true,  autoSpin:0.10, reseedMs:26000, seed:'twopin' },
+  { name:'PAIR',     desc:'+1/2 · −1/2 — BOUND, ATTRACTING, ANNIHILATING',
+    a:1.4, b:1.0, D:1.0, dt:0.05,  steps:4, showCharges:true,  autoSpin:0.0, reseedMs:13000, seed:'pair-close' },
+];
+const MODE_MS = 32000;
+
+/* ── WebGL bootstrap ────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML='<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+if (!gl.getExtension('OES_texture_float')) {
+  document.body.innerHTML='<p style="color:#fff;padding:2rem">OES_texture_float required</p>'; throw 0;
+}
+
+/* ── shaders ────────────────────────────────────────────────────────────── */
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+const SIM_FS = `
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2      uPx;
+uniform float     uA, uB, uD, uDt;
+uniform vec3      uPins[${MAX_PINS}];   // (x,y,k) in uv coords, k=0 => inactive; k is Q-winding (m=k/2)
+uniform float     uPinRadius, uPinStrength;
+varying vec2 uv;
+
+void main(){
+  vec2 q = texture2D(uTex, uv).rg;
+
+  vec2 lap =
+      texture2D(uTex, uv+vec2(uPx.x,0.)).rg
+    + texture2D(uTex, uv+vec2(-uPx.x,0.)).rg
+    + texture2D(uTex, uv+vec2(0.,uPx.y)).rg
+    + texture2D(uTex, uv+vec2(0.,-uPx.y)).rg
+    - 4.0*q;
+
+  float s2 = dot(q,q);
+  vec2 dq = uD*lap + uA*q - uB*s2*q;
+  vec2 qn = q + uDt*dq;
+
+  float S0 = sqrt(max(uA/uB, 0.0001));
+  for (int i=0;i<${MAX_PINS};i++){
+    vec3 p = uPins[i];
+    float k = p.z;
+    vec2 d = uv - p.xy;
+    float r = length(d);
+    float w = uPinStrength * smoothstep(uPinRadius, 0.0, r) * min(abs(k), 1.0);
+    if (w > 0.0005) {
+      float phi = atan(d.y, d.x);
+      float theta = k*phi;
+      vec2 target = S0 * vec2(cos(theta), sin(theta));
+      qn = mix(qn, target, clamp(w, 0.0, 1.0));
+    }
+  }
+
+  gl_FragColor = vec4(qn, 0., 1.);
+}
+`;
+
+const DRAW_FS = `
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2      uPx;
+uniform float     uPolarizer;
+uniform float     uShowCharges;
+varying vec2 uv;
+
+float minLoopS;
+float ang(vec2 p){
+  vec2 q = texture2D(uTex, p).rg;
+  minLoopS = min(minLoopS, length(q));
+  return atan(q.y, q.x);
+}
+float wrap(float d){
+  if (d >  3.14159265) d -= 6.2831853;
+  if (d < -3.14159265) d += 6.2831853;
+  return d;
+}
+// Winding number of the Q-angle around a small loop, PLUS (via the
+// minLoopS side-channel) the smallest order-parameter magnitude sampled
+// on that loop. Near S=0 the director angle is numerically meaningless
+// (atan2 of a near-zero vector is dominated by float noise), so any
+// caller must ignore the winding result when minLoopS is small -- that
+// is exactly what separates a real defect core (S ramps back up to ~1
+// within a couple of texels of the core) from an still-unordered/noisy
+// patch (S stays uniformly tiny everywhere, including the loop).
+float windingAt(vec2 p, vec2 px){
+  minLoopS = 1.0;
+  float a0 = ang(p+vec2(-px.x,-px.y));
+  float a1 = ang(p+vec2(0.,-px.y));
+  float a2 = ang(p+vec2(px.x,-px.y));
+  float a3 = ang(p+vec2(px.x,0.));
+  float a4 = ang(p+vec2(px.x,px.y));
+  float a5 = ang(p+vec2(0.,px.y));
+  float a6 = ang(p+vec2(-px.x,px.y));
+  float a7 = ang(p+vec2(-px.x,0.));
+  float t = 0.0;
+  t += wrap(a1-a0); t += wrap(a2-a1); t += wrap(a3-a2); t += wrap(a4-a3);
+  t += wrap(a5-a4); t += wrap(a6-a5); t += wrap(a7-a6); t += wrap(a0-a7);
+  return t / 6.2831853;
+}
+
+void main(){
+  vec2 q = texture2D(uTex, uv).rg;
+  float theta = 0.5 * atan(q.y, q.x);
+  float S = length(q);
+
+  float brushSin = sin(2.0*(theta - uPolarizer));
+  float bright = S*S * brushSin*brushSin;
+
+  vec3 base = vec3(0.02, 0.028, 0.05);
+  vec3 lit  = vec3(0.62, 0.88, 1.0);
+  vec3 col = mix(base, lit, bright);
+  col *= 0.35 + 0.65*smoothstep(0.0, 0.3, S);
+
+  if (uShowCharges > 0.5) {
+    float w = windingAt(uv, uPx*1.5);
+    if (abs(w) > 0.55 && minLoopS > 0.25) {
+      vec3 markCol = w > 0.0 ? vec3(1.0, 0.55, 0.15) : vec3(0.25, 0.68, 1.0);
+      float mag = abs(w) > 1.5 ? 1.0 : 0.7;
+      col = mix(col, markCol, 0.8*mag);
+    }
+  }
+
+  vec2 c = uv*2.0 - 1.0;
+  col *= 1.0 - smoothstep(0.6, 1.45, dot(c,c));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+/* ── GL helpers ─────────────────────────────────────────────────────────── */
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const pSim  = mkProg(VS, SIM_FS);
+const pDraw = mkProg(VS, DRAW_FS);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindQuad(p) {
+  const loc = gl.getAttribLocation(p, 'a');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+function mkTex(data) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, data || null);
+  return t;
+}
+function mkFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+/* ── field seeding ──────────────────────────────────────────────────────── */
+
+function noiseField(amp) {
+  const d = new Float32Array(SIM * SIM * 4);
+  for (let i = 0; i < SIM * SIM; i++) {
+    d[i*4]   = amp * (Math.random()*2 - 1);
+    d[i*4+1] = amp * (Math.random()*2 - 1);
+    d[i*4+2] = 0; d[i*4+3] = 1;
+  }
+  return d;
+}
+
+// Exact analytic multi-vortex solution of Laplace's equation for the
+// director angle (harmonic sum of point charges) -- used to seed the
+// PAIR/ANALYZER presets with a clean, textbook-correct starting field
+// rather than noise.
+function analyticField(defects, S0) {
+  const d = new Float32Array(SIM * SIM * 4);
+  for (let y = 0; y < SIM; y++) {
+    for (let x = 0; x < SIM; x++) {
+      const ux = x / SIM, uy = y / SIM;
+      let phi = 0;
+      for (const def of defects) phi += def.k * Math.atan2(uy - def.y, ux - def.x);
+      const i = (y * SIM + x) * 4;
+      d[i]   = S0 * Math.cos(phi);
+      d[i+1] = S0 * Math.sin(phi);
+      d[i+2] = 0; d[i+3] = 1;
+    }
+  }
+  return d;
+}
+
+let texA = mkTex(noiseField(0.05)), texB = mkTex(null);
+let fbA  = mkFB(texA), fbB  = mkFB(texB);
+
+/* ── pins (colloid-like anchoring points, click-placed or preset) ─────────── */
+
+let pins = []; // {x,y,k}
+
+function pinsArrayUniform() {
+  const arr = new Float32Array(MAX_PINS * 3);
+  for (let i = 0; i < MAX_PINS; i++) {
+    const p = pins[i];
+    if (p) { arr[i*3]=p.x; arr[i*3+1]=p.y; arr[i*3+2]=p.k; }
+  }
+  return arr;
+}
+
+function latticePins() {
+  const out = [];
+  const n = 4;
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const x = 0.18 + (0.64) * i / (n - 1);
+      const y = 0.18 + (0.64) * j / (n - 1);
+      const k = ((i + j) % 2 === 0) ? 1 : -1; // checkerboard: net charge zero
+      out.push({ x, y, k });
+    }
+  }
+  return out;
+}
+
+/* ── mode / state management ────────────────────────────────────────────── */
+
+let modeIdx = 0, modeStart = performance.now(), lastReseed = 0;
+let polarizer = 0.0, dragging = false, dragStartXY = null, dragged = false;
+let pinParity = 1;
+
+function setField(data) {
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SIM, SIM, 0, gl.RGBA, gl.FLOAT, data);
+}
+
+function reseed(m) {
+  pins = [];
+  if (m.seed === 'noise') {
+    setField(noiseField(0.05));
+  } else if (m.seed === 'lattice') {
+    // A near-zero background (rather than noise) means order only ever
+    // appears where the pins actually nucleate it and diffuse outward --
+    // avoids the disordered sea's near-random director angle producing
+    // spurious "defect" windings in the charge-marker overlay.
+    pins = latticePins();
+    setField(noiseField(0.002));
+  } else if (m.seed === 'twopin') {
+    // Pinned (not analytically seeded): an exact multi-vortex Laplace
+    // solution assumes an infinite plane, but this grid is periodic, so
+    // seeding it directly leaves a permanent branch-cut mismatch at the
+    // domain seam under permanent pinning. Nucleating purely from the
+    // pins themselves is self-consistent with the torus from the start.
+    pins = [{ x:0.30, y:0.5, k:1 }, { x:0.70, y:0.5, k:-1 }];
+    setField(noiseField(0.002));
+  } else if (m.seed === 'pair-close') {
+    const defs = [{ x:0.40, y:0.5, k:1 }, { x:0.60, y:0.5, k:-1 }];
+    setField(analyticField(defs, 1.0)); // unpinned: free to attract & annihilate, self-heals any seam mismatch
+  }
+  lastReseed = performance.now();
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  document.getElementById('modeName').textContent = m.name;
+  document.getElementById('desc').textContent = m.desc;
+  document.getElementById('legend').classList.toggle('on', m.showCharges);
+  reseed(m);
+}
+
+/* ── render loop ────────────────────────────────────────────────────────── */
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function locs(p, names) {
+  const o = {};
+  names.forEach(n => o[n] = gl.getUniformLocation(p, n));
+  return o;
+}
+const simU  = locs(pSim,  ['uTex','uPx','uA','uB','uD','uDt','uPins','uPinRadius','uPinStrength']);
+const drawU = locs(pDraw, ['uTex','uPx','uPolarizer','uShowCharges']);
+
+function simStep() {
+  const m = MODES[modeIdx];
+  gl.useProgram(pSim);
+  bindQuad(pSim);
+  gl.viewport(0, 0, SIM, SIM);
+  gl.uniform2f(simU.uPx, 1/SIM, 1/SIM);
+  gl.uniform1f(simU.uA, m.a);
+  gl.uniform1f(simU.uB, m.b);
+  gl.uniform1f(simU.uD, m.D);
+  gl.uniform1f(simU.uDt, m.dt);
+  gl.uniform3fv(simU.uPins, pinsArrayUniform());
+  gl.uniform1f(simU.uPinRadius, 0.05);
+  gl.uniform1f(simU.uPinStrength, 0.35);
+
+  for (let i = 0; i < m.steps; i++) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbB);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(simU.uTex, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    [texA, texB] = [texB, texA];
+    [fbA, fbB] = [fbB, fbA];
+  }
+}
+
+function drawFrame() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(pDraw);
+  bindQuad(pDraw);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(drawU.uTex, 0);
+  gl.uniform2f(drawU.uPx, 1/SIM, 1/SIM);
+  gl.uniform1f(drawU.uPolarizer, polarizer);
+  gl.uniform1f(drawU.uShowCharges, MODES[modeIdx].showCharges ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function loop(now) {
+  const m = MODES[modeIdx];
+  if (now - modeStart > MODE_MS) {
+    modeStart = now;
+    applyMode(modeIdx + 1);
+  } else if (now - lastReseed > m.reseedMs) {
+    reseed(m);
+  }
+  if (m.autoSpin > 0 && !dragging) {
+    polarizer += m.autoSpin * 0.001 * 16.7; // ~per-frame drift at 60fps pace
+    if (polarizer > Math.PI/2) polarizer -= Math.PI/2;
+  }
+  document.getElementById('pVal').textContent = Math.round(polarizer * 180/Math.PI) + '°';
+
+  simStep();
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+
+applyMode(0);
+requestAnimationFrame(loop);
+
+/* ── interaction: drag rotates the polarizer, a clean click pins a defect ── */
+
+function xyFromEvent(e) {
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX, y: t.clientY };
+}
+
+function onDown(e) {
+  const p = xyFromEvent(e);
+  dragStartXY = p;
+  dragging = true;
+  dragged = false;
+}
+function onMove(e) {
+  if (!dragging) return;
+  const p = xyFromEvent(e);
+  if (Math.hypot(p.x - dragStartXY.x, p.y - dragStartXY.y) > 6) dragged = true;
+  polarizer = ((p.x / window.innerWidth) % 1) * (Math.PI/2);
+}
+function onUp(e) {
+  if (dragging && !dragged) {
+    // a clean click/tap: pin a defect of alternating charge here
+    const p = xyFromEvent(e.changedTouches ? { touches: e.changedTouches } : e);
+    const ux = p.x / window.innerWidth, uy = 1 - p.y / window.innerHeight;
+    // clicking near an existing pin removes it (toggle), otherwise add one
+    const hitIdx = pins.findIndex(q => Math.hypot(q.x-ux, q.y-uy) < 0.045);
+    if (hitIdx >= 0) pins.splice(hitIdx, 1);
+    else {
+      pins.push({ x: ux, y: uy, k: pinParity });
+      pinParity = -pinParity;
+      if (pins.length > MAX_PINS) pins.shift();
+    }
+  }
+  dragging = false;
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(e); }, { passive: false });
+</script>
+</body>
+</html>

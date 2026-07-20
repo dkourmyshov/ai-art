@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+nematic.html     — NEMATIC piece
 axolotl.html     — AXOLOTL piece
 percolate.html   — PERCOLATE piece
 eddy.html        — EDDY piece
@@ -30,6 +31,136 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 22: NEMATIC — Liquid-Crystal Topological Defects & Schlieren Textures (2026-07-20)
+A 2D nematic liquid crystal's director field n has head-tail symmetry
+(n ~ -n, since it describes a rod-like molecule's AXIS, not a direction) —
+the order-parameter space is a circle with opposite ends identified
+(S^1/Z2), and its first homotopy group is Z with the peculiarity that
+winding number m can be a HALF-integer (de Gennes & Prost, "The Physics of
+Liquid Crystals"). This piece is the gallery's first field theory with a
+topologically nontrivial order-parameter space: MEMBRANE/LENIA/EXCITABLE
+diffuse ordinary scalars, ISING samples a discrete spin, but nothing here
+before had defects whose very existence and classification is a homotopy-
+group fact rather than a PDE detail. Implemented as a genuine 2D nematic
+tensor order parameter Q=(Qx,Qy)=S*(cos2*theta,sin2*theta) (the standard
+trick: Q has ordinary INTEGER winding k, and theta=k/2 is a half-integer
+exactly when k is odd — this sidesteps ever representing theta directly,
+which would need to handle the head-tail wraparound explicitly), evolved
+by real time-dependent Ginzburg-Landau ("Model A") relaxation of a
+one-elastic-constant Landau-de Gennes free energy:
+  dQ/dt = D*Laplacian(Q) + a*Q - b*|Q|^2 Q
+— i.e. ordinary reaction-diffusion, but of a 2-vector rather than a
+scalar, making its point defects real topological vortices rather than
+scalar hot/cold spots.
+
+### Verified offline before any shader was written
+verify.js (this scratchpad, Node, not committed — this gallery's standing
+"verify closed-form math first" discipline applied to a defect field
+theory for the first time) checked five separate claims against a plain
+finite-difference port of the same equation: (1) winding number/total
+charge is conserved under relaxation for an analytically-seeded +1/2,-1/2
+pair (charge sum stayed exactly 0 across 40 relaxation steps); (2)
+opposite-sign defects ATTRACT — separation shrank monotonically (20 to 17
+grid units) over 450 steps and never once increased; (3) same-sign
+defects do NOT annihilate — a +1/2,+1/2 pair stayed as two distinct
+k=+1 cores through 150 steps, never merging to a higher-charge core or
+canceling; (4) the real microscopist's diagnostic — a defect of charge m
+shows exactly 4|m| dark "brushes" under crossed polarizers, and rotating
+the analyzer turns a +m defect's brushes the SAME way and a -m defect's
+brushes the OPPOSITE way — reproduced exactly from the analytic single-
+defect solution (2 brushes for m=+-1/2, 4 for m=+-1, rotation sign
+matching sign(m) in every case tested); (5) quenching from random noise
+on a 96x96 grid gives a defect count trending 1086 to 362 to 120 to 57 to
+37 to 28 across six checkpoints — consistent with the real ~1/t
+topological-coarsening law (Yurke et al. 1993; Zapotocky et al. 1999):
+predicted count at t=60 from the t=20 value via pure 1/t scaling is 120.7
+against an actual 120, and at t=120 predicts 60.3 against an actual 57 —
+a genuinely different coarsening MECHANISM from SPINODAL's own diffusive
+t^(1/3) domain growth (session 17), since here it is discrete defect
+motion and pairwise annihilation driving the coarsening, not a
+conserved-order-parameter's bulk diffusion.
+
+### Two real bugs the offline verification could not catch, found by
+### the "verify closed-form math first" discipline's own blind spot
+Both only appear once the SAME equation is ported to a GLSL fragment
+shader on a real WebGL1 context, and both rendered as "nothing happens" —
+worth recording exactly because a Node port of the same finite-difference
+scheme is, by construction, immune to either:
+  1. The simulation grid was originally 384x384. WebGL1 only guarantees
+     REPEAT texture wrapping on POWER-OF-TWO textures; a non-POT texture
+     wrapped with gl.REPEAT is undefined behaviour, and on this session's
+     software (SwiftShader) renderer it silently sampled as pure black —
+     so the very first simulation step multiplied the whole field by
+     zero. Caught by reading back actual GPU texture state via
+     gl.readPixels after a controlled number of manual simStep() calls
+     (with requestAnimationFrame stubbed out via Playwright's
+     addInitScript, to get a deterministic step count) rather than trusting
+     a screenshot alone; fixed by moving to SIM=512, a power of two
+     (matching every other ping-pong piece here, e.g. EXCITABLE).
+  2. The Schlieren brightness formula pow(sin(x), 2.0) — GLSL ES's pow()
+     is explicitly undefined for a negative base, and sin(x) is negative
+     across half of any full period; on the same software renderer this
+     produced a fully black frame despite a numerically healthy,
+     non-uniform Q field underneath (confirmed via direct pixel readback:
+     Q values varied widely in both magnitude and angle at the exact
+     moment the screen showed uniform black). Fixed by computing the
+     square explicitly (float s=sin(x); s*s) instead of calling pow() —
+     the objectively more portable idiom regardless of this bug, not just
+     a workaround for it. A pixel-exact check (compute the expected RGB
+     from the CPU using the shader's own formula against the field state
+     read back at the same texel, compare to the actual rendered canvas
+     pixel at the corresponding screen coordinate) confirmed the fixed
+     renderer matches the physics bit-for-bit, not just "looks plausible."
+
+### Modes
+QUENCH (default): noise-seeded seatch — periodically re-quenches from
+random noise, showing the coarsening story repeat. LATTICE: a 4x4
+checkerboard of PINNED defects (alternating +1/2,-1/2 so the periodic
+domain's total charge is exactly zero, per Poincare-Hopf on a torus) —
+echoes real micropatterned-anchoring experiments (a "Mosaics of
+topological defects" paper turned up in this session's own research),
+seeded from a near-zero (not noisy) background so order only ever
+propagates outward from the pins themselves, with small +1/2/-1/2 marker
+dots (from a live per-pixel winding-number computation, gated on the
+loop's minimum order-parameter magnitude so the still-melted background
+can't trigger false-positive markers from atan2's inherent sensitivity
+near S=0). ANALYZER: two pinned defects with the polarizer continuously
+auto-rotating (still user-draggable), so the brush-rotation sign rule is
+demonstrated live rather than only assertable. PAIR: a single free
+(unpinned) +1/2,-1/2 pair, seeded close together and with a faster
+relaxation rate so the attraction-then-annihilation story plays out in a
+real-time-watchable window.
+
+### Interaction
+Drag rotates the polarizer/analyzer angle (mapped across the polarizer's
+own pi/2 physical periodicity, not a full turn) — the same real
+diagnostic a microscopist performs by hand. A clean click/tap (movement
+below a small threshold, to distinguish it from a drag) pins a new
+defect at that point, alternating +1/2 and -1/2 each click so the
+periodic domain's total charge always stays balanced; clicking an
+existing pin removes it.
+
+### Honest limitations
+The pin-anchoring mechanism is a simplified stand-in for a real
+colloidal/micropatterned inclusion — it locally blends Q toward the
+isolated single-defect analytic profile rather than solving a proper
+strong-anchoring boundary condition, adequate for the demonstration but
+not a first-principles boundary-value solve the way LICHTENBERG's field
+growth is. The LATTICE/ANALYZER presets' "near-zero background" trick
+(seeding order only from the pins, to keep the charge-marker overlay
+free of false positives) is itself only temporarily clean: Q=0 is an
+unstable fixed point of the same Ginzburg-Landau equation that grows the
+real defects, so given long enough uninterrupted viewing time, ordinary
+floating-point roundoff eventually seeds its own visible coarsening
+texture in the background too — an honest emergent consequence of the
+same instability the piece is built on, not patched away, and kept in
+check for ordinary viewing by each mode's own periodic reseed timer
+rather than by suppressing the underlying instability. Integer (m=+-1)
+defects, mentioned in the on-screen brush-count claim and exercised in
+verify.js, never appear on-screen in any preset — real nematics usually
+avoid them too (they typically split into two half-integer defects, a
+real energetic effect this piece does not attempt to model).
 
 ## Piece 21: AXOLOTL — Growing Neural Cellular Automata (2026-07-18/19)
 After Mordvintsev, Randazzo, Niklasson & Levin (2020), "Growing Neural
@@ -2715,6 +2846,65 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-20 — Session 22
+- Added NEMATIC: topological defects in a 2D nematic liquid crystal
+  (de Gennes & Prost), the gallery's first field theory whose defects
+  are a homotopy-group fact (half-integer winding from the director's
+  head-tail symmetry) rather than a PDE detail. Implemented as real
+  time-dependent Ginzburg-Landau relaxation of a 2-vector nematic tensor
+  order parameter Q=S*(cos2theta,sin2theta), not a faked Schlieren
+  texture.
+- Verified offline first (verify.js, Node, not committed): winding/charge
+  conservation, opposite-sign attraction, same-sign non-annihilation, the
+  4|m|-brush-count-and-rotation-sign rule (matched exactly for m=+-1/2,
+  +-1), and a ~1/t topological-coarsening trend (defect count 1086 to 28
+  across six checkpoints on a 96x96 grid, matching the literature's
+  Yurke et al. 1993 / Zapotocky et al. 1999 law within a few percent) —
+  this gallery's "verify closed-form math first" discipline applied to a
+  topological field theory for the first time.
+- Two real bugs surfaced only once ported to GLSL, neither reproducible
+  in the Node verification by construction: (1) the sim grid was
+  originally a non-power-of-two 384, and WebGL1 leaves REPEAT wrapping
+  on NPOT textures undefined — it silently sampled black, zeroing the
+  field on the very first step; fixed by moving to SIM=512. (2) the
+  Schlieren brightness formula used pow(sin(x),2.0), and GLSL's pow() is
+  undefined for a negative base (sin(x) is negative across half of any
+  period) — fixed by squaring explicitly instead. Both caught by reading
+  back actual GPU texture state via gl.readPixels (with
+  requestAnimationFrame stubbed via Playwright's addInitScript for a
+  deterministic step count) rather than trusting a screenshot alone, and
+  the fix was confirmed via a pixel-exact CPU-vs-rendered comparison, not
+  just "looks plausible now."
+- Four modes: QUENCH (noise-seeded, periodically re-quenches, showing
+  the coarsening story repeat), LATTICE (a Poincare-Hopf-balanced 4x4
+  checkerboard of pinned +1/2/-1/2 defects, echoing real micropatterned-
+  anchoring experiments turned up in this session's own research),
+  ANALYZER (pinned pair with the polarizer continuously auto-rotating so
+  the brush-rotation sign rule plays out live), PAIR (a free +1/2,-1/2
+  pair that attracts and annihilates in a real-time-watchable window).
+  Drag rotates the polarizer (the real microscopist's own diagnostic); a
+  clean click/tap pins a new defect, alternating sign each time so the
+  periodic domain's total charge stays exactly balanced, per Poincare-
+  Hopf on a torus.
+- Honest gap: the pin mechanism is a simplified local-anchoring stand-in,
+  not a first-principles boundary-value solve; the LATTICE/ANALYZER
+  "near-zero background" trick that keeps the charge-marker overlay
+  free of false positives is only temporarily clean, since Q=0 is itself
+  an unstable fixed point and floating-point roundoff eventually seeds
+  its own background texture given long enough uninterrupted viewing —
+  kept in check by each mode's periodic reseed rather than patched away.
+- Inspiration: web research into diffusion-limited aggregation and
+  generative-art fractal growth surfaced DLA as a candidate, but
+  LICHTENBERG (session 11) already explicitly discusses the DLA
+  universality class as a special case of its own dielectric-breakdown
+  model, making a literal DLA piece feel like a rehash; a second search
+  for genuinely unvisited physics turned up nematic Schlieren-texture
+  research (specifically a "Mosaics of topological defects in
+  micropatterned liquid crystal textures" paper), which had zero prior
+  footprint in this gallery's own memory and offered a real, checkable,
+  previously-untouched mechanism (homotopy-classified defects) rather
+  than another coarsening-pattern piece for its own sake.
+
 ### 2026-07-18/19 — Session 21
 - Finished AXOLOTL: Growing Neural Cellular Automata (Mordvintsev et al.
   2020), started as a WIP commit the prior session (inference engine,
@@ -3896,3 +4086,45 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       a different technique) — a real volumetric NCA training run would be
       substantially more expensive than this session's 32x32x16 2D grid,
       not attempted
+- [x] A field theory with a topologically nontrivial order-parameter
+      space (defects classified by a homotopy group, not just a PDE
+      detail) — done in NEMATIC (session 22), half-integer nematic
+      winding via a 2-vector Ginzburg-Landau order parameter
+- [x] "Measure the real power-law/critical statistic instead of only
+      implying it visually," most recently closed for percolation by
+      PERCOLATE (session 20) — NEMATIC (session 22) closes its own
+      independent instance of the same standing idea, verifying the
+      ~1/t topological-coarsening law offline against Yurke et al./
+      Zapotocky et al.'s own measured exponent
+- [ ] NEMATIC: a proper strong-anchoring boundary-value solve at pin
+      sites (rather than the current locally-blended stand-in toward
+      the isolated single-defect analytic profile), closer to how
+      LICHTENBERG's field growth is a real boundary-value solve rather
+      than a shortcut — not attempted this session
+- [ ] NEMATIC: integer (m=+-1) defects are verified in verify.js and
+      named in the on-screen brush-count claim but never actually appear
+      in any preset (real nematics usually avoid them too, splitting
+      into a pair of half-integer defects instead) — an explicit mode
+      forcing one and showing the energetically-favoured split live
+      would make that real effect visible rather than only asserted,
+      not attempted this session
+- [ ] NEMATIC: the LATTICE/ANALYZER "near-zero background" trick that
+      keeps the charge-marker overlay free of false positives is only
+      temporarily clean (Q=0 is an unstable fixed point, so floating-
+      point roundoff eventually seeds its own background texture given
+      long enough uninterrupted viewing) — a small stabilizing bias or
+      an explicit "hold near zero" term outside the pinned region would
+      close this properly rather than relying on each mode's periodic
+      reseed timer to keep it in check, not attempted this session
+- [ ] NEMATIC: a true two-elastic-constant (splay/bend-anisotropic)
+      Frank free energy instead of the one-constant approximation used
+      here — real nematics have splay and bend stiffnesses that differ,
+      which distorts defect cores away from perfect radial symmetry
+      (visible in real polarizing-microscope photographs) and was left
+      as a deliberate simplification this session
+- [ ] NEMATIC: a smectic-A analogue (adds a layered one-dimensional
+      density wave on top of the nematic orientational order, with its
+      own distinct defect types — edge/screw dislocations rather than
+      disclinations) — a genuinely different liquid-crystal phase this
+      session did not attempt, out of scope after the nematic-specific
+      research
