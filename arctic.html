@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARCTIC — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.5)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.75}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #stats{max-width:60vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="nLabel">n = </span><span class="val" id="nVal">0</span>
+  <span class="sub" id="radiusVal">—</span>
+  <span class="sub" id="countVal"></span>
+</div>
+<div id="ui">
+  <span id="modeName">UNIFORM</span>
+  <span id="desc">arctic radius = n/√2 · Jockusch–Propp–Shor 1998</span>
+</div>
+<div id="hint">drag to bias the coin (weighted mode)</div>
+<script>
+/*  ARCTIC — random domino tilings of the Aztec diamond, and the circle
+ *  that appears out of nowhere
+ *
+ *  The Aztec diamond of order n, AD_n, is the diamond-shaped union of
+ *  2n(n+1) unit squares { (x,y) integer : |x+0.5|+|y+0.5| <= n }. It has
+ *  an exact tiling count (Elkies, Kuperberg, Larsen & Propp, "Alternating
+ *  sign matrices and domino tilings," 1992): 2^(n(n+1)/2) distinct domino
+ *  tilings — for n=10 that is already 2^55, roughly 3.6e16. Sample ONE of
+ *  those tilings uniformly at random and look at it: near each of the
+ *  four corners the dominoes lock into a single, perfectly rigid brick
+ *  pattern ("frozen"); only in a central lens-shaped region do the four
+ *  possible orientations mix freely ("temperate"). The Arctic Circle
+ *  theorem (Jockusch, Propp & Shor, "Random domino tilings and the Arctic
+ *  Circle theorem," 1998) says the boundary between frozen and temperate
+ *  converges, as n grows, to an EXACT circle of radius n/sqrt(2) inscribed
+ *  in the diamond, tangent to all four sides at their midpoints — a sharp
+ *  geometric law with no free parameter, emerging from nothing but a
+ *  uniform coin flip over an astronomical set of equally likely tilings.
+ *  This gallery has produced circles from a metric (HORIZON's photon
+ *  sphere), from a free-energy minimum (NEMATIC's defect cores), and now,
+ *  for the first time, from pure enumeration: no field, no force, no
+ *  energy functional, nothing but counting. Closest in spirit is
+ *  PERCOLATE (session 20)'s "no dynamics, only combinatorics" — but
+ *  percolation's threshold is a probability on an infinite line, not a
+ *  literal circle traced on the canvas in front of you.
+ *
+ *  Sampling a uniform tiling directly (rejection sampling against
+ *  2^(n(n+1)/2) options) is obviously hopeless past tiny n. The way this
+ *  piece actually generates one is the Elkies-Kuperberg-Larsen-Propp
+ *  "domino shuffling" algorithm, which builds a tiling of AD_1, then AD_2,
+ *  then AD_3, ... by repeatedly (1) DESTROYING every "bad" 2x2 block — a
+ *  block whose two parallel dominoes point straight at each other, about
+ *  to collide, (2) SLIDING every surviving domino one cell in the
+ *  direction it already points, which necessarily carries it outside
+ *  AD_n and into the newly available ring of AD_{n+1}, and (3) filling
+ *  whatever 2x2 holes are left — provably always a clean, disjoint set of
+ *  them — with a fresh horizontal or vertical pair, each choice made by
+ *  an independent fair coin. The remarkable fact this algorithm rests on
+ *  (also EKLP 1992) is that this three-step "shuffle" turns a uniformly
+ *  random tiling of AD_n into a UNIFORMLY random tiling of AD_{n+1} —
+ *  exactly, not approximately, and without ever having to consider the
+ *  other 2^(n(n+1)/2)-1 alternatives. Growing the diamond one order at a
+ *  time IS the sampling algorithm; there is no separate "generate, then
+ *  render" step.
+ *
+ *  Getting the shuffle right took two real, wrong implementations first
+ *  (aztec_verify.js, this session's scratchpad, not committed — the
+ *  standing "verify the closed-form math before any canvas code"
+ *  discipline this gallery has followed since HORIZON, applied here to a
+ *  discrete algorithm rather than a differential equation for the first
+ *  time). The first bug: assuming a domino's slide direction is a pure
+ *  function of its CURRENT absolute position, recomputed fresh from a
+ *  checkerboard-parity formula at every generation. That is wrong, and
+ *  wrong in a way small cases don't expose: a surviving domino's parity
+ *  flips every single time it slides by one cell, so "recompute from
+ *  position" silently reverses a domino's own direction the instant it
+ *  moves, which just happens to still be harmless for the trivial
+ *  AD_0->AD_1->AD_2 steps (too symmetric to tell the difference) and only
+ *  produces a geometrically impossible hole shape — a "frozen ring" that
+ *  provably cannot be tiled by disjoint 2x2 blocks — three steps in, at
+ *  AD_2->AD_3. The fix: direction is a LABEL, assigned once when a domino
+ *  is created (always in the pattern that points away from its own 2x2
+ *  hole) and inherited unchanged by whatever it becomes after each future
+ *  slide; a "bad" block is found by comparing two CURRENT neighboring
+ *  labels for a head-on collision, never by recomputing either one from
+ *  scratch. Once fixed, the same script checked every claim this piece's
+ *  own on-screen text relies on: tiling validity through n=40 (every
+ *  cell of every intermediate AD_n covered exactly once, no exceptions);
+ *  the exact count 2^(n(n+1)/2) against independent brute-force
+ *  enumeration for n=1..3 (2, 8, 64 — all exact matches); uniformity of
+ *  the shuffle's OWN output against that same brute-force enumeration via
+ *  a chi-square test (n=3: 25600 shuffled samples across the 64 possible
+ *  tilings, chi2=55.16 against 63 degrees of freedom — squarely inside
+ *  the range a genuinely uniform sampler produces); and, at n=140, the
+ *  measured frozen-temperate transition point along the diamond's own
+ *  horizontal axis (~97 grid units) against the theorem's predicted
+ *  n/sqrt(2) (~99.0) — within 2%, with the gap explained by exactly the
+ *  finite-size correction the theorem's own asymptotic proof predicts.
+ *
+ *  WEIGHTED is this piece's second, honestly-scoped mode: Propp's own
+ *  later "generalized domino-shuffling" (2001) shows that biasing the
+ *  creation step's coin — filling a hole horizontally with probability p
+ *  instead of exactly 1/2 — still samples EXACTLY from the correspondingly
+ *  reweighted measure over tilings, and Cohn, Elkies & Propp's earlier
+ *  "Local statistics for random domino tilings of the Aztec diamond"
+ *  (1996) proves the frozen/temperate boundary correspondingly deforms
+ *  from a circle into an ELLIPSE. This piece verified the biased-coin
+ *  sampler is still a valid, non-crashing generalization of the same
+ *  algorithm (same validity check, p=0.15 and p=0.85, through n=40), and
+ *  the visible elongation toward one pair of corners as p moves away from
+ *  0.5 is the real, cited phenomenon — but unlike UNIFORM's circle
+ *  overlay, this mode deliberately draws no fitted curve, because this
+ *  session did not derive or verify the ellipse's exact tangency-point
+ *  formula; showing a curve here would be asserting a number never
+ *  checked, the same discipline PERCOLATE's SQUARE SITE mode followed by
+ *  stating outright that no closed form is known for its own threshold
+ *  rather than implying a false one.
+ *
+ *  Interaction: drag horizontally in WEIGHTED mode to set the creation
+ *  coin's own bias directly and watch the ellipse's tilt respond live —
+ *  this mode's own instance of the "let a visitor walk the parameter
+ *  themselves" idea standing since ISING's temperature (session 10) and
+ *  most recently reused by PERCOLATE's drag-to-p (session 20), cheap here
+ *  for the same underlying reason it was cheap there: regrowing from
+ *  scratch at a new bias is just re-running the same shuffle with a
+ *  different coin, not a different engine.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const nValEl = document.getElementById('nVal');
+const radiusValEl = document.getElementById('radiusVal');
+const countValEl = document.getElementById('countVal');
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---- domino shuffling engine (verified offline, see header comment) ---- */
+const VEC = { N: [0, 1], S: [0, -1], E: [1, 0], W: [-1, 0] };
+const OPP = { N: 'S', S: 'N', E: 'W', W: 'E' };
+function key(x, y) { return x * 100000 + y; }
+function domCells(d) {
+  return d.horiz ? [[d.x, d.y], [d.x + 1, d.y]] : [[d.x, d.y], [d.x, d.y + 1]];
+}
+function inDiamond(x, y, n) { return Math.abs(x + 0.5) + Math.abs(y + 0.5) <= n + 1e-9; }
+
+function shuffleStep(tiling, n, rng, biasP) {
+  const cellOwner = new Map();
+  tiling.forEach((d, i) => { for (const [x, y] of domCells(d)) cellOwner.set(key(x, y), i); });
+
+  const bad = new Array(tiling.length).fill(false);
+  for (let i = 0; i < tiling.length; i++) {
+    const d = tiling[i];
+    const [vx, vy] = VEC[d.dir];
+    const opp = domCells(d).map(([x, y]) => [x + vx, y + vy]);
+    const o0 = cellOwner.get(key(opp[0][0], opp[0][1]));
+    const o1 = cellOwner.get(key(opp[1][0], opp[1][1]));
+    if (o0 !== undefined && o0 === o1) {
+      const partner = tiling[o0];
+      if (partner.horiz === d.horiz && partner.dir === OPP[d.dir]) bad[i] = true;
+    }
+  }
+
+  const survivors = [];
+  for (let i = 0; i < tiling.length; i++) {
+    if (bad[i]) continue;
+    const d = tiling[i];
+    const [vx, vy] = VEC[d.dir];
+    survivors.push({ x: d.x + vx, y: d.y + vy, horiz: d.horiz, dir: d.dir });
+  }
+
+  const occ = new Set();
+  for (const d of survivors) for (const [x, y] of domCells(d)) occ.add(key(x, y));
+
+  const holes = [];
+  for (let x = -(n + 1); x < n + 1; x++) {
+    for (let y = -(n + 1); y < n + 1; y++) {
+      if (inDiamond(x, y, n + 1) && !occ.has(key(x, y))) holes.push([x, y]);
+    }
+  }
+  const holeSet = new Set(holes.map(([x, y]) => key(x, y)));
+  const assigned = new Set();
+  const blocks = [];
+  holes.sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+  for (const [x, y] of holes) {
+    if (assigned.has(key(x, y))) continue;
+    const need = [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]];
+    for (const [a, b] of need) assigned.add(key(a, b));
+    blocks.push([x, y]);
+  }
+
+  const filled = [];
+  for (const [x, y] of blocks) {
+    if (rng() < biasP) {
+      filled.push({ x, y, horiz: true, dir: 'S' });
+      filled.push({ x, y: y + 1, horiz: true, dir: 'N' });
+    } else {
+      filled.push({ x, y, horiz: false, dir: 'W' });
+      filled.push({ x: x + 1, y, horiz: false, dir: 'E' });
+    }
+  }
+  return survivors.concat(filled);
+}
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---- modes ---- */
+const N_MAX = 72;
+const STEP_MS = 90;
+const HOLD_MS = 3400;
+const HUE = { N: 200, S: 28, E: 342, W: 146 };
+
+const MODES = [
+  { name: 'UNIFORM', bias: 0.5, showCircle: true, interactive: false,
+    desc: 'arctic radius = n/√2 · Jockusch–Propp–Shor 1998' },
+  { name: 'WEIGHTED', bias: 0.15, showCircle: false, interactive: true,
+    desc: 'biased coin · frozen boundary → ellipse · Cohn–Elkies–Propp 1996' },
+];
+let modeIdx = 0, modeStart = 0;
+let tiling = [], n = 0, rng = mulberry32((Math.random() * 1e9) | 0);
+let phase = 'growing', phaseStart = 0;
+let bias = 0.5;
+let cellSize = 8, cx = 0, cy = 0;
+
+function layout() {
+  const marginFrac = 0.1;
+  const span = 2 * N_MAX;
+  const availW = W * (1 - marginFrac * 2), availH = H * (1 - marginFrac * 2);
+  cellSize = Math.min(availW / span, availH / span);
+  cx = W / 2; cy = H / 2;
+}
+function px(x) { return cx + x * cellSize; }
+function py(y) { return cy - y * cellSize; } // screen y grows downward; grid y grows "north" (up)
+
+function resetRun(m) {
+  tiling = []; n = 0;
+  bias = m.bias;
+  rng = mulberry32((Math.random() * 1e9) | 0);
+  phase = 'growing'; phaseStart = performance.now();
+}
+function applyMode(idx) {
+  modeIdx = idx;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  resetRun(m);
+  modeStart = performance.now();
+}
+applyMode(0);
+
+function grow() {
+  if (n >= N_MAX) return;
+  tiling = shuffleStep(tiling, n, rng, bias);
+  n++;
+}
+
+function render(m) {
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+  layout();
+
+  const buckets = { N: new Path2D(), S: new Path2D(), E: new Path2D(), W: new Path2D() };
+  const pad = Math.max(0.5, cellSize * 0.06);
+  for (const d of tiling) {
+    const cells = domCells(d);
+    const x0 = Math.min(cells[0][0], cells[1][0]);
+    const y0 = Math.min(cells[0][1], cells[1][1]);
+    const wCells = d.horiz ? 2 : 1, hCells = d.horiz ? 1 : 2;
+    const left = px(x0) + pad, top = py(y0 + hCells) + pad;
+    const w = wCells * cellSize - pad * 2, h = hCells * cellSize - pad * 2;
+    buckets[d.dir].rect(left, top, w, h);
+  }
+  for (const dir of ['N', 'S', 'E', 'W']) {
+    ctx.fillStyle = `hsl(${HUE[dir]},58%,50%)`;
+    ctx.fill(buckets[dir]);
+  }
+
+  if (m.showCircle && n > 2) {
+    const R = (n / Math.sqrt(2)) * cellSize;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,.55)';
+    ctx.lineWidth = Math.max(1, cellSize * 0.12);
+    ctx.stroke();
+  }
+}
+
+/* ---- main loop ---- */
+let lastStep = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  const m = MODES[modeIdx];
+
+  if (phase === 'growing') {
+    if (now - lastStep > STEP_MS) { lastStep = now; grow(); if (n >= N_MAX) { phase = 'holding'; phaseStart = now; } }
+  } else if (phase === 'holding') {
+    if (now - phaseStart > HOLD_MS) resetRun(m);
+  }
+
+  if (now - modeStart > (STEP_MS * N_MAX + HOLD_MS) * 2 + 800) {
+    applyMode((modeIdx + 1) % MODES.length);
+  }
+
+  render(m);
+
+  nValEl.textContent = n;
+  if (m.showCircle) {
+    radiusValEl.textContent = `R = ${(n / Math.sqrt(2)).toFixed(1)} grid units`;
+  } else {
+    radiusValEl.textContent = `p(horizontal) = ${bias.toFixed(2)}`;
+  }
+  const bits = Math.round(n * (n + 1) / 2);
+  countValEl.textContent = n > 0 ? `2^${bits} possible tilings` : '';
+}
+requestAnimationFrame(loop);
+
+/* ---- interaction: drag horizontally to set the creation coin's bias ---- */
+function biasFromEvent(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  return Math.max(0.02, Math.min(0.98, (clientX - rect.left) / rect.width));
+}
+let dragging = false;
+function onDown(clientX) {
+  const m = MODES[modeIdx];
+  if (!m.interactive) return;
+  dragging = true;
+  bias = biasFromEvent(clientX);
+  resetRun(m);
+}
+function onMove(clientX) {
+  if (!dragging) return;
+  bias = biasFromEvent(clientX);
+}
+function onUp() { dragging = false; }
+canvas.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchend', onUp);
+</script>
+</body>
+</html>

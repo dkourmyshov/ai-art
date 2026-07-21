@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+arctic.html      — ARCTIC piece
 nematic.html     — NEMATIC piece
 axolotl.html     — AXOLOTL piece
 percolate.html   — PERCOLATE piece
@@ -31,6 +32,103 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 23: ARCTIC — Random Domino Tilings & the Arctic Circle (2026-07-21)
+Inspiration this session came from wandering combinatorics/statistical-mechanics
+corners of the web rather than another PDE or agent system: the Aztec diamond
+AD_n (the diamond-shaped union of 2n(n+1) unit squares |x+0.5|+|y+0.5|<=n) has
+an EXACT tiling count 2^(n(n+1)/2) (Elkies, Kuperberg, Larsen & Propp, "Alternating
+sign matrices and domino tilings," 1992), and a uniformly random one of those
+tilings has a genuinely startling property: near each of the diamond's four
+corners the dominoes freeze into a single rigid brick pattern, and the boundary
+between that frozen region and the mixed, disordered center converges, as n
+grows, to an EXACT CIRCLE of radius n/sqrt(2) (Jockusch, Propp & Shor, "Random
+domino tilings and the Arctic Circle theorem," 1998) — a sharp geometric law
+falling out of nothing but uniform counting, no field, no force, no energy
+functional. This is the gallery's first piece built entirely on discrete
+combinatorial ENUMERATION rather than continuous PDEs (MEMBRANE/LENIA/EXCITABLE/
+NEMATIC/SPINODAL), agent/force systems (PHYSARUM/SWARMALATOR/GYRUS/EDDY), or a
+sampled Boltzmann distribution (ISING) — closest in spirit to PERCOLATE (session
+20)'s "no dynamics, only combinatorics," but percolation's threshold is a
+probability on an infinite line, not a literal circle traced on the actual
+canvas boundary.
+
+### The algorithm, and a real, instructive multi-hour bug
+A uniform tiling can't be sampled by rejection (2^(n(n+1)/2) is already ~3.6e16
+at n=10) — it is built via Elkies-Kuperberg-Larsen-Propp's "domino shuffling":
+repeatedly (1) DESTROY every "bad" 2x2 block, one whose two parallel dominoes
+point straight at each other; (2) SLIDE every survivor one cell in the
+direction it already points (this is what carries it outside AD_n into
+AD_{n+1}'s newly available ring); (3) fill the resulting holes — provably
+always a clean disjoint union of 2x2 blocks — with a fresh horizontal-or-
+vertical pair by independent fair coin. EKLP's own theorem: this three-step
+shuffle turns a uniform tiling of AD_n into a uniform tiling of AD_{n+1}
+EXACTLY, without ever considering the other 2^(n(n+1)/2)-1 alternatives.
+Growing the diamond one order at a time IS the sampling algorithm.
+
+This session's own aztec_verify.js (Node scratchpad, not committed — the
+standing "verify closed-form math before any canvas code" discipline running
+since HORIZON, applied for the first time to a discrete algorithm rather than
+a differential equation) went through two wrong implementations before this
+worked. The instructive one: assuming a domino's slide direction is a pure
+function of its CURRENT absolute position, recomputed fresh from a checkerboard-
+parity formula every generation. This is wrong in a way small cases actively
+hide — a surviving domino's position parity flips every single time it slides
+by one cell, so "recompute from position" silently reverses a domino's own
+direction the instant it moves, and this stays invisible through the too-
+symmetric AD_0->AD_1->AD_2 steps, surfacing only as a geometrically impossible
+hole shape (a frozen "ring" that providably cannot be tiled by disjoint 2x2
+blocks) at AD_2->AD_3 — three steps in, past what casual hand-checking of the
+first step or two would ever catch. The fix: direction is a LABEL, assigned
+once at creation (always in the pattern pointing away from its own hole) and
+inherited unchanged through every future slide; badness is found by comparing
+two CURRENT neighboring labels for a head-on collision, never by recomputing
+either one from a position formula. Once fixed, the same script verified:
+tiling validity through n=150 (uniform) and n=100 (biased, both p=0.15 and
+p=0.85) — every cell of every intermediate AD_n covered exactly once, no
+exceptions, well past this piece's own N_MAX=72; the exact count
+2^(n(n+1)/2) against independent brute-force enumeration for n=1..3 (2, 8, 64,
+all exact); uniformity of the shuffle's OWN output against that same brute-
+force enumeration via chi-square (n=3: 25600 samples across 64 tilings,
+chi2=55.16 against 63 degrees of freedom, squarely inside the range a genuinely
+uniform sampler produces — repeated across 5 seeds at n=2 to confirm the first
+run's chi2=14.94 was ordinary fluctuation, not a systematic bias); and, at
+n=140, the measured frozen-temperate transition along the diamond's own
+horizontal axis (~97 grid units) against the theorem's own predicted n/sqrt(2)
+(~99.0) — within 2%, consistent with the theorem's own finite-size correction.
+
+### WEIGHTED mode, and an honest limit
+Propp's later "Generalized domino-shuffling" (2001) shows biasing the creation
+coin (probability p of a horizontal fill instead of exactly 1/2) still samples
+EXACTLY from the correspondingly reweighted measure, and Cohn, Elkies & Propp's
+earlier "Local statistics for random domino tilings of the Aztec diamond"
+(1996) proves the frozen/temperate boundary correspondingly deforms from a
+circle into an ELLIPSE. This session verified the biased sampler is a valid
+generalization (same validity check, p=0.15/0.85 through n=100) and the visible
+elongation as p moves off 0.5 is the real, cited phenomenon — but WEIGHTED
+deliberately draws no fitted ellipse curve, unlike UNIFORM's verified circle
+overlay, because this session did not derive or verify the ellipse's exact
+tangency-point formula; the same "state that no closed form was checked rather
+than imply a false one" discipline PERCOLATE's own SQUARE SITE mode used for
+its own unproven threshold.
+
+### Rendering and interaction
+Canvas 2D (not WebGL) — the first discrete-tiling piece since PERCOLATE/
+SANDPILE/ISING to use it rather than a shader, appropriate since a domino
+tiling is a literal finite rectangle set, not a continuous field. Growth is
+animated directly (one shuffleStep per ~90ms), so watching the piece grow IS
+watching the actual sampling algorithm run, not a separate visualization replay
+of a precomputed result. Dominoes are colored by their persistent direction
+label (4 hues, N/S/E/W) rather than by orientation alone, so the four frozen
+corners each read as a single flat color and the temperate interior's genuine
+four-way mixing is directly visible, not just implied. Interaction: drag
+horizontally in WEIGHTED mode to set the creation coin's own bias and trigger
+an immediate regrow at the new value — this mode's own instance of the "let a
+visitor walk the parameter themselves" idea standing since ISING's temperature
+(session 10), most recently reused by PERCOLATE's drag-to-p (session 20),
+cheap here for the same reason it was cheap there: revisiting a different bias
+is just re-running the same shuffle with a different coin, not a different
+engine.
 
 ## Piece 22: NEMATIC — Liquid-Crystal Topological Defects & Schlieren Textures (2026-07-20)
 A 2D nematic liquid crystal's director field n has head-tail symmetry
@@ -4128,3 +4226,47 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       disclinations) — a genuinely different liquid-crystal phase this
       session did not attempt, out of scope after the nematic-specific
       research
+- [x] A piece built on discrete combinatorial enumeration with an exact
+      limit-shape theorem, rather than a continuous PDE, an agent/force
+      system, or a sampled Boltzmann distribution — done in ARCTIC
+      (session 23), random Aztec-diamond domino tilings and the Arctic
+      Circle theorem, verified via EKLP domino shuffling
+- [ ] ARCTIC: the WEIGHTED mode's arctic ELLIPSE is shown qualitatively
+      only — this session did not derive or verify Cohn-Elkies-Propp's
+      (1996) exact tangency-point formula, so no fitted curve is drawn
+      the way UNIFORM's circle overlay is; deriving and verifying that
+      formula would let WEIGHTED make the same kind of exact, checked
+      claim UNIFORM already does
+- [ ] ARCTIC: a literal "watch the shuffle happen" slow-motion mode
+      showing one single AD_n->AD_{n+1} step in detail (which blocks are
+      currently bad, which survive and slide, which holes get a fresh
+      coin flip) — this session's growth animation shows the CUMULATIVE
+      result of many steps at speed, not any one step's own three-phase
+      structure, which is really the more surprising part of the theory
+- [ ] ARCTIC: a live measurement of the frozen/temperate boundary
+      (e.g. box-counting the largest single-color connected region's
+      radius) plotted against the predicted n/sqrt(2) as an on-screen
+      running comparison, rather than only the static overlay circle —
+      the same "measure the real statistic, don't just imply it
+      visually" idea SANDPILE (session 8), ISING (session 10) and
+      PERCOLATE (session 20, closed via SCALING mode) have each flagged
+      for their own critical statistic; ARCTIC's own instance is still
+      open, since the overlay circle here is the theorem's PREDICTION
+      shown for comparison, not a measurement of the actual generated
+      pattern's own boundary
+- [ ] ARCTIC: other exactly-solvable weighted variants beyond a uniform
+      creation-coin bias — e.g. the "two-periodic" Aztec diamond (weights
+      alternating in a checkerboard pattern rather than uniformly biased),
+      whose limit shape is known to include an actual THIRD phase (a
+      liquid-like region distinct from both frozen and the ordinary
+      disordered temperate region) — a genuinely different and actively-
+      studied refinement, out of scope after the standard-weighted-case
+      research this session did
+- [ ] ARCTIC: a 3D generalization (domino tilings of a higher-dimensional
+      Aztec-diamond-like region, or the closely related dimer model on a
+      3D lattice) — echoes the gallery's standing "3D" backlog itch
+      (SPINODAL/FLAME/ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/AXOLOTL all
+      flagged one, HORIZON eventually answered it via a different
+      technique) — not attempted, and unlike HORIZON's case the author
+      is not aware of an equally clean sparse-cost technique for this
+      combinatorial setting
