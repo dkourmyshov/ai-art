@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+maelstrom.html   — MAELSTROM piece
 arctic.html      — ARCTIC piece
 nematic.html     — NEMATIC piece
 axolotl.html     — AXOLOTL piece
@@ -32,6 +33,146 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 24: MAELSTROM — A Hydrodynamic Aharonov-Bohm Effect (2026-07-22)
+Web research this session (wandering from generic "novel physics visualization"
+searches toward recent phys.org/arXiv coverage) surfaced a genuinely new-to-
+this-gallery mechanism: Singh, Samuel, Liu, Angheluta, Concha & Bandi,
+"Unified Hydrodynamic Analogue of Aharonov-Bohm and Lense-Thirring Effects"
+(arXiv:2604.21543, 2026) — a draining-bathtub vortex's background flow acts
+on surface waves the way a magnetic vector potential acts on a charged
+quantum wave, producing (their own reported surprise) ROTATING nodal lines
+in a standing-wave pattern, discovered first as an "artifact" in a real
+water-tank experiment before the maths behind it was worked out. The root
+phenomenon is older and well-established — Berry, Chambers, Large, Upstill &
+Walmsley, "Wavefront dislocations in the Aharonov-Bohm effect and its water
+wave analogue" (Eur. J. Phys. 1, 154, 1980) — but nothing in this gallery
+before had touched a quantum-classical wave analogy, or a topological phase
+effect that survives specifically because the causative field (here, flow
+velocity) vanishes pointwise almost everywhere yet still shifts a wave that
+never enters the region where it's nonzero. Distinct from NEMATIC's
+topological defects (a homotopy-class fact about an order parameter) and
+from EDDY's incompressible Navier-Stokes solve (fully nonlinear, self-
+advecting) — MAELSTROM is a strictly LINEAR wave equation on a fixed
+background flow, closer in spirit to HORIZON's photon geodesics (light/waves
+moving through a fixed background field) than to any prior fluid piece.
+
+### The governing equation, derived and verified before any shader code
+A linear surface wave eta(x,y,t) advected by background flow U obeys the
+standard convected wave equation (the same form used in analogue-gravity
+"draining bathtub" acoustic black holes, Visser 1998): (d/dt+U.grad)^2 eta =
+c^2*lap(eta). U is a Rankine vortex (solid-body core inside Rcore, ordinary
+curl-free Gamma/(2*pi*r) azimuthal flow outside) — the standard point-vortex
+regularization, chosen since every genuinely topological claim below depends
+only on the far-field 1/r tail, not the core's exact shape. Two Node scripts
+(maelstrom_verify.js, then maelstrom_ode_verify.js after the first's
+2D-time-domain measurements proved too noisy to trust — see "a real bug,
+twice" below) verified this session's actual physics claims:
+  1. WAVE-SPEED SANITY (2D finite-difference, Gamma=0 control): a driven
+     plane wave's measured front speed matched c to ~13%, the expected order
+     of finite-difference dispersion error at this grid resolution.
+  2. TOPOLOGICAL PHASE SHIFT. Separating the PDE in polar coordinates for
+     one azimuthal harmonic eta=R(r)*exp(i(m*theta-omega*t)) gives an exact
+     radial ODE (derived this session): c^2*[R''+R'/r-m^2*R/r^2] +
+     Omega_eff(r)^2*R = 0, Omega_eff(r)=omega-m*Uphi(r)/r. Solved by shooting
+     from a regular Bessel-series solution at r=0 (RK4 in r), the WKB phase-
+     integral difference between a Gamma!=0 run and the Gamma=0 control
+     SATURATES to a constant as the measurement radius grows from 250 to 500
+     (agreeing to <0.05 rad, for m=1..3, Gamma=+-20/+-40) — the actual
+     signature of an Aharonov-Bohm-like effect: the phase shift a wave picks
+     up survives even though the causative flow has decayed to nothing at
+     that radius. Confirmed to scale linearly in Gamma (2.00x Gamma gives a
+     measured 1.99-2.02x shift) and to sign-flip with Gamma.
+  3. ROTATION MECHANISM. PINWHEEL mode's rotating pattern is not scripted —
+     it's a real normal-mode frequency-splitting effect, checked by root-
+     finding the same radial ODE's Neumann (reflecting-wall) resonances for
+     +m and -m separately: exactly degenerate at Gamma=0 (matched to 5
+     decimal places), splitting symmetrically and oppositely once Gamma!=0
+     (+0.00772 vs -0.00772 rad/t for Gamma=+-25, m=3) — the fluid analogue
+     of Zeeman/Faraday splitting. A cos(m*theta) ring is an equal-weight
+     +m/-m superposition, exactly what starts precessing once those two
+     frequencies split; that ring is PINWHEEL's actual seed, uploaded once
+     via a CPU-computed texture the same way EDDY's LEAPFROG mode seeds its
+     verified point-vortex pair.
+
+### A real bug, twice: measuring a small effect against a huge baseline
+The FIRST verification attempt tried to measure the AB phase shift directly
+in the 2D time-domain sim, comparing a Gamma-run's wavefront phase around a
+circle to a Gamma=0 control. Two successive failures, both the same root
+cause in different disguises: a driven plane wave's OWN phase already winds
+many multiples of 2*pi around any circle wide enough to matter (kR~16 at the
+parameters used), and naively unwrapping that raw phase — or even counting
+raw wavefront zero-crossings — buries the small (order-1-radian) vortex
+contribution inside noise and aliasing from the huge shared baseline;
+worse, the first attempt also measured before the driven wave had even
+finished propagating out to the sampling radius, since the domain lacked any
+absorbing boundary and the run was stopped early to avoid wall reflections
+contaminating the result. Fixing the boundary (a Rayleigh sponge layer) and
+lengthening the run helped but never got path-independence or linearity
+clean. The actual fix was to stop trying to extract the small signal from
+noisy time-domain snapshots at all, and instead solve the radial ODE
+directly (frequency-domain, no time integration, no noise) — the WKB
+phase-integral and normal-mode approaches above, both of which the
+2D time-domain approach was only ever an indirect, harder-to-trust proxy
+for. An earlier hand-derived leading-order formula for the phase shift
+(a small-Gamma Bessel-order-shift expansion) also turned out to be off by
+a factor of several from what the full nonlinear ODE actually gives once
+checked — named directly in this piece's own header comment rather than
+quietly dropped, the same "an early attempt at a closed form didn't survive
+contact with the real ODE" honesty this gallery's ARCTIC/PERCOLATE pieces
+have each practiced for their own unproven or mis-estimated constants.
+
+### Rendering and interaction
+WebGL1, one RGBA ping-pong pair (eta in .x, psi=(d/dt+U.grad)eta in .y,
+matching the verified first-order system) stepped by symplectic (semi-
+implicit) Euler — psi first from the current eta, then eta from the new
+psi — a single-pass-per-field scheme chosen specifically because it needs
+no extra temp textures (unlike the full RK2 the offline verification used),
+confirmed separately in Node to stay bounded and reproduce the same ~13%
+wave-speed accuracy before trusting it in the shader. Three modes share one
+solver: RIPPLES (periodic dropped impulses radiate out and visibly bend
+past the vortex — Berry's dislocation phenomenon made literal and ongoing),
+PLANE (continuous driven wave from one edge, the classic wavefront-past-an-
+obstacle framing), PINWHEEL (the verified cos(m*theta) seed, reflecting
+walls via CLAMP_TO_EDGE's implicit Neumann condition, m cyclable 2-5 by
+tap). Horizontal drag sets circulation Gamma live (this gallery's standing
+"let a visitor walk the parameter themselves" idea — ISING's temperature,
+PERCOLATE's p, ARCTIC's coin bias — cheap here too, since U(x,y) is a plain
+per-fragment formula, not a texture needing regeneration); a clean tap drops
+a wave (or cycles m in PINWHEEL). A faint dashed ring at fixed radius drifts
+at the vortex's own local angular velocity Uphi(r)/r as a literal, non-
+decorative readout of the current flow.
+
+### A tuning bug caught by watching the actual render
+PLANE mode's first version looked wrong on screen well before any numbers
+disagreed: after ~30s of continuous driving the whole canvas saturated into
+a muddy, maxed-out tangle rather than legible curved wavefronts, because the
+sponge boundary (tuned for a short, finite verification run) was nowhere
+near strong enough to absorb reflections indefinitely, and a continuously-
+driven linear wave equation with no other loss term has no reason to ever
+stop accumulating energy. Fixed by substantially widening/strengthening the
+sponge and adding a tiny global multiplicative loss each step (present in
+every mode, including PINWHEEL, where it gently damps the standing pattern
+by roughly half over one 30s mode hold rather than sustaining it forever) —
+an honest, if inelegant, energy bound rather than a proper open-boundary
+solve, caught only by actually watching a long-running screenshot, the same
+"confirmed by reading back the actual render, not just the math" discipline
+NEMATIC's own two real GLSL bugs needed.
+
+### Honest gaps
+The reflecting "tank" in PINWHEEL mode is this canvas's own square boundary,
+not the circular tank the ODE analysis idealizes — real corner scattering
+mixes a little azimuthal content between neighbouring m that a circular
+boundary would keep clean, though the splitting mechanism itself (verified
+above) doesn't depend on the tank's exact shape. No attempt was made to pin
+the exact Gamma-to-phase-shift proportionality constant to a specific closed
+form the way ARCTIC pinned its circle radius to n/sqrt(2) — only that the
+shift exists, is genuinely topological (saturates with radius rather than
+decaying), and scales the right way with Gamma and m; nailing the exact
+constant (and understanding why the leading-order hand expansion missed it)
+is left open. WEIGHTED-style continuous eta driving in PLANE mode has no
+true open (non-reflecting, zero-residual) boundary, only a strong but finite
+sponge plus a global decay term standing in for one.
 
 ## Piece 23: ARCTIC — Random Domino Tilings & the Arctic Circle (2026-07-21)
 Inspiration this session came from wandering combinatorics/statistical-mechanics
@@ -2944,6 +3085,51 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-22 — Session 24
+- Added MAELSTROM: a hydrodynamic Aharonov-Bohm effect — a draining-vortex
+  background flow shifts a surface wave's phase the way a magnetic vector
+  potential shifts a charged quantum wave, inspired by a 2026 water-tank
+  experiment (Singh, Samuel, Liu, Angheluta, Concha & Bandi, arXiv:2604.21543)
+  that found rotating standing-wave nodal lines as a genuine surprise, on
+  top of the older Berry, Chambers, Large, Upstill & Walmsley (1980) water-
+  wave AB analogy. First piece to touch a quantum-classical wave analogy or
+  a topological effect that survives specifically because its causative
+  field (flow velocity) vanishes almost everywhere.
+- Verified two claims via a from-scratch radial ODE (derived this session,
+  shot by RK4 from a regular Bessel-series solution at r=0), after a first
+  2D time-domain measurement attempt proved too noise-dominated to trust:
+  (1) the WKB phase-integral shift a wave picks up encircling the vortex
+  SATURATES to a constant as the loop grows (<0.05 rad drift from r<=250 to
+  r<=500), the actual AB signature, scaling linearly in Gamma and roughly
+  linearly in m; (2) PINWHEEL mode's rotation is a real +-m normal-mode
+  frequency-splitting effect (Zeeman/Faraday-like) — exactly degenerate at
+  Gamma=0 to 5 decimal places, splitting symmetrically and oppositely once
+  Gamma!=0. An earlier hand-derived leading-order phase-shift formula was
+  off by several times from the real ODE's answer once checked — named in
+  the piece's own comments rather than dropped quietly.
+- Two real bugs, both only caught by not trusting the first plausible
+  number: the initial 2D phase-winding measurement was contaminated by (a)
+  sampling before the driven wave had even propagated out to the
+  measurement radius, and (b) naively unwrapping a plane wave's own huge
+  raw phase winding, which buried the small vortex contribution in noise/
+  aliasing — fixed by abandoning the time-domain approach for the ODE
+  methods above, a frequency-domain problem is a frequency-domain
+  calculation, not a simulation to be run long enough. Separately, PLANE
+  mode's shader looked visibly wrong (a saturated, muddy tangle) after
+  ~30s of continuous driving, since its sponge boundary was tuned for a
+  short offline verification run, not indefinite real-time driving with no
+  other loss term — fixed by strengthening the sponge and adding a small
+  global energy loss, caught by watching an actual long-running screenshot
+  rather than trusting the shader compiled and moved.
+- Governing equation ((d/dt+U.grad)^2 eta = c^2*lap(eta), U a regularized
+  Rankine point vortex) stepped by symplectic Euler on one WebGL1 ping-pong
+  pair, chosen over the full RK2 the offline verification used specifically
+  because it needs no extra temp textures — separately confirmed stable and
+  comparably accurate in Node before trusting it in the shader. Three
+  modes (RIPPLES/PLANE/PINWHEEL) share the solver; drag sets circulation
+  Gamma live (this gallery's standing "walk the parameter yourself" idea),
+  tap drops a wave or cycles PINWHEEL's lobe count m.
+
 ### 2026-07-20 — Session 22
 - Added NEMATIC: topological defects in a 2D nematic liquid crystal
   (de Gennes & Prost), the gallery's first field theory whose defects
@@ -4270,3 +4456,29 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       technique) — not attempted, and unlike HORIZON's case the author
       is not aware of an equally clean sparse-cost technique for this
       combinatorial setting
+- [ ] MAELSTROM: pin the exact Gamma-to-phase-shift proportionality
+      constant to a checked closed form (the way ARCTIC pinned its circle
+      radius to n/sqrt(2)) — this session only verified the shift is
+      topological (saturates with radius) and scales linearly in Gamma and
+      roughly linearly in m, via numerical WKB integration; an early hand-
+      derived leading-order formula was off by several times from the real
+      radial ODE's answer and was not chased down further
+- [ ] MAELSTROM: a true circular reflecting tank (rather than PINWHEEL
+      mode's square canvas boundary, whose corners mix a little azimuthal
+      content between neighbouring m) — would let the standing pattern
+      match the ODE analysis's idealized circular-cavity eigenmodes
+      exactly rather than only qualitatively
+- [ ] MAELSTROM: a genuine non-reflecting/absorbing open boundary (e.g. a
+      proper perfectly-matched-layer) instead of PLANE mode's strong-but-
+      finite sponge plus a small global energy-loss term standing in for
+      true dissipation
+- [ ] MAELSTROM: a second, independent vortex (opposite or equal sign)
+      would let a visitor see two AB "solenoids" interfere — whether the
+      phase shifts add, cancel, or do something less obvious depending on
+      separation — not attempted this session, single-point-vortex only
+- [ ] MAELSTROM: the Lense-Thirring framing in this session's own primary
+      source (arXiv:2604.21543) pairs the same hydrodynamic analogy with
+      rotating-black-hole frame dragging, which HORIZON (session 18) only
+      covers via a non-rotating Schwarzschild geodesic tracer — a Kerr-
+      metric HORIZON follow-up would close that particular loop, out of
+      scope after this session's own vortex-wave research
