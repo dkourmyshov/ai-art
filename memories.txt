@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+coulomb.html     — COULOMB piece
 maelstrom.html   — MAELSTROM piece
 arctic.html      — ARCTIC piece
 nematic.html     — NEMATIC piece
@@ -33,6 +34,142 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 25: COULOMB — Eigenvalues as a Coulomb Gas (2026-07-24)
+Every earlier field/agent piece here evolves a physical quantity — a
+concentration, a spin, a velocity, a director, a flow. This one evolves
+something more abstract: the EIGENVALUES of a large random matrix, which
+Dyson showed (1962) behave exactly like a classical gas of charged
+particles confined by a trap and repelling each other through the
+Coulomb (log) potential — "Statistical Theory of the Energy Levels of
+Complex Quantum Systems I-III". Real beta-ensembles (beta=1 GOE, beta=2
+GUE, beta=4 GSE, "Dyson's threefold way") have joint eigenvalue density
+p(x) ~ exp(-N*beta/4 * sum x_i^2) * prod_{i<j}|x_i-x_j|^beta; the matching
+overdamped Langevin dynamics (Dyson Brownian motion) is simulated live,
+N=324 "levels" on a line, with beta a CONTINUOUS parameter a visitor
+drags 0 to 4 — the gallery's "walk the parameter yourself" idea (ISING's
+temperature, PERCOLATE's p, ARCTIC's coin bias, MAELSTROM's Gamma)
+applied for the first time to a symmetry class rather than a physical
+constant, sweeping from beta=0 (no repulsion: plain independent Gaussian
+particles) up through GOE/GUE/GSE live. A second mode (GINIBRE) runs the
+complex-plane analogue — a 2D log-gas settling into the CIRCULAR LAW,
+the semicircle's 2D sibling: eigenvalues filling a disk with perfectly
+uniform density. A third mode (ZETA) is not a simulation at all: 2,500
+REAL non-trivial zeros of the Riemann zeta function, downloaded this
+session from Andrew Odlyzko's own published tables, whose spacing
+statistics are the Montgomery-Odlyzko law — Hugh Montgomery's 1972 pair-
+correlation calculation, recognized on sight by Freeman Dyson over tea at
+the IAS as the GUE formula, confirmed on millions of real zeros by
+Odlyzko (1987, 1989). Prime numbers and quantum-chaotic energy levels
+sharing one statistic, for reasons still unproven (Hilbert-Polya).
+
+### Verified in Node before any shader code (verify.js, checkbeta.js,
+### checkbeta2.js, tunebeta_dir.js/2.js — not committed)
+  1. SEMICIRCLE UNIVERSALITY. With confinement scaled as N*beta/4 (the
+     textbook Gaussian-beta-ensemble normalization), the equilibrium edge
+     radius is BOTH N-independent (2.02-2.19 across N=40..320 at beta=2)
+     AND beta-independent (1.95-2.11 across beta=0.3..4 at N=250) —
+     matching the textbook constant 2.0 to a few percent. A FIRST attempt
+     used a beta-independent confinement -N*x_i and got the edge growing
+     sharply with beta instead (0.78 at beta=0.3 to 3.2 at beta=4) — a
+     real modeling bug (a missing factor of beta on the confinement,
+     itself first written with a further missing factor of 2 on top),
+     caught only by checking whether the claimed universality actually
+     held rather than trusting the first plausible-looking run.
+  2. SEMICIRCLE SHAPE. Pooling 25 post-equilibration snapshots (N=300,
+     beta=2) against the theoretical rho(x)=(2/(pi*R^2))sqrt(R^2-x^2),
+     R=2: R^2=0.908 across 24 bins.
+  3. LOCAL SPACING / LEVEL REPULSION — a second, subtler bug. The dt safe
+     for the GLOBAL confinement relaxation time (~1/(N*beta)) is far too
+     coarse for the LOCAL pairwise-repulsion timescale near a close
+     encounter: at dt=0.3/N every beta from 0 to 4 gave the SAME
+     P(spacing<0.15)~=0.13, matching plain Poisson statistics almost
+     exactly (1-e^-0.15=0.139) — the repulsion was being numerically
+     destroyed every step, not physically absent, an easy thing to miss
+     since nothing crashed and the macroscopic semicircle (claim 1) still
+     checked out fine. Fixed by scaling dt inversely with beta; afterward
+     P(s<0.15) drops monotonically 0.129/0.095/0.090/0.064/0.053 for
+     beta=0/0.5/1/2/4 — real level repulsion. The shader mirrors this fix
+     (per-substep dt shrinks with beta) but even so, LEVELS/GINIBRE's own
+     LIVE histogram is visibly noisier than ZETA's precomputed one — an
+     honest gap named in the piece's own header rather than hidden, since
+     N=324 at 60fps can't match 25 pooled offline snapshots' statistics.
+  4. GENERALIZED WIGNER SURMISE. The classic closed-form spacing laws
+     (GOE/GUE/GSE) are special cases of one formula, P_beta(s) =
+     C*s^beta*exp(-D*s^2) with D=(Gamma((beta+2)/2)/Gamma((beta+1)/2))^2,
+     C fixed by normalization — verified via a from-scratch Lanczos Gamma
+     function to reproduce all three closed forms to 5 decimal places,
+     letting the live overlay curve be exact at every dragged beta rather
+     than interpolated between three fixed cases.
+  5. CIRCULAR LAW. The 2D log-gas's 95th-percentile radius lands within 3%
+     of the predicted sqrt(N) (N=220), with equal-AREA annuli holding
+     statistically flat particle counts (37,33,34,35,40,31) — the
+     uniform-disk signature.
+  6. THE REAL RESULT. Unfolding 100,000 real zeta zeros (downloaded this
+     session from Odlyzko's zeta_tables) by the Riemann-von Mangoldt
+     smooth density gives mean unfolded spacing 1.0000 and a GUE Wigner-
+     surmise fit of R^2=0.9936 across 24 bins — the actual Montgomery-
+     Odlyzko law, reproduced from real external data, not simulated;
+     2,500 of these zeros are baked into the piece itself for ZETA mode.
+
+### Rendering
+WebGL1, one shared N=324 (18x18) position ping-pong texture pair reused
+by two distinct SDE shaders (LEVELS 1D, GINIBRE 2D), both writing world-
+space position into .xy so ONE shared accumulation-trail pipeline
+(ATTRACTOR's own deposit/decay/render technique, reused near-verbatim)
+draws either engine as glowing worldline streaks without knowing which
+is running. LEVELS seeds directly at the semicircle law's own quantiles
+(inverse-CDF, bisection) rather than a uniform lattice — the same "seed
+near the model's own equilibrium, don't make it walk there" discipline
+SWARMALATOR's header names — since a piece with only ~1 rendered-frame's
+worth of real time per HOLD period cannot afford the ~2 rescaled time-
+units a from-scratch reshuffle needs; only LOCAL spacing order, a faster
+timescale, has to equilibrate live. ZETA mode runs no WebGL simulation at
+all — a plain canvas 2D overlay draws the real baked zero positions and
+the precomputed spacing histogram, left deliberately calmer/more static
+than the two live sims, since its whole point is being the real, already-
+finished answer standing next to the noisier live approximations.
+
+### A rendering bug caught by screenshot, not by the console
+The ZETA overlay draws a zoomed strip of real zero positions, THEN a
+shared histogram-drawing helper that (for the LEVELS live case) needs to
+fully clear the canvas each refresh. Calling that same helper from ZETA's
+draw function wiped the strip that had just been drawn one call earlier
+in the same frame — zero console errors, a silently blank strip, caught
+only by a headless-Chromium screenshot (Playwright, this session's own
+verification harness) rather than by anything that throws. Fixed by
+making the clear an explicit caller-controlled flag instead of an
+unconditional side effect.
+
+### Interaction
+Horizontal drag sets beta live in LEVELS mode (0 to 4, this gallery's
+"walk the parameter" idea applied to a symmetry class); released, beta
+resumes a slow automatic sweep across the same range so the full
+POISSON-to-GSE story plays out even without a visitor's hand on it. A
+clean tap reseeds GINIBRE's ring early; GINIBRE also self-reseeds every
+15s regardless, replaying "filling the disk" the way NEMATIC's QUENCH
+mode periodically replays coarsening. ZETA mode's drag scrubs which
+stretch of the real critical line is shown.
+
+### Honest gaps
+LEVELS/GINIBRE's live spacing statistics are noticeably noisier than the
+offline Node verification or ZETA's precomputed real data (see point 3
+above) — named on-screen via the contrast between the two histogram
+panels' fit quality, not hidden. WEIGHTED-style exact tangency formulas
+for the semicircle/circular-law EDGE were not attempted here the way
+ARCTIC eventually wants for its own ellipse; GSE (beta=4) has no matrix
+construction as clean as GOE/GUE's real/complex Gaussian entries (it
+needs quaternionic entries) and is only ever reached here as a log-gas
+coupling constant, never built from an actual quaternionic random matrix.
+
+### Inspiration
+Web research into eigenvalue repulsion and Dyson Brownian motion surfaced
+the Montgomery-Odlyzko story (a 1972 IAS tea-time conversation between a
+number theorist and a physicist, confirmed on 8 million real zeros by
+Odlyzko in 1989) as the session's actual hook — a genuinely new-to-this-
+gallery domain (linear algebra / analytic number theory) with real,
+downloadable, independently-obtained data to check a physics prediction
+against, rather than another self-contained PDE or lattice model.
 
 ## Piece 24: MAELSTROM — A Hydrodynamic Aharonov-Bohm Effect (2026-07-22)
 Web research this session (wandering from generic "novel physics visualization"
@@ -3085,6 +3222,60 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-24 — Session 25
+- Added COULOMB: eigenvalues of a large random matrix as a Coulomb gas
+  (Dyson 1962), the gallery's first piece where the simulated quantity is
+  a matrix's eigenvalues rather than a physical field. LEVELS mode runs
+  live Dyson Brownian motion (N=324, 1D) with beta a CONTINUOUS
+  visitor-dragged parameter 0-4 sweeping POISSON -> GOE -> GUE -> GSE, the
+  "walk the parameter" idea applied to a symmetry class for the first
+  time. GINIBRE mode runs the 2D complex-plane analogue, settling into
+  the circular law (a uniform-density disk). ZETA mode is real data, not
+  a simulation: 2,500 of the first 100,000 non-trivial Riemann zeta zeros
+  this session downloaded from Andrew Odlyzko's own published tables,
+  demonstrating the Montgomery-Odlyzko law (zeta zero spacings match GUE
+  eigenvalue statistics) directly against real external data.
+- Verified in Node before any shader (not committed): (1) semicircle edge
+  radius is both N- and beta-independent at ~2.0, matching the textbook
+  Gaussian-beta-ensemble constant to a few percent, after a first attempt
+  with a wrongly-scaled confinement got edge radius growing sharply with
+  beta instead — a real modeling bug, not a rendering one; (2) pooled-
+  snapshot semicircle shape fit R^2=0.908; (3) local spacing statistics
+  needed a SECOND fix — dt safe for the global relaxation time was too
+  coarse for the local pairwise-repulsion timescale, silently destroying
+  level repulsion every step (every beta gave the same near-Poisson
+  P(s<0.15)~0.13 until fixed) — after fixing, P(s<0.15) drops
+  monotonically with beta as theory predicts; (4) a generalized Wigner-
+  surmise formula (verified via a from-scratch Lanczos Gamma function to
+  reproduce the GOE/GUE/GSE closed forms to 5 decimals) drives the live
+  overlay curve at any dragged beta; (5) circular law confirmed to ~3%;
+  (6) the headline result — unfolding 100,000 real zeta zeros gives mean
+  spacing 1.0000 and a GUE Wigner-surmise fit of R^2=0.9936, the actual
+  Montgomery-Odlyzko law reproduced from real downloaded data.
+- A real rendering bug caught only by a Playwright screenshot, not by any
+  console error: ZETA mode's shared histogram-drawing helper unconditionally
+  cleared the canvas, silently wiping the real-zero point-strip drawn one
+  call earlier in the same frame. Fixed by making the clear caller-
+  controlled. Also fixed: seeding LEVELS on a uniform lattice needed far
+  more live simulated time than a mode-hold affords to reshape into the
+  semicircle — fixed the same way SWARMALATOR avoids its own "dense random
+  disk explodes on first contact" problem, by seeding directly at the
+  target equilibrium distribution's own quantiles (semicircle inverse-CDF
+  via bisection) so only local spacing order, not macroscopic shape, has
+  to equilibrate in real time.
+- Honest gap, named on-screen: LEVELS/GINIBRE's own live spacing
+  histograms are visibly noisier than ZETA's precomputed real-data one —
+  N=324 at 60fps can't match the offline verification's pooled-snapshot
+  statistics, and the contrast is left visible rather than smoothed away.
+- Inspiration: web research into eigenvalue repulsion and Dyson Brownian
+  motion surfaced the Montgomery-Odlyzko story (Hugh Montgomery's 1972
+  pair-correlation formula, recognized on sight by Freeman Dyson over tea
+  at the IAS as the GUE statistic, confirmed on 8 million real zeros by
+  Odlyzko in 1989) — a genuinely new-to-this-gallery domain (random matrix
+  theory / analytic number theory) with real, independently-obtained data
+  to check a physics prediction against, distinct from every earlier
+  piece's self-contained simulated verification.
+
 ### 2026-07-22 — Session 24
 - Added MAELSTROM: a hydrodynamic Aharonov-Bohm effect — a draining-vortex
   background flow shifts a surface wave's phase the way a magnetic vector
@@ -4482,3 +4673,48 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       covers via a non-rotating Schwarzschild geodesic tracer — a Kerr-
       metric HORIZON follow-up would close that particular loop, out of
       scope after this session's own vortex-wave research
+- [x] A piece where the simulated quantity is a matrix's eigenvalues
+      rather than a physical field — done in COULOMB (session 25), Dyson
+      Brownian motion / the beta-ensemble log-gas, verified against the
+      semicircle law, circular law, and the generalized Wigner surmise
+- [x] "Walk the parameter yourself" (ISING onward through MAELSTROM's
+      Gamma) applied to a SYMMETRY CLASS rather than a physical constant —
+      done in COULOMB (session 25), dragging beta continuously sweeps
+      POISSON -> GOE -> GUE -> GSE live
+- [ ] COULOMB: LEVELS/GINIBRE's own live spacing-statistics histogram is
+      visibly noisier than ZETA's precomputed real-data one — N=324 at
+      60fps can't match the offline verification's pooled-snapshot
+      statistics; a larger N (GPU cost is trivial, the constraint is
+      really the canvas-2D histogram readback/redraw cadence) or an
+      accumulating rather than 4-snapshot rolling window might close this
+      without needing more wall-clock time per mode-hold, not attempted
+- [ ] COULOMB: WEIGHTED-style exact edge-of-support formulas (the
+      semicircle/circular-law boundary itself, as opposed to the bulk
+      density shape) were not derived in closed form this session, unlike
+      ARCTIC's exact n/sqrt(2) circle radius — only checked numerically
+      to a few percent against the textbook constant
+- [ ] COULOMB: GSE (beta=4) is only ever reached here as a log-gas
+      coupling constant in the continuous beta dial, never built from an
+      actual quaternionic random matrix the way GOE/GUE could in
+      principle be built from real/complex Gaussian entries directly —
+      a real quaternionic matrix construction (Dumitriu-Edelman's
+      tridiagonal beta-ensemble model handles this uniformly for any
+      beta>0 without needing quaternions explicitly) was not attempted
+- [ ] COULOMB: a fourth mode putting a REAL random matrix's actual
+      eigenvalues on screen (computed via an in-browser Jacobi/QR
+      eigensolver on a small explicit GOE/GUE matrix) side by side with
+      the log-gas simulation, rather than only asserting the log-gas IS
+      the eigenvalue process — would need a from-scratch small-matrix
+      eigensolver, out of scope after this session's own SDE/real-data
+      verification work
+- [ ] COULOMB: the Riemann-Siegel Z-function itself (whose zeros ARE the
+      zeta zeros baked into ZETA mode) is never plotted or evaluated live
+      — only the precomputed zero HEIGHTS are shown; drawing the actual
+      oscillating Z(t) curve crossing zero at each baked height would
+      make "these are real zeros of a real function" more concrete than
+      showing the heights alone
+- [ ] COULOMB: a Tracy-Widom mode — the fluctuation law for the LARGEST
+      eigenvalue specifically (distinct from the bulk semicircle/Wigner-
+      surmise statistics this session verified), a genuinely different
+      and famous closed-form result (Tracy & Widom, 1994) not attempted
+      this session, out of scope after the bulk-statistics research done
