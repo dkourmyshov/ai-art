@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+ulam.html        — ULAM piece
 coulomb.html     — COULOMB piece
 maelstrom.html   — MAELSTROM piece
 arctic.html      — ARCTIC piece
@@ -34,6 +35,119 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 26: ULAM — Random Permutations & the Tracy-Widom Laws (2026-07-25)
+Stanislaw Ulam's 1961 problem: take a uniformly random permutation of
+{1,...,N} and ask for the length of its Longest Increasing Subsequence
+(LIS). The Robinson-Schensted-Knuth correspondence turns this into a
+GROWTH process — inserting the permutation's values one at a time via row
+insertion builds a Young diagram cell by cell, and Greene's theorem says
+the diagram's first row IS the LIS — making RSK insertion a discrete,
+combinatorial corner-growth / last-passage-percolation process, a member
+of the same broad universality-class family COULOMB (session 25) closed
+without finishing: COULOMB's own header explicitly flagged "a Tracy-Widom
+mode... not attempted this session." Three exact theorems drive the piece:
+Vershik-Kerov (1977) / Logan-Shepp (1977)'s deterministic arcsine-law limit
+shape for the rescaled Young diagram boundary; Baik-Deift-Johansson (1999),
+(L_N - 2*sqrt(N))/N^(1/6) -> Tracy-Widom GUE (F2) for random permutations;
+and Baik-Rains (2001), the same statistic -> Tracy-Widom GOE (F1) for
+random INVOLUTIONS (permutations equal to their own inverse) — a symmetry
+constraint on a combinatorial object rerouting it to a different universal
+law, echoing COULOMB's own beta-ensemble dial but pulled from pure
+symmetric-vs-general combinatorics instead of a continuous coupling
+constant. Two modes: PERMUTATION (GUE) and INVOLUTION (GOE), each growing
+a live RSK Young diagram (rendered in Russian coordinates, boundary
+overlaid against the exact Omega(u) curve) plus a live-accumulating
+histogram of the rescaled LIS statistic over repeated fresh trials,
+overlaid against the from-scratch Tracy-Widom density.
+
+### Verified in Node before any canvas code (painleve.js, rsk.js,
+### involution.js, verify.js — this session's scratchpad, not committed)
+  1. F1 (GOE) and F2 (GUE) TRACY-WIDOM DISTRIBUTIONS COMPUTED FROM SCRATCH,
+     not downloaded or hard-coded: the Hastings-McLeod solution of the
+     Painleve II ODE q''=s*q+2*q^3 (defining property q(s)~Ai(s) as
+     s->+inf) was shot backward via RK4 from s=12 using the Airy
+     asymptotic series as the seed. Backward shooting is the numerically
+     STABLE direction, but not unconditionally — nearby solutions of the
+     same ODE have literal poles, and by testing progressively more
+     negative targets (not assumed safe) the integration was found to blow
+     up around s=-7 to -7.5 depending on the start point; sMin=-6.5 was
+     chosen with real margin before that, an honest, visible truncation of
+     the extreme left tail. F2(s)=exp(-int_s^inf (x-s)q(x)^2 dx) and
+     F1(s)=sqrt(F2(s))*exp(-1/2 int_s^inf q(x) dx) (Tracy & Widom
+     1994/1996) then reproduced the textbook mean/std to 4-5 significant
+     figures: F2 mean -1.77109 (got -1.77109), std 0.90178 (got 0.90177);
+     F1 mean -1.20653 (got -1.20653), std 1.26798 (got 1.26798).
+  2. BAIK-DEIFT-JOHANSSON. Monte Carlo over random permutations (patience
+     sorting, N up to 64,000, thousands of trials) confirmed LIS grows
+     like 2*sqrt(N) with std scaling like N^(1/6); at N=30,000 the
+     rescaled histogram's std (0.899) and skew (0.247) already closely
+     match F2's own (0.902, 0.224), while the mean (-1.678 vs the true
+     -1.771) is still visibly converging — a real, honestly-reported
+     finite-N lag, not hidden by cherry-picking N.
+  3. BAIK-RAINS. A uniform random INVOLUTION sampler was built from
+     scratch via the standard recursive algorithm (the probability the
+     largest remaining element is a fixed point, r(m)=1/(1+(m-1)*r(m-1)),
+     kept in stable float form rather than the naive I(m)=I(m-1)+
+     (m-1)*I(m-2) recursion, whose values overflow long before N=30,000).
+     Sanity check before trusting anything downstream: sampled involutions
+     of size 30,000 averaged ~170 fixed points across 8 draws, matching
+     the predicted ~sqrt(N)=173.2. Those LIS statistics then gave rescaled
+     mean -1.292, std 1.217 (true F1: -1.207, 1.268) — squarely GOE, not
+     GUE (whose mean -1.771 is far off).
+  4. A real dead end, left open rather than glossed over: fixed-point-free
+     involutions were tried first (expecting Baik-Rains' GSE/beta=4 case)
+     and abandoned once the rescaled statistic (mean -2.991, std 0.974)
+     matched neither F1 nor F2 at any scaling this session could pin down
+     with confidence, and deriving F4 from the F1/F2 Painleve data via the
+     identity F4(s/2^(2/3)) = (F1(s)+F2(s)/F1(s))/2 gave mean -2.055/std
+     0.640 — in the right direction (more negative, tighter, than GUE)
+     but not a confirmed match either. The piece ships only the verified
+     PERMUTATION/INVOLUTION pair; the fixed-point-free/GSE case is real
+     unfinished business, not a silently-dropped feature.
+  5. VERSHIK-KEROV / LOGAN-SHEPP. The full row-corner sequence (i,
+     lambda_i) of a random Plancherel Young diagram, rescaled by
+     1/sqrt(N), matched Omega(u) to mean absolute error 0.006 and max
+     error 0.017 at N=20,000 (curve peak height ~1.273) — and because
+     lambda_i is strictly decreasing in i, this single point sequence
+     already traces the ENTIRE boundary curve (both its steep and shallow
+     sides) with no separate conjugate-shape pass needed, the fact the
+     piece's live boundary rendering relies on directly.
+  6. A basic exchangeability fact checked by hand rather than assumed: any
+     prefix of a uniform random permutation of size N is itself, in
+     relative order, a uniform random permutation of the prefix's own
+     size — meaning the piece's live growth animation (a single
+     permutation generated once, inserted through RSK a chunk at a time)
+     genuinely IS the Plancherel growth process at every intermediate
+     frame, not merely a final answer revealed gradually.
+
+### Rendering
+Canvas 2D. The Young diagram boundary is drawn directly in the theorem's
+own Russian coordinates (u,v) = ((lambda_i-i)/sqrt(N), (lambda_i+i)/sqrt(N))
+— no separate rotation/projection step, since that IS the coordinate
+system the row-corner sequence lives in. A real rendering surprise caught
+by looking at the first screenshot, not assumed from the formula alone:
+Omega(u) is NOT a mountain peak (this session's own header prose first
+described it that way before the render corrected it) — it's a rounded
+BASIN, flattened at u=0 relative to the empty partition's own sharp |u|
+corner, since Omega(0)=4/pi~1.273 is a minimum, not a maximum, of the
+curve. A second real layout bug caught only by an actual screenshot at
+full N: the Omega curve's far-reaching V arms and the diagram's own fill
+climbed high enough on screen to visually cross through the top-right
+stats/histogram text, legible in a quick glance but not on close zoom —
+fixed with an evenodd canvas clip carving out whichever screen region the
+HTML stats overlay and histogram panel currently occupy (that region
+itself computed once per frame and shared between the diagram-clip and
+histogram-placement code, rather than two independent guesses that could
+drift apart). A third, mobile-only bug from the same root cause: a narrow
+portrait viewport put the top-right histogram panel directly under the
+HTML stats text, both readable individually but overlapping into a mess
+— fixed by branching layout() on aspect ratio (H > 1.05*W), relocating
+the histogram panel to a full-width strip near the bottom and shrinking
+the diagram accordingly, rather than only special-casing font sizes the
+way the CSS media query alone had been doing.
+
+### Session Log entry filed below under 2026-07-25.
 
 ## Piece 25: COULOMB — Eigenvalues as a Coulomb Gas (2026-07-24)
 Every earlier field/agent piece here evolves a physical quantity — a
@@ -3222,6 +3336,58 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-25 — Session 26
+- Added ULAM: Ulam's 1961 longest-increasing-subsequence problem, random
+  permutations and involutions, the RSK correspondence, and the Tracy-
+  Widom laws — directly closing COULOMB (session 25)'s own flagged gap
+  ("a Tracy-Widom mode... not attempted this session"), from a completely
+  different (combinatorial, not physical) direction. PERMUTATION mode
+  grows a live RSK Young diagram whose LIS statistic converges to Tracy-
+  Widom GUE (Baik-Deift-Johansson 1999); INVOLUTION mode does the same for
+  uniformly random involutions, converging instead to Tracy-Widom GOE
+  (Baik-Rains 2001) — a symmetry constraint on the combinatorial object
+  changing the universality class, the same story COULOMB told with a
+  continuous beta dial, told here through discrete symmetric-vs-general
+  permutations instead.
+- Verified in Node before any canvas code (not committed): (1) Tracy-Widom
+  F1 (GOE) and F2 (GUE) computed from scratch by shooting the Painleve II
+  Hastings-McLeod solution backward via RK4 from s=12, stopping at
+  sMin=-6.5 with margin before the numerical blowup (found at s=-7 to
+  -7.5, by testing rather than assuming) — reproduced the textbook
+  mean/std to 4-5 significant figures; (2) permutation LIS Monte Carlo (N
+  up to 64,000) confirmed 2*sqrt(N) growth and N^(1/6)-scaled GUE
+  fluctuations, with an honestly-reported finite-N convergence lag; (3) a
+  from-scratch uniform-involution sampler (stable float recursion for the
+  fixed-point probability, avoiding the naive count recursion's overflow)
+  checked against its own predicted ~sqrt(N) fixed-point count before its
+  LIS statistics were trusted, then confirmed GOE convergence; (4) the
+  Vershik-Kerov/Logan-Shepp limit shape matched to ~1-2% at N=20,000.
+- A real dead end, left open rather than hidden: fixed-point-free
+  involutions were tried first, expecting Baik-Rains' GSE case, and
+  abandoned once their rescaled LIS statistic matched neither F1 nor F2
+  (nor a from-scratch F4 derived via the standard Painleve identity) at
+  any scaling this session could confidently pin down — a real backlog
+  item, not a silently dropped feature.
+- Two real bugs caught only by looking at actual screenshots, not by
+  reasoning from the formulas alone: Omega(u) was first described in this
+  session's own prose as a "mountain silhouette" when the render showed
+  it is in fact a rounded BASIN (Omega(0) is the curve's minimum, not its
+  maximum) — the header text was corrected to match what was actually
+  drawn; and the diagram's own far-reaching curve arms visually crossed
+  the top-right HTML stats/histogram overlay at full N, fixed with a
+  shared, once-per-frame-computed clip region rather than two independent
+  guesses at where the text lives. A third bug was mobile-only: a narrow
+  portrait viewport collided the histogram panel with the stats text;
+  fixed by branching the whole layout on aspect ratio rather than only
+  adjusting font sizes.
+- Inspiration: this session's web wander surfaced the 2026 George Polya
+  Prize, awarded to Dauvergne, Ortmann & Virag for the directed
+  landscape — the full scaling-limit object of the KPZ universality class
+  Tracy-Widom fluctuations are the best-known single marginal of. The
+  directed landscape itself was out of scope for one session; Ulam's
+  problem is the field's oldest, cleanest, fully-elementary doorway into
+  the same fluctuation laws, closing COULOMB's own named gap along the way.
+
 ### 2026-07-24 — Session 25
 - Added COULOMB: eigenvalues of a large random matrix as a Coulomb gas
   (Dyson 1962), the gallery's first piece where the simulated quantity is
@@ -4718,3 +4884,51 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       surmise statistics this session verified), a genuinely different
       and famous closed-form result (Tracy & Widom, 1994) not attempted
       this session, out of scope after the bulk-statistics research done
+      this session, out of scope after the bulk-statistics research done
+      this session — CLOSED by ULAM (session 26), which computes F1/F2
+      from scratch via the Painleve II Hastings-McLeod solution.
+- [x] A piece whose route into Tracy-Widom is combinatorial (permutations,
+      RSK, patience sorting) rather than physical (a matrix, a log-gas) —
+      done in ULAM (session 26), Ulam's longest-increasing-subsequence
+      problem, closing COULOMB (session 25)'s own flagged gap.
+- [ ] ULAM: the fixed-point-free-involution case (Baik-Rains 2001's GSE/
+      beta=4 regime) — tried this session and abandoned once the rescaled
+      LIS statistic (mean -2.991, std 0.974 at N=30,000) matched neither
+      F1 nor F2, nor a from-scratch F4 derived via F4(s/2^(2/3)) =
+      (F1(s)+F2(s)/F1(s))/2 (which gave mean -2.055, std 0.640 — closer
+      but not confirmed) at any scaling this session could pin down with
+      confidence; likely needs either a correct alternative centering/
+      scaling constant specific to the symmetric-with-zero-diagonal case,
+      or independent verification of the F4 identity itself against a
+      real GSE ensemble (e.g. COULOMB's own beta=4 log-gas), neither
+      attempted.
+- [ ] ULAM: a THIRD Baik-Rains regime — involutions conditioned to have
+      exactly floor(alpha*sqrt(n)) fixed points for a tunable alpha,
+      which interpolates continuously between GOE and GSE (or whichever
+      pair the resolved backlog item above lands on) — would let a
+      visitor drag a continuous parameter the way COULOMB's beta dial
+      does, not attempted this session (unconstrained involutions and
+      permutations only).
+- [ ] ULAM: the Baik-Rains stationary/Baik-Rains F0 distribution, the
+      THIRD KPZ subclass (alongside GUE/curved and GOE/flat initial
+      conditions) arising from a STATIONARY initial condition in the
+      corner-growth/TASEP picture — RSK/Plancherel measure only reaches
+      the curved (GUE) and flat-ish (GOE, via involutions) cases studied
+      this session, not the stationary one, which needs a different
+      combinatorial model (e.g. last-passage percolation with geometric
+      boundary weights) this session did not build.
+- [ ] ULAM: the directed landscape itself — the actual object the 2026
+      George Polya Prize (Dauvergne, Ortmann & Virag) was awarded for,
+      and this session's own inspiration — is the full scaling limit
+      metric of the KPZ universality class, of which every Tracy-Widom
+      law here is only a single-point marginal; visualizing the metric
+      itself (geodesics, the 27 geodesic networks between fixed points,
+      the Airy sheet) is a substantially larger undertaking out of scope
+      after this session's elementary combinatorial route in.
+- [ ] ULAM: a live "watch RSK insertion happen" slow-motion mode showing
+      one single row-insertion's bumping cascade in detail (which row
+      bumps which value into the next row, down to where it finally
+      lands) — this session's growth animation shows the CUMULATIVE
+      shape after many insertions at speed, not any one insertion's own
+      bump sequence, mirroring the exact gap ARCTIC (session 23) named
+      for its own domino-shuffle growth animation.

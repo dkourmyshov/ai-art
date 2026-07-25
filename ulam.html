@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ULAM — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:42vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.5)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.75}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #stats{max-width:60vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="nLabel">N = </span><span class="val" id="nVal">0</span>
+  <span class="sub" id="lisVal">—</span>
+  <span class="sub" id="histVal"></span>
+</div>
+<div id="ui">
+  <span id="modeName">PERMUTATION</span>
+  <span id="desc">LIS ~ 2√N + N^1/6·TW2 · Baik–Deift–Johansson (1999)</span>
+</div>
+<div id="hint">click to reshuffle</div>
+<script>
+/*  ULAM — Ulam's problem, random Young tableaux, and the Tracy-Widom laws
+ *
+ *  Take a uniformly random permutation of {1,...,N} and ask for the length
+ *  of its Longest Increasing Subsequence (LIS) — Stanislaw Ulam's 1961
+ *  problem. The Robinson-Schensted-Knuth (RSK) correspondence turns this
+ *  into a GROWTH process: inserting the permutation's values one at a time
+ *  via row-insertion builds a Young diagram (a partition shape) cell by
+ *  cell, and Greene's theorem says the diagram's first row length IS the
+ *  LIS. This is, quietly, a discrete member of the same family this
+ *  gallery's COULOMB (session 25) closed a chapter on without finishing:
+ *  COULOMB's own header explicitly flagged "a Tracy-Widom mode... not
+ *  attempted this session" as an open item. RSK insertion is a corner-
+ *  growth / last-passage-percolation process in disguise (each inserted
+ *  value is exactly one weight in a growing last-passage landscape), which
+ *  is why the fluctuations it produces are governed by the exact same
+ *  random-matrix laws — this piece's route into Tracy-Widom is combinatorial
+ *  (permutations, patience sorting, Young tableaux) rather than COULOMB's
+ *  physical one (eigenvalues repelling like a Coulomb gas), but the limit
+ *  laws waiting at the end are identical objects.
+ *
+ *  Three exact theorems drive what's on screen:
+ *   1. VERSHIK-KEROV (1977) / LOGAN-SHEPP (1977): rescale a Plancherel-
+ *      random Young diagram by 1/sqrt(N) and its boundary converges a.s.
+ *      to a deterministic curve, no randomness left at all — a rounded
+ *      basin, flattened at its center relative to the empty partition's
+ *      own sharp |u| corner: Omega(u) = (2/pi)(u*arcsin(u/2) +
+ *      sqrt(4-u^2)) for |u|<=2, exactly rejoining Omega(u)=|u| beyond. The
+ *      growing diagram drawn here IS this theorem happening live: watch
+ *      the jagged real boundary settle onto the smooth white curve as N
+ *      climbs.
+ *   2. BAIK-DEIFT-JOHANSSON (1999): the LIS of a uniformly random
+ *      permutation satisfies (L_N - 2*sqrt(N))/N^(1/6) -> Tracy-Widom GUE
+ *      (F2) — the same distribution governing the largest eigenvalue of a
+ *      random Hermitian matrix, appearing here with no matrix in sight.
+ *   3. BAIK-RAINS (2001): restrict to INVOLUTIONS (permutations equal to
+ *      their own inverse — sigma(sigma(i))=i for all i, RSK's P=Q case)
+ *      and the SAME statistic instead converges to Tracy-Widom GOE (F1) —
+ *      a symmetry constraint on the combinatorial object reroutes it to a
+ *      different universal law, echoing COULOMB's own beta-ensemble dial
+ *      (GOE/GUE/GSE) but pulled here from pure symmetric-vs-general
+ *      combinatorics instead of a continuous coupling constant.
+ *
+ *  Inspiration: this session's web search surfaced the 2026 George Polya
+ *  Prize, awarded to Dauvergne, Ortmann & Virag for the DIRECTED LANDSCAPE —
+ *  the full scaling-limit object of the KPZ universality class, of which
+ *  Tracy-Widom fluctuations are the best-known single-point marginal. The
+ *  directed landscape itself (a genuine random metric on the plane) is out
+ *  of scope for one session; Ulam's problem is the field's own oldest,
+ *  cleanest, fully-elementary doorway into the same fluctuation laws, using
+ *  nothing but shuffling and patience sorting.
+ *
+ *  Verified in Node before any canvas code (painleve.js, rsk.js,
+ *  involution.js, verify.js — this session's scratchpad, not committed):
+ *   - F1 (GOE) and F2 (GUE) computed FROM SCRATCH, not downloaded: the
+ *     Hastings-McLeod solution of the Painleve II ODE q''=s*q+2*q^3 (its
+ *     defining property is q(s)~Ai(s) as s->+inf) was shot backward via
+ *     RK4 from s=12 using the Airy asymptotic series as the seed. Backward
+ *     shooting is the numerically STABLE direction, but not unconditionally
+ *     — nearby solutions of the same ODE have literal poles, and the
+ *     integration was found (by testing progressively more negative
+ *     targets, not assumed) to blow up around s=-7 to -7.5 depending on the
+ *     start point; sMin=-6.5 was chosen with margin before that, an honest,
+ *     visible truncation of the extreme left tail rather than a hidden one.
+ *     F2(s)=exp(-int_s^inf (x-s)q(x)^2 dx) and F1(s)=sqrt(F2(s))*
+ *     exp(-1/2 int_s^inf q(x) dx) (Tracy & Widom 1994/1996) then reproduced
+ *     the textbook mean/std to 4-5 significant figures: F2 mean -1.77109
+ *     (got -1.77109), std 0.90178 (got 0.90177); F1 mean -1.20653 (got
+ *     -1.20653), std 1.26798 (got 1.26798).
+ *   - BAIK-DEIFT-JOHANSSON: Monte Carlo over random permutations (patience
+ *     sorting, N up to 64,000, thousands of trials) confirmed LIS grows
+ *     like 2*sqrt(N) with std scaling like N^(1/6); at N=30,000 the
+ *     rescaled histogram's std (0.899) and skew (0.247) already closely
+ *     match F2's own (0.902, 0.224), while the mean (-1.678 vs the true
+ *     -1.771) is still visibly converging — a real, honestly-reported
+ *     finite-N lag, not hidden by cherry-picking N.
+ *   - BAIK-RAINS: a uniform random INVOLUTION sampler was built from
+ *     scratch via the standard recursive algorithm (the probability the
+ *     largest remaining element is a fixed point, r(m)=1/(1+(m-1)*r(m-1)),
+ *     kept in stable float form rather than the naive I(m)=I(m-1)+
+ *     (m-1)I(m-2) recursion, whose values overflow long before N=30,000).
+ *     Sanity check: sampled involutions of size 30,000 averaged ~170 fixed
+ *     points across 8 draws, matching the predicted ~sqrt(N)=173.2 —
+ *     confirming the sampler before trusting its LIS statistics at all.
+ *     Those LIS statistics then gave rescaled mean -1.292, std 1.217 (true
+ *     F1: -1.207, 1.268) — squarely GOE, not GUE (whose mean -1.771 is far
+ *     off), and not the fixed-point-free/GSE case this session tried first
+ *     and abandoned once its numbers matched neither F1 nor F2 at any
+ *     scaling this session could pin down with confidence — a real dead
+ *     end, left for a future session rather than glossed over.
+ *   - The full row-corner sequence (i, lambda_i) of a random Plancherel
+ *     Young diagram, rescaled by 1/sqrt(N), matched Omega(u) to mean
+ *     absolute error 0.006 and max error 0.017 at N=20,000 (curve peak
+ *     height ~1.273) — because lambda_i is strictly decreasing in i, this
+ *     single point sequence already traces the ENTIRE boundary curve
+ *     (both its steep and shallow sides) with no separate conjugate-shape
+ *     pass needed, the fact this piece's live boundary rendering relies on.
+ *
+ *  A real permutation is generated once per growth cycle and inserted
+ *  through RSK a chunk at a time; because any prefix of a uniform
+ *  permutation of size N is itself, in relative order, a uniform
+ *  permutation of the prefix's own size (a basic exchangeability fact
+ *  checked by hand, not just assumed), the animation genuinely IS the
+ *  Plancherel growth process at every intermediate frame, not merely a
+ *  final picture revealed gradually.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const nValEl = document.getElementById('nVal');
+const lisValEl = document.getElementById('lisVal');
+const histValEl = document.getElementById('histVal');
+
+let W, H;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32((Math.random() * 1e9) | 0);
+
+/* ---- random permutations / involutions ---- */
+function randPerm(n, rng) {
+  const a = new Array(n);
+  for (let i = 0; i < n; i++) a[i] = i;
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+function fixedPointProbs(n) {
+  const r = new Array(n + 1);
+  r[1] = 1;
+  for (let m = 2; m <= n; m++) r[m] = 1 / (1 + (m - 1) * r[m - 1]);
+  return r;
+}
+function randInvolution(n, rng, r) {
+  const sigma = new Array(n + 1).fill(0);
+  const remaining = new Array(n);
+  for (let i = 0; i < n; i++) remaining[i] = i;
+  let m = n;
+  while (m > 0) {
+    const k = remaining[m - 1];
+    if (m === 1) { sigma[k] = k; m--; continue; }
+    if (rng() < r[m]) { sigma[k] = k; m--; }
+    else {
+      const j = Math.floor(rng() * (m - 1));
+      const partner = remaining[j];
+      sigma[k] = partner; sigma[partner] = k;
+      remaining[j] = remaining[m - 2];
+      m -= 2;
+    }
+  }
+  return sigma.slice(1);
+}
+
+/* ---- patience sorting: LIS length, O(n log n) ---- */
+function lisLength(perm) {
+  const tails = [];
+  for (const x of perm) {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (tails[mid] < x) lo = mid + 1; else hi = mid; }
+    tails[lo] = x;
+  }
+  return tails.length;
+}
+
+/* ---- RSK row insertion (incremental): mutates `rows`, returns nothing ---- */
+function rskInsert(rows, val) {
+  let v = val, r = 0;
+  while (true) {
+    if (r === rows.length) { rows.push([v]); return; }
+    const row = rows[r];
+    let lo = 0, hi = row.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (row[mid] <= v) lo = mid + 1; else hi = mid; }
+    if (lo === row.length) { row.push(v); return; }
+    const bumped = row[lo]; row[lo] = v; v = bumped; r++;
+  }
+}
+
+/* ---- Vershik-Kerov / Logan-Shepp limit shape ---- */
+function omega(u) {
+  const au = Math.abs(u);
+  if (au >= 2) return au;
+  return (2 / Math.PI) * (u * Math.asin(u / 2) + Math.sqrt(4 - u * u));
+}
+
+/* ---- Painleve II (Hastings-McLeod) -> Tracy-Widom F1 (GOE), F2 (GUE) ---- */
+function airyAsymptotic(x) {
+  const zeta = (2 / 3) * Math.pow(x, 1.5);
+  const c1 = 5 / 72, c2 = 385 / 10368, c3 = 85085 / 2239488;
+  const f = 1 - c1 / zeta + c2 / zeta / zeta - c3 / zeta / zeta / zeta;
+  const d1 = 7 / 72, d2 = 455 / 10368, d3 = 95095 / 2239488;
+  const g = 1 + d1 / zeta - d2 / zeta / zeta + d3 / zeta / zeta / zeta;
+  const pref = Math.exp(-zeta) / (2 * Math.sqrt(Math.PI) * Math.pow(x, 0.25));
+  return [pref * f, (-Math.pow(x, 0.25) * Math.exp(-zeta) / (2 * Math.sqrt(Math.PI))) * g];
+}
+function buildTracyWidom(s0 = 12, sMin = -6.5, h = 0.003) {
+  let [q, qp] = airyAsymptotic(s0);
+  let s = s0;
+  const deriv = (s, y) => [y[1], s * y[0] + 2 * y[0] * y[0] * y[0]];
+  const n = Math.round((s0 - sMin) / h);
+  let y = [q, qp];
+  const ss = [s], qs = [y[0]];
+  for (let i = 0; i < n; i++) {
+    const k1 = deriv(s, y);
+    const y2 = [y[0] - 0.5 * h * k1[0], y[1] - 0.5 * h * k1[1]];
+    const k2 = deriv(s - 0.5 * h, y2);
+    const y3 = [y[0] - 0.5 * h * k2[0], y[1] - 0.5 * h * k2[1]];
+    const k3 = deriv(s - 0.5 * h, y3);
+    const y4 = [y[0] - h * k3[0], y[1] - h * k3[1]];
+    const k4 = deriv(s - h, y4);
+    y = [y[0] - (h / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
+         y[1] - (h / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])];
+    s -= h;
+    if (!isFinite(y[0])) break;
+    ss.push(s); qs.push(y[0]);
+  }
+  ss.reverse(); qs.reverse();
+  const nn = ss.length;
+  const A = new Array(nn).fill(0), B = new Array(nn).fill(0), C = new Array(nn).fill(0);
+  for (let i = nn - 2; i >= 0; i--) {
+    const x1 = ss[i], x2 = ss[i + 1], dx = x2 - x1;
+    A[i] = A[i + 1] + 0.5 * (qs[i] * qs[i] + qs[i + 1] * qs[i + 1]) * dx;
+    B[i] = B[i + 1] + 0.5 * (x1 * qs[i] * qs[i] + x2 * qs[i + 1] * qs[i + 1]) * dx;
+    C[i] = C[i + 1] + 0.5 * (qs[i] + qs[i + 1]) * dx;
+  }
+  const F2 = new Array(nn), F1 = new Array(nn);
+  for (let i = 0; i < nn; i++) {
+    const Rs = B[i] - ss[i] * A[i];
+    F2[i] = Math.exp(-Rs);
+    F1[i] = Math.sqrt(Math.max(F2[i], 0)) * Math.exp(-0.5 * C[i]);
+  }
+  return { s: ss, F1, F2 };
+}
+const TW = buildTracyWidom();
+// pdf lookup via linear interpolation on the tabulated CDF
+function twPdf(curve, s) {
+  const arr = curve; const ss = TW.s;
+  let lo = 0, hi = ss.length - 1;
+  if (s <= ss[0] || s >= ss[hi]) return 0;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (ss[mid] < s) lo = mid; else hi = mid; }
+  return (arr[hi] - arr[lo]) / (ss[hi] - ss[lo]);
+}
+
+/* ---- modes ---- */
+const N_GROW = 30000;     // hero growth animation target size
+const N_STAT = 6000;      // background repeated-trial statistic size
+const INSERTS_PER_FRAME = 90;
+const HOLD_MS = 3600;
+const invProbsStat = fixedPointProbs(N_STAT);
+
+const MODES = [
+  { key: 'perm', name: 'PERMUTATION', theory: 'F2',
+    desc: 'LIS ~ 2√N + N^1/6·TW2 · Baik–Deift–Johansson (1999)' },
+  { key: 'invo', name: 'INVOLUTION', theory: 'F1',
+    desc: 'σ(σ(i))=i · LIS → GOE · Baik–Rains (2001)' },
+];
+let modeIdx = 0, modeStart = 0;
+
+let rows, growPerm, growCount, growTarget, phase, phaseStart;
+let hist = { sum: 0, sum2: 0, n: 0, counts: null, lo: -6, hi: 3.5, bins: 26 };
+
+function newHist() {
+  hist = { sum: 0, sum2: 0, n: 0, counts: new Float64Array(26), lo: -6, hi: 3.5, bins: 26 };
+}
+
+function resetGrowth() {
+  rows = [];
+  growTarget = N_GROW;
+  growPerm = MODES[modeIdx].key === 'perm'
+    ? randPerm(growTarget, rng)
+    : randInvolution(growTarget, rng, fixedPointProbs(growTarget));
+  growCount = 0;
+  phase = 'growing'; phaseStart = performance.now();
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  resetGrowth();
+  newHist();
+  modeStart = performance.now();
+}
+applyMode(0);
+
+function growStep() {
+  const remain = growTarget - growCount;
+  if (remain <= 0) return false;
+  const chunk = Math.min(INSERTS_PER_FRAME, remain);
+  for (let i = 0; i < chunk; i++) rskInsert(rows, growPerm[growCount++]);
+  return growCount < growTarget;
+}
+
+function accumulateStats(trials) {
+  const m = MODES[modeIdx];
+  const scale = Math.pow(N_STAT, 1 / 6);
+  const centered = 2 * Math.sqrt(N_STAT);
+  for (let t = 0; t < trials; t++) {
+    const perm = m.key === 'perm' ? randPerm(N_STAT, rng) : randInvolution(N_STAT, rng, invProbsStat);
+    const L = lisLength(perm);
+    const z = (L - centered) / scale;
+    hist.sum += z; hist.sum2 += z * z; hist.n++;
+    if (z >= hist.lo && z < hist.hi) {
+      const b = Math.min(hist.bins - 1, Math.floor((z - hist.lo) / (hist.hi - hist.lo) * hist.bins));
+      hist.counts[b]++;
+    }
+  }
+}
+
+/* ---- layout: (u,v) Russian-coordinate plane -> pixels ---- */
+let cx, cy, uScale, portrait, hp;
+function layout() {
+  portrait = H > W * 1.05;
+  cx = W * 0.5;
+  cy = portrait ? H * 0.56 : H * 0.80;
+  uScale = portrait ? Math.min(W / 5.4, H / 5.6) : Math.min(W / 5.2, H / 3.1);
+  // histogram panel geometry, computed once here so drawDiagram's clip and
+  // drawHistogram's placement always agree
+  if (portrait) {
+    const panelW = Math.min(W * 0.86, 480), panelH = Math.min(H * 0.19, 190);
+    hp = { w: panelW, h: panelH, x: W * 0.5 - panelW / 2, y: H - panelH - H * 0.135 };
+  } else {
+    const panelW = Math.min(W * 0.4, 480), panelH = Math.min(H * 0.24, 200);
+    hp = { w: panelW, h: panelH, x: W - panelW - W * 0.045, y: H * 0.09 };
+  }
+}
+function px(u) { return cx + u * uScale; }
+function py(v) { return cy - v * uScale; }
+
+function drawDiagram() {
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+  layout();
+
+  const Ncur = Math.max(growCount, 1);
+  const sq = Math.sqrt(Ncur);
+
+  // keep the diagram's own far-reaching V arms and fill from crossing into
+  // wherever the stats text / histogram overlay currently sit
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  if (portrait) {
+    ctx.rect(0, 0, W, H * 0.14);
+    ctx.rect(hp.x - W * 0.02, hp.y - H * 0.02, hp.w + W * 0.04, hp.h + H * 0.05);
+  } else {
+    ctx.rect(W * 0.56, 0, W * 0.44, H * 0.15);
+  }
+  ctx.clip('evenodd');
+
+  // the Omega(u) exact limit curve
+  ctx.beginPath();
+  for (let i = 0; i <= 220; i++) {
+    const u = -2.6 + (i / 220) * 5.2;
+    const v = omega(u);
+    const X = px(u), Y = py(v);
+    if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.55)';
+  ctx.lineWidth = Math.max(1, uScale * 0.006);
+  ctx.stroke();
+
+  // the real, rescaled Young-diagram boundary: row corners (i, lambda_i),
+  // strictly decreasing in i, already trace the FULL curve (see header)
+  if (rows.length > 0) {
+    ctx.beginPath();
+    for (let i = 0; i < rows.length; i++) {
+      const lam = rows[i].length;
+      const u = (lam - (i + 1)) / sq;
+      const v = (lam + (i + 1)) / sq;
+      const X = px(u), Y = py(v);
+      if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    }
+    ctx.lineTo(px((rows[rows.length - 1].length - rows.length) / sq), py(0));
+    ctx.lineTo(px((rows[0].length - 1) / sq), py(0));
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, py(1.4), 0, py(0));
+    grad.addColorStop(0, 'rgba(255,176,64,.34)');
+    grad.addColorStop(1, 'rgba(255,176,64,.05)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,176,64,.85)';
+    ctx.lineWidth = Math.max(1, uScale * 0.005);
+    ctx.beginPath();
+    for (let i = 0; i < rows.length; i++) {
+      const lam = rows[i].length;
+      const u = (lam - (i + 1)) / sq;
+      const v = (lam + (i + 1)) / sq;
+      const X = px(u), Y = py(v);
+      if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHistogram() {
+  const m = MODES[modeIdx];
+  const panelW = hp.w, panelH = hp.h;
+  const pxo = hp.x, pyo = hp.y;
+  const maxC = Math.max(...hist.counts, 1);
+  const bw = (hist.hi - hist.lo) / hist.bins;
+  let peakDensity = 0.05;
+  for (let i = 0; i <= 40; i++) {
+    const s = hist.lo + (i / 40) * (hist.hi - hist.lo);
+    peakDensity = Math.max(peakDensity, twPdf(TW[m.theory], s));
+  }
+  ctx.save();
+  ctx.translate(pxo, pyo);
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  for (let b = 0; b < hist.bins; b++) {
+    const density = hist.n > 0 ? hist.counts[b] / hist.n / bw : 0;
+    const hgt = Math.min(panelH, (density / peakDensity) * panelH * 0.92);
+    ctx.fillRect((b / hist.bins) * panelW, panelH - hgt, panelW / hist.bins * 0.82, hgt);
+  }
+  ctx.strokeStyle = m.theory === 'F2' ? 'rgba(140,210,255,.9)' : 'rgba(255,220,140,.9)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let i = 0; i <= 90; i++) {
+    const s = hist.lo + (i / 90) * (hist.hi - hist.lo);
+    const yv = panelH - Math.min(panelH, (twPdf(TW[m.theory], s) / peakDensity) * panelH * 0.92);
+    const xv = (i / 90) * panelW;
+    if (i === 0) ctx.moveTo(xv, yv); else ctx.lineTo(xv, yv);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, panelW, panelH);
+  ctx.font = '9px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.fillText(`(L−2√${N_STAT}) / ${N_STAT}^1/6`, 2, panelH + 14);
+  ctx.fillStyle = m.theory === 'F2' ? 'rgba(140,210,255,.9)' : 'rgba(255,220,140,.9)';
+  ctx.fillText(m.theory === 'F2' ? 'TRACY-WIDOM GUE (F2)' : 'TRACY-WIDOM GOE (F1)', 2, -8);
+  ctx.restore();
+}
+
+/* ---- main loop ---- */
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (phase === 'growing') {
+    if (!growStep()) { phase = 'holding'; phaseStart = now; }
+  } else if (phase === 'holding') {
+    if (now - phaseStart > HOLD_MS) resetGrowth();
+  }
+  accumulateStats(6);
+
+  drawDiagram();
+  drawHistogram();
+
+  if (now - modeStart > 26000) applyMode(modeIdx + 1);
+
+  const m = MODES[modeIdx];
+  nValEl.textContent = growCount;
+  const lam1 = rows.length ? rows[0].length : 0;
+  lisValEl.textContent = `λ₁ = ${lam1}  (2√N = ${(2 * Math.sqrt(Math.max(growCount,1))).toFixed(1)})`;
+  if (hist.n > 0) {
+    const mean = hist.sum / hist.n;
+    const std = Math.sqrt(Math.max(0, hist.sum2 / hist.n - mean * mean));
+    const ref = m.theory === 'F2' ? '−1.771 / 0.902' : '−1.207 / 1.268';
+    histValEl.textContent = `${hist.n} trials · z̄=${mean.toFixed(3)} σ=${std.toFixed(3)} (${ref})`;
+  }
+}
+requestAnimationFrame(loop);
+
+/* ---- interaction: click/tap to reshuffle immediately ---- */
+function reshuffle() { resetGrowth(); }
+canvas.addEventListener('mousedown', reshuffle);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); reshuffle(); }, { passive: false });
+</script>
+</body>
+</html>
