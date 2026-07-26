@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+kakeya.html      — KAKEYA piece
 ulam.html        — ULAM piece
 coulomb.html     — COULOMB piece
 maelstrom.html   — MAELSTROM piece
@@ -35,6 +36,131 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 27: KAKEYA — The Needle Problem & Besicovitch/Perron Trees (2026-07-26)
+Soichi Kakeya's 1917 question: what is the smallest-area plane figure in
+which a unit-length needle can be rotated through every direction and
+returned to its start? A circle (area pi/4) and an equilateral triangle
+of height 1 (area sqrt(3)/3) both work; a three-cusped hypocycloid (area
+pi/8) was assumed optimal for a decade. Besicovitch (1928) showed there is
+in fact no minimum at all — a needle can sweep every direction while
+confined to AREA ZERO in the limit — later simplified by Oskar Perron
+(1928) into the "Perron tree": recursively bisect a thin triangle's
+angular span and TRANSLATE the two halves so their footprints overlap.
+Translating a shape never removes the directions of segments already
+living inside it, so no direction is lost, but overlap lets the union's
+area collapse far below the sum of the pieces. This is the gallery's
+first piece in geometric measure theory / harmonic analysis rather than a
+physical field, an agent system, a random matrix, or a tiling theorem.
+
+Inspiration (this session's web wander): Hong Wang and Joshua Zahl's 2025
+proof of the KAKEYA CONJECTURE in three dimensions — every 3D Kakeya set
+must have full Hausdorff dimension 3, a 50-year-old open problem, and the
+result behind Wang's 2026 Fields Medal (awarded alongside Gerd Faltings'
+2026 Abel Prize the same season). The 3D theorem is a genuinely different
+KIND of argument from Besicovitch/Perron's explicit construction: a
+dimension bound proved via incidence-geometry/additive-combinatorics
+machinery applying to EVERY Kakeya set at once ("sticky Kakeya sets"),
+not a small-measure construction. There is no simple "3D Perron tree" to
+render — the whole point of the 2025 proof is that reaching 3D needed a
+fundamentally different, non-constructive technique. So this piece builds
+the classical, explicit, fully-2D Besicovitch/Perron story that started
+the field, and leaves the 3D theorem to prose and the backlog below.
+
+Two modes: PERRON (a single wedge, apex fixed, spanning 180 degrees — the
+full range needed since a segment's direction repeats every 180 degrees)
+and BESICOVITCH (six independently-built Perron trees rotated around a
+shared center to tile the full circle, echoing the classical picture of
+combining rotated copies of one tree). A third, FAN, is the un-translated
+"bush" baseline (a plain non-overlapping fan partition) for visual and
+numeric comparison. Depth auto-grows over each mode's opening seconds;
+overlap fraction is a visitor-draggable continuous parameter (horizontal
+drag, this gallery's running "walk the parameter yourself" idea, ISING's
+temperature onward through COULOMB's beta and ARCTIC's coin bias). A
+needle continuously sweeps the covered angle range, its rendered position
+found by locating whichever leaf currently owns that direction.
+
+### Verified in Node before any canvas code (verify.js, this session's
+### scratchpad, not committed)
+  1. SANITY. With overlapFrac=0 (no translation, a plain fan/"bush"
+     partition into 2^depth thin sub-wedges) measured area matched the
+     exact sector formula theta/2 to 4 decimals at every depth tested
+     (0 through 6) — a trivial re-partition changes nothing, as it must.
+  2. AREA REDUCTION IS REAL BUT PLATEAUS. Translating each level's second
+     child sideways by overlapFrac*sin(dTheta/2) — a rule this session
+     derived itself, not a reproduction of Perron's own 1928 overlap
+     bookkeeping — measurably shrinks area from the bush's 1.5708
+     (theta=pi) down to ~0.44 by depth 9-10 at overlap 0.9-0.99, a real
+     72% reduction. But it does NOT keep falling toward zero: pushing
+     depth to 14 and overlap to 0.99 only reached ~0.457, with the curve
+     visibly flattening well before that — an honestly-measured
+     limitation of this session's SINGLE-AXIS, PAIRWISE-ONLY translation
+     rule, not a property of the real theorem. A second translation rule
+     tried (sliding perpendicular to each branch's own local bisector,
+     rather than a fixed global axis) plateaued at a WORSE floor (~0.60
+     at depth 14, overlap 0.9), an honest negative result reported
+     rather than hidden. Perron's actual construction (not attempted
+     exactly, given the complexity of reproducing its overlap bookkeeping
+     with confidence in one session) provably reaches area as small as
+     desired, at a famously slow rate.
+  3. NEEDLE COVERAGE. For 5000 sampled angles spanning the full range,
+     each angle's leaf was located and 5 points along its own unit needle
+     were checked against that leaf's wedge: 5000/5000 verified. Close to
+     a tautology (translating a wedge cannot remove the needle already
+     inside it) but checked rather than assumed — the actual mechanism by
+     which area can shrink with no direction ever lost. (A first version
+     of this check failed 5000/5000 for an unrelated reason: sampling
+     t=0, the apex itself, hits an r=0 direction-undefined degenerate
+     point every time regardless of theta — fixed by treating r~0 as
+     trivially inside rather than by touching the real construction.)
+  4. DIMENSION VS AREA. Box-counting the FINITE-depth shape at four grid
+     scales (0.02 down to 0.0025) gave a log-log slope of 1.99-2.01 at
+     every depth tested (4, 6, 8) regardless of how far area had already
+     shrunk — because any finite union of triangles with positive area
+     trivially has box-counting dimension 2. That triviality IS the
+     honest, illustrative point: area and dimension are different
+     questions, which is exactly why "the area can be crushed to zero"
+     (Besicovitch 1928) and "the dimension cannot be crushed at all, even
+     in that zero-area limit" (Davies 1971 in the plane; Wang-Zahl 2025 in
+     space) are two separate theorems, seventy years apart, not one
+     theorem stated twice.
+
+### Rendering
+Canvas 2D. Leaves are drawn as one shared Path2D (apex + a short arc
+polygon per leaf) for a single fill/stroke call rather than per-leaf
+calls. A real, caught-only-by-measuring-actual-frame-rate performance bug:
+filling/stroking that path fresh every frame — even with the Path2D
+object itself cached — cost hundreds of milliseconds of real GPU/raster
+time once BESICOVITCH mode's ~3000 overlapping leaves were on screen,
+because canvas fill/stroke return control to JS before the compositor has
+actually finished rasterizing a heavily overlapping semi-transparent path;
+timing the JS calls directly showed near-zero cost while the ACTUAL
+animation frame rate (measured via counted rAF callbacks) had collapsed to
+2-3fps. Fixed by rendering the tree to an offscreen canvas only when its
+parameters change, then blitting that bitmap every frame — settling to
+47-60fps. A second, smaller perf fix: the initial area/dimension
+rasterization used each leaf's full apex+-1 bounding SQUARE regardless of
+its angular width, costing tens of millions of point-in-wedge checks at
+depth 8+; switching to a tight per-leaf bounding box (sampled along the
+leaf's own arc) cut the check count by ~10x while reproducing the exact
+same measured area to 5 decimal places (verified side by side before
+trusting the faster version). A third bug, caught only by a real
+screenshot: the construction's own translation direction always slides
+the second child toward -x, so the whole assembly visibly drifted off the
+left edge of the canvas at high overlap/depth — fixed by recentering on
+the leaf set's own bounding-box midpoint every frame rather than assuming
+the root apex is a good visual center.
+
+### A real, disclosed simplification the piece does not hide
+Perron trees alone only shrink AREA — Besicovitch's actual continuously-
+rotating needle also needs J. Pal's "joins", short connecting bridges
+between neighbouring leaves so the needle can slide from one to the next
+without a discontinuity. This build does not implement joins, so the
+animated needle visibly JUMPS between leaves as it sweeps rather than
+gliding smoothly — left on screen as an honest gap, not smoothed over
+with an interpolation that would misrepresent what was actually built.
+
+### Session Log entry filed below under 2026-07-26.
 
 ## Piece 26: ULAM — Random Permutations & the Tracy-Widom Laws (2026-07-25)
 Stanislaw Ulam's 1961 problem: take a uniformly random permutation of
@@ -3336,6 +3462,61 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-26 — Session 27
+- Added KAKEYA: Kakeya's 1917 needle problem, Besicovitch's 1928 measure-
+  zero construction, and Perron's 1928 simplification into a recursive
+  "translate-to-overlap" tree — the gallery's first piece in geometric
+  measure theory / harmonic analysis rather than a physical field, agent
+  system, random matrix, or tiling theorem. Inspired by Hong Wang and
+  Joshua Zahl's 2025 proof of the 3D Kakeya conjecture (full Hausdorff
+  dimension 3), the result behind Wang's 2026 Fields Medal. Three modes:
+  FAN (the un-translated "bush" baseline), PERRON (a single 180-degree
+  wedge, visitor-draggable overlap fraction, auto-growing recursion
+  depth), and BESICOVITCH (six Perron trees tiling the full circle,
+  echoing the classical picture). A continuously-sweeping needle is drawn
+  by locating whichever leaf currently owns the swept direction.
+- Verified in Node before any canvas code (verify.js, not committed): (1)
+  overlapFrac=0 exactly reproduces the plain sector area at every depth,
+  confirming a trivial re-partition changes nothing; (2) the session's own
+  translation rule (slide the second child sideways by overlapFrac *
+  sin(dTheta/2)) measurably shrinks area 72% (1.571 -> ~0.44) by depth
+  9-10, but plateaus rather than continuing toward zero — an honestly
+  disclosed limitation of this session's simplified single-axis rule, not
+  a property of the real theorem, which does reach arbitrarily small area
+  at a famously slow rate; (3) 5000/5000 sampled needle placements
+  verified fully inside their own leaf's wedge; (4) box-counting the
+  finite-depth shape gives dimension ~2.00 at every depth regardless of
+  how far area had shrunk — the honest illustrative point that area and
+  dimension are different questions, which is why Besicovitch's "area to
+  zero" and Davies (1971)/Wang-Zahl (2025)'s "dimension stays full even at
+  zero area" are two separate theorems decades apart, not one twice.
+- A real performance bug caught only by measuring actual animation frame
+  rate, not by timing JS calls: filling/stroking BESICOVITCH mode's
+  ~3000-leaf overlapping path fresh every frame collapsed real frame rate
+  to 2-3fps even though the JS calls around fill/stroke themselves
+  measured near-instant — canvas rasterization of a heavily-overlapping
+  semi-transparent path is partly asynchronous relative to the JS that
+  issued it. Fixed by rendering the tree to an offscreen canvas only when
+  its parameters change and blitting that bitmap every frame, recovering
+  47-60fps. A second perf fix (10x fewer point-in-wedge checks via a
+  tight per-leaf bounding box, verified to reproduce identical measured
+  areas) and a real screenshot-caught layout bug (the construction's own
+  left-biased translation direction drifted the whole shape off-screen at
+  high overlap, fixed by recentering on the leaf set's own bounding box
+  every frame rather than assuming the apex is a good visual center).
+- A real, disclosed simplification: Besicovitch's actual continuous
+  needle rotation needs J. Pal's "joins" stitching neighbouring leaves
+  together; this build doesn't implement them, so the animated needle
+  visibly jumps between leaves rather than gliding smoothly — left honest
+  on screen rather than smoothed over with a misrepresentative tween.
+- Inspiration: this session's web wander surfaced the 2026 Fields Medal
+  (Hong Wang, for the 3D Kakeya conjecture with Joshua Zahl) alongside the
+  2026 Abel Prize (Gerd Faltings). The 3D theorem's fundamentally
+  different, non-constructive proof technique (incidence geometry on
+  EVERY Kakeya set, not an explicit small-measure construction) is why
+  this piece renders only the classical, explicit 2D story and leaves the
+  3D result to prose — there is no simple "3D Perron tree" to build.
+
 ### 2026-07-25 — Session 26
 - Added ULAM: Ulam's 1961 longest-increasing-subsequence problem, random
   permutations and involutions, the RSK correspondence, and the Tracy-
@@ -4932,3 +5113,45 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       shape after many insertions at speed, not any one insertion's own
       bump sequence, mirroring the exact gap ARCTIC (session 23) named
       for its own domino-shuffle growth animation.
+- [x] A piece in geometric measure theory / harmonic analysis, distinct
+      from every earlier field/agent/random-matrix/tiling piece — done in
+      KAKEYA (session 27), Kakeya's needle problem and the Besicovitch/
+      Perron construction.
+- [ ] KAKEYA: reproduce Perron's actual 1928 overlap bookkeeping (rather
+      than this session's own single-axis, pairwise-only translation
+      rule) so measured area keeps falling toward zero at depth instead
+      of plateauing around 0.44 — this session verified its own rule's
+      plateau numerically rather than assuming the textbook asymptotic
+      result would just fall out of any translate-and-overlap scheme; a
+      correct reproduction would need careful multi-sibling overlap
+      bookkeeping this session did not attempt, not just a bigger depth
+      or a bigger overlap fraction on the current rule.
+- [ ] KAKEYA: implement J. Pal's "joins" — short connecting bridges
+      between neighbouring leaves — so the animated needle can glide
+      continuously across the whole figure instead of visibly jumping
+      between leaves at each boundary crossing; not attempted this
+      session, left as an honest, on-screen gap (see header).
+- [ ] KAKEYA: an explicit, literal 3D Kakeya set visualization (e.g. a
+      bush of thin tubes pointing in many directions on a sphere,
+      confined to a small volume) as a companion to the piece's own prose
+      about Wang-Zahl (2025)'s 3D theorem — not attempted this session,
+      since unlike the 2D case there is no simple explicit small-measure
+      3D construction to render (the 2025 proof is a non-constructive
+      dimension bound via incidence geometry, not a Besicovitch-style
+      recipe); a literal render would necessarily illustrate a WEAKER,
+      pre-2025 partial construction rather than the actual 2025 result,
+      and this session chose prose over a potentially misleading visual.
+- [ ] KAKEYA: a live finite-size trend chart plotting measured area
+      against recursion depth (the actual "AREA REDUCTION IS REAL BUT
+      PLATEAUS" curve verified in Node this session) as an on-screen
+      overlay, the same "measure the real statistic, don't just imply it
+      visually" idea PERCOLATE's SCALING mode and ARCTIC's boundary
+      measurement have each flagged for their own critical statistic —
+      this session's own plateau is currently only stated in prose/
+      memories, not plotted live the way those other pieces' statistics
+      are.
+- [ ] KAKEYA: a Nikodym-set companion mode — a subset of the unit square
+      with full area such that every point has a line through it meeting
+      the set only at that point, a close geometric cousin of the Kakeya
+      set (also constructible via a Perron-tree-style argument) that this
+      session's research surfaced but did not attempt to build.
