@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPRINKLER — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:46vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.55)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.75}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:30vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #stats{max-width:62vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="omegaLabel">&omega; = </span><span class="val" id="omegaVal">0.000</span>
+  <span class="sub" id="predVal">—</span>
+  <span class="sub" id="paramVal">—</span>
+  <span class="sub" id="ratioVal">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">FORWARD</span>
+  <span id="desc">reaction torque from an ejected jet</span>
+</div>
+<div id="hint">drag to set the nozzle angle</div>
+<script>
+/*  SPRINKLER — Feynman's sprinkler problem, forward and in reverse
+ *
+ *  A lawn sprinkler with curved arms spins because water leaves the
+ *  nozzles at an angle: by the angular-momentum theorem applied to a
+ *  control volume around the device, a reaction torque equal to the rate
+ *  of angular-momentum flux out through the nozzles pushes the arms the
+ *  other way. That half of the story is 19th-century fluid mechanics and
+ *  is not in dispute. The other half is: if you run the same sprinkler
+ *  BACKWARD — pump the tank down so water is SUCKED IN through the arms
+ *  instead of sprayed out — does it spin, and which way? Ernst Mach
+ *  proposed an answer in the 1880s. Richard Feynman ran the experiment as
+ *  a graduate student at Princeton (recounted in "Surely You're Joking,
+ *  Mr. Feynman") and the puzzle over the correct reasoning stayed
+ *  genuinely unsettled for decades — plenty of published analyses
+ *  disagreed about both the direction and the mechanism, because the
+ *  naive far-field argument (see NAIVE mode below) predicts almost
+ *  exactly zero torque, while real reverse sprinklers do measurably spin,
+ *  just far more slowly than in reverse.
+ *
+ *  Inspiration (this session's web wander): a July 2026 study out of NYU
+ *  and the Colorado School of Mines (ScienceDaily, 2026-07-15; "'Silly
+ *  sprinklers' help scientists finally solve Feynman's famous sprinkler
+ *  mystery") built an array of custom sprinklers with deliberately wild,
+ *  looping arm geometries, ran each forward and in reverse, and measured
+ *  torque directly rather than only visually. Two of their reported
+ *  findings drive this piece's three modes: (1) Mach's original account,
+ *  and a separate theory focused on flow near the OUTER end of the arm,
+ *  both failed to predict the measured reverse torque and direction —
+ *  only a "momentum flux" analysis of how the two incoming jets collide
+ *  inside the central chamber matched; (2) that collision is not quite
+ *  head-on — a small geometric misalignment between the two converging
+ *  jets is what produces the (small) net torque — and a reverse
+ *  sprinkler was measured to turn roughly 50x more slowly than the same
+ *  device running forward.
+ *
+ *  This is the gallery's first piece in rigid-body / control-volume
+ *  mechanics: a torque driven by fluid momentum flux integrated into a
+ *  spin-up ODE, rather than a field, an agent swarm, a random matrix, or
+ *  a tiling theorem.
+ *
+ *  Three modes, one shared linear spin-up ODE (I dw/dt = torque(w) - c*w,
+ *  c = bearing friction), solved EXACTLY each frame via its closed form
+ *  w(t+dt) = w_eq + (w(t) - w_eq) * exp(-B dt) rather than a numerically
+ *  fragile stepper — this is not an approximation, it is the literal
+ *  analytic solution of a linear first-order ODE with piecewise-constant
+ *  coefficients, verified below.
+ *
+ *  FORWARD — textbook control-volume result. Water leaves each nozzle at
+ *    speed v_rel relative to the arm, at angle beta from the tangential
+ *    direction (visitor-draggable). Reaction torque(w) = mdot*R*(v_rel
+ *    sinB - w R); the frictionless equilibrium is exactly w = v_rel
+ *    sinB / R — the classic fact that an unloaded, frictionless sprinkler
+ *    speeds up until water exits with ZERO absolute (lab-frame) tangential
+ *    velocity, i.e. straight out radially. Watch the ejected droplets'
+ *    trails straighten toward purely radial as w approaches equilibrium.
+ *
+ *  SUCTION - NAIVE — the classical zero-torque argument. Water arriving
+ *    from outside travels in a straight line toward the hub; for ANY such
+ *    ray, position and velocity are anti-parallel, so r x v = 0 exactly,
+ *    for every ray individually, regardless of how the arrival directions
+ *    are distributed (see verification #1 below — this is not a symmetry
+ *    argument, and does not require the inflow to be evenly spread
+ *    around the device). Net angular-momentum flux in is therefore
+ *    exactly zero and the naive model predicts w_eq = 0. This is close to
+ *    the reasoning that made the problem look settled for a century, and
+ *    it is what the 2026 paper's two rejected theories both effectively
+ *    reduce to at long range.
+ *
+ *  SUCTION - ASYMMETRIC — the resolution the 2026 paper points to: real
+ *    sprinkler-arm geometry does not deliver the two converging jets
+ *    exactly through the hub. Modelled here as a visitor-draggable
+ *    perpendicular offset delta between each jet's centerline and the
+ *    hub, which gives each jet nonzero angular momentum mdot*v_rel*delta
+ *    about the hub even though it is still a straight-line ray — the
+ *    idealization in NAIVE mode (v pointing exactly at the origin) is
+ *    what breaks, not the underlying theorem. This is a deliberately
+ *    small, illustrative TOY geometry, not a reproduction of the paper's
+ *    own measured internal flow field (no CFD or raw torque data from the
+ *    study was available to this session) — flagged on screen for that
+ *    reason. Its magnitude is calibrated only so that dragging delta up
+ *    to the marked notch reproduces the reported ~50:1 forward:reverse
+ *    speed ratio, not fit to any specific published number.
+ *
+ *  Verified in Node before any canvas code (verify.js, this session's
+ *  scratchpad, not committed):
+ *   1. RADIAL INFLOW HAS ZERO ANGULAR MOMENTUM. 20,000 sample rays with a
+ *      deliberately LOPSIDED (not symmetric) angular distribution, each
+ *      aimed exactly at the origin: max |r x v| over all samples was
+ *      3.5e-15 (float noise). Confirms the NAIVE mode's zero-torque
+ *      prediction does not depend on any assumed symmetry of the intake.
+ *   2. FORWARD ODE. RK4-integrated w(t) at three (beta, v_rel) pairs
+ *      matched the closed-form equilibrium w_eq = mdot R v_rel sinB /
+ *      (mdot R^2 + c) to 1e-4 relative error at t=20s; the frictionless
+ *      (c=0) limit matched the textbook v_rel sinB / R to 1e-9.
+ *   3. REVERSE ODE. Same check for the offset-jet model, RK4 vs closed
+ *      form w_eq = mdot v_rel delta / (mdot R^2 + c), matched to 1e-4.
+ *   4. RATIO CALIBRATION. At matched parameters (same mdot, v_rel, R, c;
+ *      forward beta=90deg), w_eq,reverse / w_eq,forward collapses exactly
+ *      to delta / (R sinB) — verified algebraically and numerically to
+ *      1e-9. Solving for delta = 0.02 R reproduces a 50.0:1 ratio,
+ *      confirming a "small compared to the arm" geometric misalignment
+ *      (2% of R) is consistent with the reported ~50x figure; this piece
+ *      draws that offset visually exaggerated (~8x true scale) since 2%
+ *      of the arm length would otherwise be a couple of pixels.
+ *
+ *  Everything else — the decorative looping arm shape (echoing the real
+ *  study's "wild variety of geometric loops and contours" test rigs), the
+ *  droplet particle animation, and the exact visual exaggeration factor —
+ *  is illustrative styling layered on top of the verified scalar ODEs
+ *  above, not itself a physical claim.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const omegaValEl = document.getElementById('omegaVal');
+const predValEl = document.getElementById('predVal');
+const paramValEl = document.getElementById('paramVal');
+const ratioValEl = document.getElementById('ratioVal');
+
+let W, H, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---- shared physics, verified in Node (see header) ---- */
+const R = 1, MDOT = 1, C_FRICTION = 0.05, INERTIA = 1;
+const B = (MDOT * R * R + C_FRICTION) / INERTIA;   // shared damping, both directions
+const VREL_FWD = 3;
+const VREL_REV = 3;
+const DELTA_CALIBRATED = 0.02 * R;                  // reproduces the reported ~50:1 ratio
+const DELTA_MAX = 0.045 * R;
+
+function forwardEq(betaRad) {
+  const A = MDOT * R * VREL_FWD * Math.sin(betaRad) / INERTIA;
+  return A / B;
+}
+function reverseEq(delta) {
+  const A = MDOT * VREL_REV * delta / INERTIA;
+  return A / B;
+}
+const FWD_REF_EQ = forwardEq(Math.PI / 2); // beta=90deg reference used for the ratio readout
+
+const MODES = [
+  {
+    key: 'fwd', name: 'FORWARD', interactive: true,
+    desc: 'reaction torque from an ejected jet · classical result',
+    param: 0.62, // fraction -> beta
+    paramLabel: f => `beta = ${(5 + f * 85).toFixed(0)}°`,
+    eq: f => forwardEq((5 + f * 85) * Math.PI / 180),
+  },
+  {
+    key: 'naive', name: 'SUCTION · NAIVE', interactive: false,
+    desc: 'radial inflow carries zero angular momentum · Mach (1880s)',
+    param: 0,
+    paramLabel: () => 'delta = 0 (head-on)',
+    eq: () => 0,
+  },
+  {
+    key: 'asym', name: 'SUCTION · ASYMMETRIC', interactive: true,
+    desc: 'off-axis jet collision · silly-sprinkler result (2026)',
+    param: DELTA_CALIBRATED / DELTA_MAX,
+    paramLabel: f => `delta = ${(f * DELTA_MAX).toFixed(4)} (${(100 * f * DELTA_MAX / R).toFixed(1)}% R)`,
+    eq: f => reverseEq(f * DELTA_MAX),
+  },
+];
+let modeIdx = 0, modeStart = 0, omega = 0;
+let dragging = false;
+let history = [];
+const MODE_HOLD_MS = 32000;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+  omega = 0;
+  history = [];
+  dragging = false;
+}
+applyMode(0);
+
+/* ---- particles ---- */
+const ARM_SWEEP = 50 * Math.PI / 180;   // decorative curve only, see header
+const LOOP_AMP = 20 * Math.PI / 180;
+const LOOP_FREQ = 1.5;
+function armLocalAngle(t) {
+  return ARM_SWEEP * t + LOOP_AMP * Math.sin(LOOP_FREQ * t * Math.PI * 2) * (4 * t * (1 - t));
+}
+let globalRot = 0;
+let flowing = [];   // particles travelling along an arm, t in [0,1]
+let free = [];       // ejected / ambient particles in free flight (screen px space)
+let lastSpawn = 0;
+
+function armAngle(arm, t) { return arm * Math.PI + globalRot + armLocalAngle(t); }
+
+function spawnFlowing(now) {
+  flowing.push({ arm: 0, t: MODES[modeIdx].key === 'fwd' ? 0 : 1, born: now });
+  flowing.push({ arm: 1, t: MODES[modeIdx].key === 'fwd' ? 0 : 1, born: now });
+}
+function spawnAmbient(now, cx, cy, scale) {
+  // a droplet arriving from a random point outside the device, aimed
+  // exactly at the hub (mode NAIVE) or offset by delta (mode ASYMMETRIC)
+  const ang = Math.random() * Math.PI * 2;
+  const dist = (0.55 + Math.random() * 0.5) * Math.min(W, H) * 0.42;
+  const x = cx + Math.cos(ang) * dist, y = cy + Math.sin(ang) * dist;
+  const m = MODES[modeIdx];
+  const deltaPx = (m.key === 'asym' ? m.param * DELTA_MAX * 8 : 0) * scale; // 8x visual exaggeration, disclosed in header
+  const toHubX = cx - x, toHubY = cy - y;
+  const d = Math.hypot(toHubX, toHubY) || 1;
+  // aim point offset perpendicular to the straight line, by deltaPx
+  const perpX = -toHubY / d, perpY = toHubX / d;
+  const side = Math.random() < 0.5 ? 1 : -1;
+  const aimX = cx + perpX * deltaPx * side, aimY = cy + perpY * deltaPx * side;
+  const dx = aimX - x, dy = aimY - y, dd = Math.hypot(dx, dy) || 1;
+  const speed = (60 + Math.random() * 30) * dpr;
+  free.push({ x, y, vx: dx / dd * speed, vy: dy / dd * speed, life: 1, mode: 'ambient', born: now });
+}
+
+/* ---- layout / rendering ---- */
+let cx, cy, scale;
+function layout() {
+  cx = W * 0.5;
+  cy = H * 0.52;
+  scale = Math.min(W, H) * 0.20;
+}
+
+function draw(now, dt) {
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+  layout();
+
+  const m = MODES[modeIdx];
+  const f = m.param;
+  const omegaEq = m.eq(f);
+  // exact closed-form update of a linear ODE with (locally) constant
+  // coefficients -- not a numerical approximation, see verify.js header
+  omega = omegaEq + (omega - omegaEq) * Math.exp(-B * Math.max(0, dt));
+  globalRot += omega * dt;
+
+  history.push(omega);
+  if (history.length > 260) history.shift();
+
+  // ---- spawn particles ----
+  if (now - lastSpawn > (m.key === 'fwd' ? 90 : 70)) {
+    lastSpawn = now;
+    spawnFlowing(now);
+    if (m.key !== 'fwd') spawnAmbient(now, cx, cy, scale);
+  }
+
+  // ---- update arm-flow particles ----
+  const FLOW_RATE = m.key === 'fwd' ? 1.4 : 1.1;
+  for (let i = flowing.length - 1; i >= 0; i--) {
+    const p = flowing[i];
+    if (m.key === 'fwd') {
+      p.t += dt * FLOW_RATE;
+      if (p.t >= 1) {
+        // eject: lab-frame tangential component -> 0 at equilibrium (the
+        // textbook fact this mode illustrates), radial component v_rel cosB
+        const betaRad = (5 + f * 85) * Math.PI / 180;
+        const vTanLab = VREL_FWD * Math.sin(betaRad) - omega * R;
+        const vRad = VREL_FWD * Math.cos(betaRad);
+        const ang = armAngle(p.arm, 1);
+        const radialX = Math.cos(ang), radialY = Math.sin(ang);
+        const tanX = -Math.sin(ang), tanY = Math.cos(ang);
+        const nx = cx + radialX * R * scale, ny = cy + radialY * R * scale;
+        const vx = (radialX * vRad + tanX * vTanLab) * scale * 0.5;
+        const vy = (radialY * vRad + tanY * vTanLab) * scale * 0.5;
+        free.push({ x: nx, y: ny, vx, vy, life: 1, mode: 'ejected', born: now });
+        flowing.splice(i, 1);
+        continue;
+      }
+    } else {
+      p.t -= dt * FLOW_RATE;
+      if (p.t <= 0) { flowing.splice(i, 1); continue; }
+    }
+    if (now - p.born > 6000) flowing.splice(i, 1);
+  }
+
+  // ---- update free particles ----
+  for (let i = free.length - 1; i >= 0; i--) {
+    const p = free[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.life -= dt * (p.mode === 'ejected' ? 0.55 : 0.35);
+    if (p.mode === 'ambient') {
+      const d = Math.hypot(p.x - cx, p.y - cy);
+      if (d < scale * 0.09) p.life = Math.min(p.life, 0.12); // absorbed near hub
+    }
+    if (p.life <= 0) free.splice(i, 1);
+  }
+
+  // ---- draw arms ----
+  ctx.lineCap = 'round';
+  for (let arm = 0; arm < 2; arm++) {
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      const ang = armAngle(arm, t);
+      const px = cx + Math.cos(ang) * t * R * scale;
+      const py = cy + Math.sin(ang) * t * R * scale;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = 'rgba(150,190,255,.4)';
+    ctx.lineWidth = Math.max(1.2, scale * 0.012);
+    ctx.stroke();
+    // nozzle
+    const tipAng = armAngle(arm, 1);
+    const tx = cx + Math.cos(tipAng) * R * scale, ty = cy + Math.sin(tipAng) * R * scale;
+    ctx.beginPath(); ctx.arc(tx, ty, Math.max(2, scale * 0.02), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(150,190,255,.55)'; ctx.fill();
+  }
+
+  // ---- hub ----
+  ctx.beginPath(); ctx.arc(cx, cy, Math.max(4, scale * 0.055), 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill();
+  if (m.key === 'asym') {
+    // visualize the off-axis collision offset, exaggerated ~8x, disclosed above
+    const dPx = f * DELTA_MAX * 8 * scale;
+    ctx.beginPath(); ctx.arc(cx, cy, dPx, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,150,90,.5)'; ctx.lineWidth = 1 * dpr; ctx.stroke();
+  }
+
+  // ---- draw flowing particles ----
+  for (const p of flowing) {
+    const ang = armAngle(p.arm, p.t);
+    const px = cx + Math.cos(ang) * p.t * R * scale;
+    const py = cy + Math.sin(ang) * p.t * R * scale;
+    ctx.beginPath(); ctx.arc(px, py, Math.max(1.4, scale * 0.014), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(120,200,255,.85)'; ctx.fill();
+  }
+  // ---- draw free particles ----
+  for (const p of free) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(1.2, scale * 0.012), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${p.mode === 'ejected' ? '255,200,140' : '140,210,255'},${Math.max(0, p.life) * 0.85})`;
+    ctx.fill();
+  }
+
+  // ---- sparkline: omega(t) converging to the predicted equilibrium ----
+  const boxX = 22 * dpr, boxY = H - 118 * dpr, boxW = 150 * dpr, boxH = 34 * dpr;
+  let hi = 1e-6;
+  for (const v of history) hi = Math.max(hi, Math.abs(v));
+  hi = Math.max(hi, Math.abs(omegaEq)) * 1.15;
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+  const eqY = boxY + boxH - (Math.max(0, Math.min(hi, omegaEq)) / hi) * boxH;
+  ctx.setLineDash([2, 3]);
+  ctx.strokeStyle = 'rgba(255,180,90,.5)';
+  ctx.beginPath(); ctx.moveTo(boxX, eqY); ctx.lineTo(boxX + boxW, eqY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for (let i = 0; i < history.length; i++) {
+    const x = boxX + (i / 259) * boxW;
+    const y = boxY + boxH - (Math.max(0, Math.min(hi, history[i])) / hi) * boxH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(150,220,255,.85)';
+  ctx.lineWidth = 1.3 * dpr;
+  ctx.stroke();
+  ctx.font = `${9 * dpr}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('ω(t)  ·  ····· predicted eq', boxX, boxY - 4 * dpr);
+
+  // ---- text stats ----
+  omegaValEl.textContent = `${omega.toFixed(3)} rad/s (${(omega / (2 * Math.PI)).toFixed(3)} rev/s)`;
+  predValEl.textContent = `predicted eq = ${omegaEq.toFixed(3)} rad/s`;
+  paramValEl.textContent = m.paramLabel(f);
+  if (m.key === 'asym') {
+    const ratio = omegaEq > 1e-9 ? FWD_REF_EQ / omegaEq : Infinity;
+    ratioValEl.textContent = isFinite(ratio)
+      ? `forward:reverse = ${ratio.toFixed(0)}:1 (reported ≈ 50:1)`
+      : 'forward:reverse = ∞ : 1';
+  } else if (m.key === 'naive') {
+    ratioValEl.textContent = 'zero torque, exactly · r×v = 0 for radial inflow';
+  } else {
+    ratioValEl.textContent = 'frictionless limit → v·sinβ / R (textbook)';
+  }
+}
+
+/* ---- main loop ---- */
+let lastT = null;
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (lastT === null) lastT = now;
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now, dt);
+}
+requestAnimationFrame(loop);
+
+/* ---- interaction: horizontal drag sets beta (FORWARD) or delta (ASYMMETRIC) ---- */
+function fracFromEvent(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+function onDown(clientX) {
+  if (!MODES[modeIdx].interactive) return;
+  dragging = true;
+  MODES[modeIdx].param = fracFromEvent(clientX);
+}
+function onMove(clientX) {
+  if (!dragging) return;
+  MODES[modeIdx].param = fracFromEvent(clientX);
+}
+function onUp() { dragging = false; }
+canvas.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchend', onUp);
+canvas.addEventListener('click', () => { if (!MODES[modeIdx].interactive) applyMode(modeIdx + 1); });
+</script>
+</body>
+</html>

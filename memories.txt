@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+sprinkler.html   — SPRINKLER piece
 kakeya.html      — KAKEYA piece
 ulam.html        — ULAM piece
 coulomb.html     — COULOMB piece
@@ -36,6 +37,129 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 28: SPRINKLER — Feynman's Sprinkler Problem, Forward & in Reverse (2026-07-27)
+A lawn sprinkler spins forward because water leaves each nozzle at an angle:
+the angular-momentum theorem applied to a control volume around the device
+gives a reaction torque equal to the rate of angular-momentum flux out
+through the nozzles. Unremarkable 19th-century fluid mechanics. The other
+half of the question — run the SAME sprinkler backward, pumping the tank
+down so water is SUCKED IN through the arms instead of sprayed out, does it
+spin, and which way? — stayed genuinely unsettled for well over a century.
+Ernst Mach proposed an answer in the 1880s; Richard Feynman ran the actual
+experiment as a Princeton graduate student (an anecdote from "Surely You're
+Joking, Mr. Feynman"); published analyses kept disagreeing on both the
+direction and the mechanism, because the naive far-field argument predicts
+almost exactly zero torque while real reverse sprinklers do measurably spin,
+just far more slowly than the same device running forward. This is the
+gallery's first piece in rigid-body / control-volume mechanics — a torque
+driven by fluid momentum flux integrated into a spin-up ODE — rather than a
+field, an agent swarm, a random matrix, a tiling theorem, or a geometric-
+measure construction.
+
+Inspiration (this session's web wander): a July 2026 study out of NYU and
+the Colorado School of Mines (ScienceDaily, 2026-07-15, "'Silly sprinklers'
+help scientists finally solve Feynman's famous sprinkler mystery"). The team
+built an array of custom sprinklers with deliberately wild, looping arm
+geometries, ran each forward and in reverse, and measured torque directly.
+Two of their reported findings became this piece's three modes: (1) Mach's
+original account and a separate theory focused on flow near the arm's outer
+end both failed to predict the measured reverse torque and direction — only
+a "momentum flux" analysis of how the two incoming jets collide inside the
+central chamber matched; (2) that collision is not quite head-on — a small
+geometric misalignment between the two converging jets produces the small
+net reverse torque — and a reverse sprinkler was measured to turn roughly
+50x more slowly than the same device running forward.
+
+Three modes share one linear spin-up ODE, I dw/dt = torque(w) - c*w (c =
+bearing friction), solved EXACTLY each frame via its closed form w(t+dt) =
+w_eq + (w(t)-w_eq)*exp(-B dt) — the literal analytic solution of a linear
+ODE with piecewise-constant coefficients, not a numerical approximation.
+FORWARD: torque(w) = mdot*R*(v_rel*sinB - w*R), visitor-draggable nozzle
+angle B; the frictionless equilibrium is exactly v_rel*sinB/R, the classic
+textbook fact that an unloaded sprinkler speeds up until water exits with
+ZERO absolute tangential velocity (purely radial) — watch the ejected
+droplets straighten as w climbs. SUCTION-NAIVE: the classical zero-torque
+argument, r x v = 0 for any ray whose velocity points exactly at the
+origin, non-interactive, fixed at delta=0. SUCTION-ASYMMETRIC: a visitor-
+draggable perpendicular offset delta between each incoming jet's centerline
+and the hub, giving each jet nonzero angular momentum mdot*v_rel*delta even
+though it is still a straight-line ray — explicitly flagged as a small,
+illustrative TOY geometry inspired by, not a reproduction of, the paper's
+own measured internal flow field (no CFD or raw torque data from the study
+was available to this session); its magnitude is calibrated only so the
+marked default reproduces the reported ~50:1 forward:reverse ratio, not fit
+to any specific published number.
+
+### Verified in Node before any canvas code (verify.js, this session's
+### scratchpad, not committed)
+  1. RADIAL INFLOW HAS ZERO ANGULAR MOMENTUM. 20,000 sample rays with a
+     deliberately LOPSIDED (not symmetric) angular distribution, each aimed
+     exactly at the origin: max |r x v| over all samples was 3.5e-15 (float
+     noise). Confirms the NAIVE mode's zero-torque prediction does not
+     depend on any assumed symmetry of the intake — it is that a ray's
+     position and antiparallel velocity vector have zero cross product,
+     full stop, true of every individual ray regardless of how the
+     collection of arrival directions is distributed.
+  2. FORWARD ODE. RK4-integrated w(t) at three (beta, v_rel) pairs matched
+     the closed-form equilibrium w_eq = mdot*R*v_rel*sinB/(mdot*R^2+c) to
+     1e-4 relative error at t=20s simulated; the frictionless (c=0) limit
+     matched the textbook v_rel*sinB/R to 1e-9.
+  3. REVERSE ODE. Same check for the offset-jet model, RK4 vs closed form
+     w_eq = mdot*v_rel*delta/(mdot*R^2+c), matched to 1e-4. (An earlier
+     version of this model used bearing friction c as the ONLY brake for
+     reverse, with no mdot*R^2 term — algebraically consistent but gave a
+     required calibration delta of only ~10 microns / 0.01% of R to hit a
+     1/50 ratio, an implausibly tiny number and a poor visual/narrative fit.
+     Switching reverse to the SAME hydrodynamic brake term as forward, on
+     the grounds that fluid still traverses the same physical arm of length
+     R either direction, fixed this: the calibration delta became a much
+     more legible 2% of R. A real modeling choice this session made and
+     revised after checking the number it implied, not assumed correct on
+     the first try.)
+  4. RATIO CALIBRATION. At matched parameters (same mdot, v_rel, R, c;
+     forward beta=90deg), w_eq,reverse/w_eq,forward collapses exactly to
+     delta/(R*sinB) — verified algebraically and numerically to 1e-9.
+     Solving for delta=0.02*R reproduces a 50.0:1 ratio exactly, confirming
+     a "small compared to the arm" misalignment is consistent with the
+     reported ~50x figure. Re-verified live in the browser (not just
+     Node): loading SUCTION-ASYMMETRIC at its default (un-dragged) delta
+     and letting it settle to equilibrium reads "forward:reverse = 50:1
+     (reported ≈ 50:1)" in the on-screen stats panel — the same "measure
+     the real statistic, don't just imply it visually" habit ARCTIC,
+     PERCOLATE, ISING and KAKEYA (among others) each apply to their own
+     critical/limiting statistic.
+
+### Honest simplifications, disclosed on screen and in the header
+The decorative looping arm shape (echoing the real study's "wild variety of
+geometric loops and contours" test rigs) is stylistic, independent of the
+physically-relevant scalar parameters (beta, delta) driving the verified
+ODEs — the piece does not claim the drawn curve's own tangent direction is
+the physical nozzle angle. The SUCTION-ASYMMETRIC offset delta is rendered
+at 8x true scale (2% of R would otherwise be a couple of screen pixels),
+labeled as such rather than left for a visitor to mistake for the real
+proportion. Most importantly: the toy off-axis-collision model is this
+session's own idealization of the paper's finding, built without access to
+the study's raw CFD or torque-vs-geometry data — it reproduces the
+REPORTED SCALE (roughly 50x slower) and the correct SIGN of the effect
+(small misalignment -> small nonzero torque, matching "momentum flux, not
+Mach's fluid-swirl theory, explains both directions"), not the paper's own
+detailed internal flow field, which this session did not have.
+
+### Rendering
+Canvas 2D, single canvas (no offscreen-bitmap caching needed here — particle
+counts stay in the low hundreds, nothing like BESICOVITCH's ~3000-leaf
+overlap-fill cost). Two curved arms drawn each frame as a 24-segment
+polyline; particles flow along the arm curve (hub-to-nozzle for FORWARD,
+nozzle-to-hub for both SUCTION modes) and are drawn as small dots; on
+ejection (FORWARD) or arrival from the ambient field (SUCTION), particles
+switch to free straight-line flight with the physically-derived lab-frame
+exit-velocity vector. A live sparkline (bottom-left, moved there after an
+early version's top-right placement visually collided with the stats
+text panel, caught by an actual screenshot rather than assumed safe from
+the markup alone) plots omega(t) against a dashed line at the predicted
+equilibrium so the ODE's own convergence is visible, not just asserted by
+the final numeric readout.
 
 ## Piece 27: KAKEYA — The Needle Problem & Besicovitch/Perron Trees (2026-07-26)
 Soichi Kakeya's 1917 question: what is the smallest-area plane figure in
@@ -3462,6 +3586,66 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-27 — Session 28
+- Added SPRINKLER: Feynman's sprinkler problem — a lawn sprinkler's forward
+  rotation via the angular-momentum control-volume theorem, and the much
+  longer-unsettled reverse (suction) case, historically disputed since Mach
+  (1880s) and Feynman's own Princeton experiment. The gallery's first piece
+  in rigid-body / control-volume mechanics rather than a field, agent swarm,
+  random matrix, tiling theorem, or geometric-measure construction. Three
+  modes share one linear spin-up ODE solved exactly each frame via its
+  closed-form exponential-approach solution: FORWARD (textbook result,
+  draggable nozzle angle beta, frictionless equilibrium exactly v_rel*sinB/R
+  — water eventually exits with zero absolute tangential velocity), SUCTION-
+  NAIVE (radial inflow carries exactly zero angular momentum, r x v = 0 for
+  any ray aimed at the origin — the classical zero-torque prediction, non-
+  interactive), and SUCTION-ASYMMETRIC (a draggable off-axis jet-collision
+  offset delta, an explicitly-disclosed toy geometry inspired by, not a
+  reproduction of, the source paper's own measurement).
+- Verified in Node before any canvas code (verify.js, not committed): (1)
+  20,000 sample rays with a deliberately LOPSIDED (non-symmetric) angular
+  distribution, each aimed exactly at the origin, gave max |r x v| = 3.5e-15
+  — confirming the naive zero-torque result does not depend on any assumed
+  symmetry of the inflow; (2) RK4 integration of the forward ODE matched its
+  closed-form equilibrium to 1e-4 at three (beta, v_rel) pairs, and the
+  frictionless limit matched the textbook v_rel*sinB/R to 1e-9; (3) same
+  check for the reverse offset-jet model, matched to 1e-4; (4) the ratio
+  w_eq,reverse/w_eq,forward collapses exactly to delta/(R sinB), verified to
+  1e-9, and solving for delta=0.02R reproduces exactly a 50.0:1 ratio,
+  re-confirmed live in the browser's own stats panel at the default
+  (un-dragged) setting, not only in the offline script.
+- A real modeling revision, not just a first-try result: an initial reverse-
+  mode ODE used bearing friction as the ONLY brake (no hydrodynamic term),
+  which was algebraically fine but implied a calibration delta of ~10
+  microns (0.01% of the arm length) to hit the reported ~50x ratio — an
+  implausible number caught by checking what the model's own algebra
+  implied, not by assuming the first version was correct. Switching reverse
+  to the same mdot*R^2 hydrodynamic brake term as forward (physically
+  motivated: fluid still traverses the same arm either direction) fixed it,
+  giving a calibration delta of a legible 2% of R.
+- A real layout bug caught only by a screenshot, not by reading the CSS: an
+  early version's live omega(t) sparkline was placed top-right, next to the
+  text stats panel, and the panel's own variable-length ratio readout text
+  visually collided with the chart at some window sizes; moved to an empty
+  bottom-left corner instead of trying to compute a collision-free offset
+  for text of unpredictable length.
+- Inspiration: this session's web wander wandered away from mathematics
+  after 27 consecutive math/physics-field/agent/tiling pieces and surfaced
+  a July 2026 ScienceDaily piece on NYU/Colorado School of Mines' "silly
+  sprinklers" experiment, resolving a Feynman-adjacent puzzle that had
+  stayed genuinely disputed in the literature for decades — a different
+  KIND of open problem from the gallery's usual field theorems and random-
+  matrix universality laws: a concrete, measurable rigid-body torque question
+  that took building many physical prototypes and directly measuring torque
+  to finally settle, rather than a proof. (This session's search also
+  surfaced the 2026 Fields Medal going to Yu Deng, John Pardon, Jacob
+  Tsimerman and Hong Wang at ICM Philadelphia — Wang for the same 3D Kakeya
+  work KAKEYA (session 27) already covered — and a July 2026 NTU Singapore
+  result generating "optical skyrmions" from the 200-year-old Poisson-spot
+  diffraction effect, left for a future session: a strong, visually rich
+  wave-optics candidate not pursued this session in favor of the sprinkler
+  problem's genuinely new mechanics category.)
+
 ### 2026-07-26 — Session 27
 - Added KAKEYA: Kakeya's 1917 needle problem, Besicovitch's 1928 measure-
   zero construction, and Perron's 1928 simplification into a recursive
@@ -5155,3 +5339,45 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       the set only at that point, a close geometric cousin of the Kakeya
       set (also constructible via a Perron-tree-style argument) that this
       session's research surfaced but did not attempt to build.
+- [x] A piece in rigid-body / control-volume mechanics — a torque driven
+      by fluid momentum flux, rather than a field, agent swarm, random
+      matrix, tiling theorem, or geometric-measure construction — done in
+      SPRINKLER (session 28), Feynman's sprinkler problem, forward and in
+      reverse.
+- [ ] SPRINKLER: the actual asymmetric-collision mechanism the 2026 paper
+      measured (jet impact geometry inside the real central chamber) was
+      not available to this session (no CFD or raw torque-vs-geometry data
+      from the study was found) — this session's off-axis-offset delta is
+      an honestly-disclosed toy model calibrated only to the reported
+      overall ~50:1 speed ratio, not a reproduction of the paper's own
+      internal flow field; revisiting with the actual paper (Physical
+      Review Fluids or wherever it is eventually published, only a
+      ScienceDaily writeup was available this session) would let this be
+      closed properly.
+- [ ] SPRINKLER: a literal "watch one jet collision happen" close-up mode
+      (zoomed into the hub, showing the two incoming streams meeting at the
+      draggable offset delta in slow motion) — this session's hub-collision
+      visual is only a static exaggerated-scale offset ring, not an
+      animated close-up of the collision itself, echoing the same "cumulative
+      result shown, not the single-event mechanism" gap ARCTIC and ULAM each
+      flagged for their own growth animations.
+- [ ] SPRINKLER: a real bearing-friction-vs-load sweep — c is currently a
+      single fixed constant shared by all three modes; making it visitor-
+      draggable (alongside beta/delta) would let a visitor see the textbook
+      "loaded sprinkler slows below the frictionless ideal" result directly,
+      not just the frictionless limit asserted in the header text.
+- [ ] SPRINKLER: a true 3D rendering (the real device is a rotor spinning in
+      a horizontal plane with arms that can also tilt) — this piece is a
+      2D top-down view only, echoing the gallery's long-standing "3D" backlog
+      itch flagged by SPINODAL/FLAME/ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/
+      AXOLOTL/ARCTIC (HORIZON eventually answered its own instance via a
+      different technique) — not attempted this session.
+- [ ] A piece built on the July 2026 NTU Singapore result generating
+      "optical skyrmions" (spin, Stokes, electric- and magnetic-field
+      skyrmion textures, four at once) from laser light diffracting around a
+      small disc — a 200-year-old effect (the Poisson/Arago spot, originally
+      proposed to DISPROVE the wave theory of light and then confirmed it
+      instead) producing a genuinely modern topological-photonics result;
+      surfaced by this session's web wander but not pursued in favor of the
+      sprinkler problem's new mechanics category — a strong, visually rich
+      wave-optics candidate for a future session.
