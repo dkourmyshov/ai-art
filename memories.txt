@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+tkachenko.html   — TKACHENKO piece
 sprinkler.html   — SPRINKLER piece
 kakeya.html      — KAKEYA piece
 ulam.html        — ULAM piece
@@ -37,6 +38,83 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 29: TKACHENKO — The Quantized Vortex Lattice of Rotating Superfluid Helium (2026-07-28)
+Spin a bucket of superfluid helium-4 fast enough and it can't rotate like an
+ordinary fluid — circulation around any closed loop must be an integer
+multiple of kappa=h/m4 (Onsager 1949, Feynman 1955), so the fluid instead
+threads itself with a regular triangular lattice of quantized vortex lines,
+areal density n = 2*Omega/kappa. That lattice supports its own physics: a
+collective transverse elastic wave (Tkachenko, 1966, phonon-like but with a
+Magnus-force "spring constant" instead of interatomic bonds), and individual
+vortex lines can carry a Kelvin wave (Lord Kelvin, 1880) — a helical wiggle
+travelling along the filament. The gallery's first piece about quantized
+(rather than classical viscous, per EDDY, or single-point-singularity, per
+MAELSTROM) vorticity. Three modes: LATTICE (the equilibrium lattice at a
+visitor-draggable Omega, rendered as the superfluid's own phase field —
+phi(r) = sum of atan2 over every vortex — one rainbow-wheel pinwheel per
+site, sitting in a dark density-depletion hole); TKACHENKO (the same
+lattice, every site carrying one shared transverse plane-wave displacement,
+a literal visible shear wave through the vortex crystal); KELVIN (side-on
+view of five filaments, each a sum of helical modes at increasing
+wavenumber k, draggable forcing morphing a single lazy sway into a fine
+many-mode cascade).
+
+Inspiration: this session's web wander surfaced Lorin et al., "Visualization
+of Inertial and Kelvin Waves on the Quantum Vortex Lattice in Superfluid
+Helium" (Institut Neel, arXiv:2607.00821, July 2026) — a rotating cryostat
+that photographs the real lattice directly and drives it with a steady heat
+flux, finding a continuous spectrum of large-scale inertial waves below
+twice the rotation rate and evidence of genuine small-scale Kelvin-wave
+turbulence above it. (The same wander also surfaced a April 2026 TUM/TU
+Berlin/NC State result breaking Bonnet's 150-year rigidity theorem with two
+non-isometric-but-locally-identical tori — a strong, more purely
+mathematical candidate left for a future session since reconstructing the
+paper's own explicit counterexample surfaces would need the actual paper's
+construction, not just its abstract, to render honestly.)
+
+Verified in Node before any shader code (verify.js, not committed): (1) the
+hexagonal-ring lattice construction reproduces the exact centered-hexagonal
+count 3r(r+1)+1 at every ring radius checked (r=1,2,3,5,7); (2) building
+that lattice at the spacing Feynman's rule implies for a given Omega, then
+directly COUNTING points per unit area in a disk rather than trusting the
+formula, matches the target density n=2*Omega/kappa to within 0.6% at four
+different Omega; (3) numerically integrating the phase field's winding
+around closed loops of three different radii matches 2*pi*(vortices actually
+enclosed) to 1e-2 rad every time — Stokes' theorem holding on the exact same
+atan2-sum formula the shader evaluates per pixel; (4) the Tkachenko
+plane-wave displacement is exactly periodic in time with period 2*pi/omega
+and never exceeds its own amplitude, its perpendicular unit vector confirmed
+perpendicular to k to 1e-12; (5) the Kelvin dispersion shape used to pick
+per-mode angular speeds (omega(k) ~ k^2*ln(1/k), the standard
+local-induction-approximation form) stays real, positive and monotonic
+increasing over the on-screen k-range.
+
+A real performance bug caught only by measuring actual frame rate, not by
+reading the shader: the first version's per-pixel field loop (91 vortices,
+1.5x devicePixelRatio) ran acceptably in isolated JS timing but measured
+badly under an actual rendered-frame count. Cut to 61 vortices (ring cap
+4 instead of 5) and an explicit 0.78x internal render-resolution scale
+(the imagery is already soft, blurred gradients, so the CSS upscale isn't
+visible) — roughly 1.6-1.9x faster in this session's own before/after
+measurement, the same "measure the real statistic" discipline KAKEYA and
+SPRINKLER each flagged for their own perf fixes.
+
+Honest disclosed simplifications: Tkachenko wave speed genuinely scales as
+sqrt(kappa*Omega) in the literature; the numeric prefactor used here is
+picked for on-screen legibility, not fit to any paper's calibration.
+KELVIN mode's five filaments share one illustrative, hand-shaped
+amplitude-vs-k falloff (~k^-1.4), not measured from the source paper's own
+spectrum. Real Kelvin-wave turbulence is a 3D phenomenon (a filament
+wiggling in two transverse directions at once); this piece shows only one
+transverse direction per filament, a 2D cross-section of the real 3D
+picture. LATTICE/TKACHENKO's phase-wheel rendering is the exact, literal
+sum-of-atan2 field (not an approximation) but because a multi-vortex sum is
+dominated at long range by its total winding number, the far-field image
+reads as one large spiral rather than N separate little pinwheels — an
+honest consequence of the real math, not a rendering bug, and the small
+dark core-depletion dots are what actually carry the lattice's hexagonal
+structure to the eye.
 
 ## Piece 28: SPRINKLER — Feynman's Sprinkler Problem, Forward & in Reverse (2026-07-27)
 A lawn sprinkler spins forward because water leaves each nozzle at an angle:
@@ -3586,6 +3664,51 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-28 — Session 29
+- Added TKACHENKO: the quantized vortex lattice a rotating superfluid forms
+  (Onsager/Feynman, n=2*Omega/kappa), its own collective Tkachenko (1966)
+  elastic wave, and individual Kelvin (1880) waves on single vortex
+  filaments. The gallery's first piece about quantized vorticity (distinct
+  from EDDY's classical viscous vortex shedding and MAELSTROM's single
+  point-vortex phase singularity). Three modes: LATTICE (draggable Omega,
+  rendered as the literal multi-vortex phase field, one atan2 term per
+  lattice site), TKACHENKO (the same lattice under one shared transverse
+  plane-wave displacement), KELVIN (five filaments, draggable forcing
+  morphing a single low-k sway into a many-mode cascade).
+- Verified in Node before any shader code (verify.js, not committed): hex
+  lattice point-count formula, Feynman's-rule areal density (<0.6% error,
+  measured by direct counting, not just trusting the formula), phase-field
+  Stokes'-theorem winding (matches 2*pi*enclosed to 1e-2 rad at 3 radii),
+  Tkachenko wave periodicity/boundedness, and Kelvin dispersion sanity
+  (real, positive, monotonic over the on-screen k-range). See this
+  session's own Piece 29 entry above for full detail.
+- A real performance bug caught only by measuring actual rendered frame
+  rate: the per-pixel vortex-sum shader (91 vortices) was too slow under
+  headless/software-rendered testing even though nothing in the JS timing
+  flagged it. Cut vortex-ring cap from 5 to 4 (91->61) and added an
+  explicit 0.78x internal render-resolution scale — roughly 1.6-1.9x
+  faster in this session's own before/after measurement, the kind of
+  screenshot/measurement-driven catch this gallery's memories keep noting
+  (KAKEYA session 27, SPRINKLER session 28) rather than trusting code
+  review alone.
+- Tested this session in a real headless browser (Playwright + the
+  environment's pre-installed Chromium), not just read as source: all
+  three modes screenshot-checked on a 1280x800 desktop viewport and a
+  390x844 mobile-portrait viewport, zero console/page errors, letterbox
+  aspect-correction confirmed to keep the lattice circular (not stretched)
+  in portrait.
+- Inspiration: this session's web wander surfaced Lorin et al. (Institut
+  Neel, arXiv:2607.00821, July 2026), a rotating-cryostat direct
+  visualization of the real lattice under heat-flux forcing — inertial
+  waves below 2*Omega, a turbulent Kelvin-wave cascade above it, the exact
+  two-mode structure this session's KELVIN mode dramatizes via a draggable
+  forcing parameter. Also surfaced but not pursued: an April 2026 TUM/TU
+  Berlin/NC State result breaking Bonnet's 150-year-old rigidity theorem
+  with two tori sharing a metric and mean curvature but different global
+  shape — a strong, more purely mathematical candidate for a future
+  session, left undone because rendering it honestly would need the
+  paper's own explicit counterexample construction, not just its result.
+
 ### 2026-07-27 — Session 28
 - Added SPRINKLER: Feynman's sprinkler problem — a lawn sprinkler's forward
   rotation via the angular-momentum control-volume theorem, and the much
@@ -5378,6 +5501,45 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       small disc — a 200-year-old effect (the Poisson/Arago spot, originally
       proposed to DISPROVE the wave theory of light and then confirmed it
       instead) producing a genuinely modern topological-photonics result;
-      surfaced by this session's web wander but not pursued in favor of the
-      sprinkler problem's new mechanics category — a strong, visually rich
-      wave-optics candidate for a future session.
+      surfaced by session 28's web wander and again by session 29's, still
+      not pursued (session 29 chose the quantum-vortex-lattice topic
+      instead) — a strong, visually rich wave-optics candidate, now
+      surfaced twice, for a future session.
+- [x] A piece about quantized (rather than classical viscous or single-
+      point-singularity) vorticity — done in TKACHENKO (session 29), the
+      rotating-superfluid vortex lattice, Feynman's rule, and Tkachenko/
+      Kelvin waves upon it.
+- [ ] TKACHENKO: a genuinely 3D Kelvin wave (the real phenomenon wiggles a
+      filament in two transverse directions at once, tracing out a rotating
+      helix in 3-space) rather than this session's single in-plane
+      transverse direction — this piece's own honestly-disclosed 2D
+      cross-section of a 3D effect, echoing the standing "3D" backlog itch
+      flagged by SPINODAL/FLAME/ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/
+      AXOLOTL/ARCTIC/SPRINKLER.
+- [ ] TKACHENKO: replace the illustrative amplitude-vs-k falloff and
+      Tkachenko-speed prefactor (both hand-tuned for on-screen legibility
+      this session, not calibrated to any paper) with the actual measured
+      spectrum/dispersion from Lorin et al. 2026 (arXiv:2607.00821) — this
+      session's own web wander read the paper's abstract and headline
+      findings but did not extract its underlying numeric data.
+- [ ] TKACHENKO: nucleation/annihilation events as Omega crosses a
+      threshold that changes the equilibrium vortex count, animated as a
+      visible birth/death of a lattice site, rather than this session's
+      instantaneous full-lattice rebuild every time Omega is dragged — a
+      real relaxation dynamics this session did not attempt, only the
+      static equilibrium configuration at each Omega.
+- [ ] TKACHENKO: an explicit live readout of the winding-number Stokes
+      check this session verified offline (integrate the shown phase field
+      around a visible loop, display that it equals 2*pi*N) as an on-screen
+      overlay — the same "measure the real statistic live, don't just
+      verify it offline" gap KAKEYA and PERCOLATE each flagged for their
+      own critical quantities.
+- [ ] A piece built on the April 2026 TUM/TU Berlin/NC State result
+      breaking Bonnet's ~150-year-old surface-rigidity theorem (two
+      compact, donut-shaped tori sharing an identical metric and mean
+      curvature at every point but a different global embedded shape) —
+      surfaced by session 29's web wander but not pursued; would need the
+      paper's own explicit construction (not just its abstract) to render
+      an honest, non-fabricated pair of surfaces, unlike this session's
+      topic where the lattice/wave formulas were straightforward to
+      rederive and verify independently.

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TKACHENKO — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stat{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#stat .val{color:rgba(255,255,255,.5)}
+#stat .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:82vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stat">
+  <span id="statLabel">&Omega; &asymp; </span><span class="val" id="statVal">0</span>
+  <span class="sub" id="statSub">ROTATION RATE &middot; DRAG TO SET</span>
+</div>
+<div id="ui">
+  <span id="modeName">LATTICE</span>
+  <span id="desc">FEYNMAN'S RULE: n = 2&Omega;/&kappa;</span>
+</div>
+<div id="hint">DRAG TO SET &middot; TAP TO CHANGE MODE</div>
+<script>
+/*  TKACHENKO — the quantized vortex lattice of a rotating superfluid
+ *
+ *  Spin a bucket of superfluid helium-4 fast enough and it cannot rotate
+ *  like an ordinary fluid — circulation around any closed loop inside a
+ *  superfluid must be an integer multiple of kappa = h/m4 (Onsager 1949,
+ *  Feynman 1955). The fluid satisfies this by threading itself with an
+ *  array of quantized vortex LINES, each carrying exactly one quantum of
+ *  circulation, arranged in a regular triangular lattice whose areal
+ *  density n obeys Feynman's rule n = 2*Omega/kappa — more vortices,
+ *  packed tighter, the faster the bucket spins. First predicted in 1955,
+ *  first photographed by Yarmchuk, Gordon & Packard (1979).
+ *
+ *  That lattice is not static. Tkachenko (1966) showed it supports its
+ *  own transverse elastic wave — vortex lines swaying collectively, like
+ *  phonons in an ordinary 2D crystal, except the "spring constant" comes
+ *  entirely from the Magnus force each vortex feels from its neighbours,
+ *  not from any interatomic bond. And each individual vortex LINE, on
+ *  its own, can carry a Kelvin wave (Lord Kelvin, 1880) — a helical
+ *  wiggle that travels along the filament's own length.
+ *
+ *  This session's inspiration: Lorin et al., "Visualization of Inertial
+ *  and Kelvin Waves on the Quantum Vortex Lattice in Superfluid Helium"
+ *  (Institut Neel, arXiv:2607.00821, July 2026) — a rotating cryostat
+ *  that photographs the real lattice directly and drives it with a
+ *  steady heat flux. Below twice the rotation rate the lattice responds
+ *  with a continuous spectrum of large-scale INERTIAL waves; pushed
+ *  harder, the response moves to genuine small-scale KELVIN-wave
+ *  turbulence — energy cascading down the vortex lines themselves.
+ *  Three modes:
+ *
+ *  LATTICE    the equilibrium triangular array at a visitor-set Omega,
+ *             rendered as the superfluid's own phase field: phi(r) =
+ *             sum_j atan2(r-r_j) over every vortex j, one point-vortex
+ *             term per lattice site. Each core is a small rainbow
+ *             pinwheel (mod-2*pi phase -> hue) sitting in a dark
+ *             density hole (the real superfluid density genuinely drops
+ *             to zero at a vortex core, over the healing length).
+ *  TKACHENKO  the same lattice, every site additionally carrying the
+ *             SAME transverse plane-wave displacement — a literal,
+ *             visible shear wave rippling through the vortex crystal.
+ *  KELVIN     side-on view of five vortex FILAMENTS, each animated as a
+ *             sum of helical modes at increasing wavenumber k; drag to
+ *             raise the forcing and watch a single lazy sway (inertial-
+ *             wave register) turn into a fine, many-mode cascade
+ *             (Kelvin-wave-turbulence register) — the same forward
+ *             energy transfer the source paper reports above 2*Omega.
+ *
+ *  ── Verified in Node before any shader code (see this session's
+ *      memories.txt entry; verify.js not committed) ────────────────────
+ *  (1) the hexagonal-ring lattice construction used below reproduces the
+ *      exact centered-hexagonal-number point count 3r(r+1)+1 at every
+ *      ring radius r checked; (2) building that lattice at the spacing
+ *      Feynman's rule implies for a given Omega and then directly
+ *      COUNTING points per unit area in a disk (not just trusting the
+ *      formula) matches the target density n=2*Omega/kappa to within
+ *      0.6% at four different Omega; (3) numerically integrating the
+ *      phase field's winding around closed loops of several radii
+ *      matches 2*pi*(vortices actually enclosed) to 1e-2 rad every time
+ *      — Stokes' theorem holding on the exact same atan2-sum formula the
+ *      shader below evaluates per pixel; (4) the Tkachenko plane-wave
+ *      displacement used in TKACHENKO mode is exactly periodic in time
+ *      with period 2*pi/omega and never exceeds its own amplitude A, and
+ *      its perpendicular unit vector is confirmed perpendicular to k to
+ *      1e-12; (5) the Kelvin dispersion shape used to pick per-mode
+ *      angular speeds in KELVIN mode (omega(k) ~ k^2*ln(1/k), the
+ *      standard local-induction-approximation form) stays real, positive
+ *      and monotonic increasing over the k-range actually rendered.
+ *
+ *  ── Honest simplifications, disclosed rather than hidden ─────────────
+ *  Tkachenko wave speed genuinely does scale as sqrt(kappa*Omega) in the
+ *  literature; the numeric prefactor used here is picked for on-screen
+ *  legibility, not fit to any paper's calibration. KELVIN mode's five
+ *  filaments share one illustrative, hand-shaped amplitude-vs-k falloff
+ *  (amplitude ~ k^-1.4) chosen for a convincing-looking cascade, not
+ *  measured from the source paper's own spectrum. Real Kelvin-wave
+ *  turbulence lives in 3D (a filament wiggling in two transverse
+ *  directions at once); this piece shows only one transverse direction
+ *  per filament, a 2D cross-section of the real 3D phenomenon.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const statLabelEl = document.getElementById('statLabel');
+const statValEl = document.getElementById('statVal');
+const statSubEl = document.getElementById('statSub');
+const hintEl = document.getElementById('hint');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── lattice construction (mirrors verify.js exactly) ────────────────── */
+const KAPPA = 1.0;
+const VIEW_R = 1.05;
+const RINGS_MAX = 4;
+const MAX_VORT = 3 * RINGS_MAX * (RINGS_MAX + 1) + 1; // 61, centered hex number
+
+function hexLattice(rings, a) {
+  const pts = [];
+  for (let q = -rings; q <= rings; q++) {
+    for (let r = -rings; r <= rings; r++) {
+      const s = -q - r;
+      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) > rings) continue;
+      const x = a * (q + r / 2);
+      const y = a * (r * Math.sqrt(3) / 2);
+      pts.push([x, y]);
+    }
+  }
+  return pts;
+}
+
+function latticeConstant(omega) {
+  return Math.sqrt(KAPPA / (Math.sqrt(3) * omega));
+}
+
+function buildLattice(omega) {
+  const a = latticeConstant(omega);
+  let rings = Math.min(RINGS_MAX, Math.max(1, Math.ceil((VIEW_R * 1.3) / a)));
+  let pts = hexLattice(rings, a).filter(([x, y]) => x * x + y * y <= (VIEW_R * 1.3) * (VIEW_R * 1.3));
+  if (pts.length > MAX_VORT) pts = pts.slice(0, MAX_VORT);
+  return { pts, a, rings };
+}
+
+/* ── GLSL ─────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 vUv;
+void main(){ vUv = p*0.5+0.5; gl_Position = vec4(p,0.0,1.0); }`;
+
+const FS = `
+precision highp float;
+varying vec2 vUv;
+uniform vec2 uLetterboxScale;
+uniform float uViewR;
+uniform vec2 uVort[${MAX_VORT}];
+uniform int uVortCount;
+uniform float uCoreR;
+uniform float uTime;
+uniform int uMode;
+uniform float uForce;
+uniform float uLinePhase[5];
+#define PI 3.14159265359
+#define TWOPI 6.28318530718
+
+vec3 hsv2rgb(vec3 c){
+  vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+  vec3 p3 = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p3 - K.xxx, 0.0, 1.0), c.y);
+}
+
+vec3 fieldScene(vec2 pos){
+  float phase = 0.0;
+  float minD = 1e6;
+  for (int i = 0; i < ${MAX_VORT}; i++) {
+    if (i >= uVortCount) break;
+    vec2 d = pos - uVort[i];
+    phase += atan(d.y, d.x);
+    minD = min(minD, length(d));
+  }
+  float hue = fract(phase / TWOPI);
+  float depletion = 1.0 - exp(-(minD*minD)/(uCoreR*uCoreR));
+  float vign = smoothstep(uViewR*1.32, uViewR*0.05, length(pos));
+  float val = depletion * (0.32 + 0.68*vign);
+  vec3 col = hsv2rgb(vec3(hue, 0.72, 1.0)) * val;
+  float core = smoothstep(uCoreR*0.55, 0.0, minD);
+  col = mix(col, vec3(1.0), core*0.55);
+  return col;
+}
+
+vec3 curveScene(vec2 pos){
+  const int NK = 7;
+  float ks[NK];
+  ks[0]=1.0; ks[1]=1.7; ks[2]=2.8; ks[3]=4.6; ks[4]=7.5; ks[5]=12.0; ks[6]=19.0;
+  vec3 accum = vec3(0.02, 0.015, 0.03);
+  for (int li = 0; li < 5; li++) {
+    float lineX = (float(li) - 2.0) * uViewR * 0.42;
+    float phaseLine = uLinePhase[li];
+    float disp = 0.0;
+    for (int ki = 0; ki < NK; ki++) {
+      float k = ks[ki];
+      float thresh = float(ki) / float(NK - 1);
+      float amp = smoothstep(thresh - 0.14, thresh + 0.14, uForce) / pow(k, 1.4);
+      float omega = 0.06 * k * k * log(28.0 / k);
+      disp += amp * sin(k * (pos.y*2.6) - omega*uTime + phaseLine + float(ki)*1.7);
+    }
+    disp *= 0.10 * uViewR;
+    float u = pos.x - (lineX + disp);
+    float glow = exp(-(u*u) / (0.0020*uViewR*uViewR));
+    float hue = fract(0.58 + float(li)*0.11);
+    accum += hsv2rgb(vec3(hue, 0.55, 1.0)) * glow;
+  }
+  return accum;
+}
+
+void main(){
+  vec2 uv = (vUv - 0.5) / uLetterboxScale;
+  vec2 pos = uv * 2.0 * uViewR;
+  vec3 col = (uMode == 0) ? fieldScene(pos) : curveScene(pos);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+const prog = mkProg(VS, FS);
+const U = {};
+['uLetterboxScale', 'uViewR', 'uVort', 'uVortCount', 'uCoreR', 'uTime', 'uMode', 'uForce', 'uLinePhase']
+  .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+
+/* ── modes ────────────────────────────────────────────── */
+const HOLD = 26000;
+const MODES = [
+  { name: 'LATTICE', desc: "FEYNMAN'S RULE: n = 2Ω/κ" },
+  { name: 'TKACHENKO', desc: 'A TRANSVERSE WAVE OF THE VORTEX CRYSTAL' },
+  { name: 'KELVIN', desc: 'INERTIAL WAVE → KELVIN-WAVE CASCADE' },
+];
+
+let modeIdx = 0, modeStart = 0;
+let omega = 2.4;
+const OMEGA_MIN = 0.55, OMEGA_MAX = 20.0;
+let force = 0.12, forceAuto = true;
+let linePhase = new Float32Array(5);
+let latt = buildLattice(omega);
+let vortUpload = new Float32Array(MAX_VORT * 2);
+
+function reseedLines() {
+  for (let i = 0; i < 5; i++) linePhase[i] = Math.random() * Math.PI * 2;
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  if (modeIdx === 2) {
+    reseedLines();
+    force = 0.06; forceAuto = true;
+    statLabelEl.textContent = 'FORCE ≈ ';
+    statSubEl.textContent = 'CASCADE STRENGTH · DRAG TO SET';
+  } else {
+    statLabelEl.textContent = 'Ω ≈ ';
+    statSubEl.textContent = 'ROTATION RATE · DRAG TO SET';
+  }
+}
+applyMode(0);
+modeStart = performance.now();
+
+/* ── Tkachenko transverse plane wave (verified formula) ─────────────── */
+const TK_KDIR = (() => { const a = Math.PI / 7; return [Math.cos(a), Math.sin(a)]; })();
+function tkachenkoDisplace(base, a, omega, t, out) {
+  const wavelen = a * 3.2;
+  const kmag = (2 * Math.PI) / wavelen;
+  const kx = TK_KDIR[0] * kmag, ky = TK_KDIR[1] * kmag;
+  const khatPerpX = -TK_KDIR[1], khatPerpY = TK_KDIR[0];
+  const A = 0.30 * a;
+  const cT = 0.12 * Math.sqrt(KAPPA * omega); // sqrt(Omega) scaling per Tkachenko (1966); prefactor tuned for legibility, not calibrated
+  const omegaT = cT * kmag;
+  for (let i = 0; i < base.length; i++) {
+    const [x, y] = base[i];
+    const s = A * Math.sin(kx * x + ky * y - omegaT * t);
+    out[i * 2] = x + s * khatPerpX;
+    out[i * 2 + 1] = y + s * khatPerpY;
+  }
+}
+
+/* ── interaction ──────────────────────────────────────── */
+let letterboxScale = [1, 1];
+let pointerActive = false, downTime = 0, moved = false, downX = 0;
+
+function onDown(x) {
+  pointerActive = true; moved = false; downTime = performance.now(); downX = x;
+  dragSet(x);
+}
+function onMove(x) {
+  if (!pointerActive) return;
+  if (Math.abs(x - downX) > 6) moved = true;
+  dragSet(x);
+}
+function onUp() {
+  if (!pointerActive) return;
+  pointerActive = false;
+  const dt = performance.now() - downTime;
+  if (!moved && dt < 400) { modeStart = performance.now(); applyMode(modeIdx + 1); }
+}
+function dragSet(x) {
+  const frac = Math.min(1, Math.max(0, x / window.innerWidth));
+  if (modeIdx === 2) {
+    force = frac; forceAuto = false;
+  } else {
+    const logMin = Math.log(OMEGA_MIN), logMax = Math.log(OMEGA_MAX);
+    omega = Math.exp(logMin + frac * (logMax - logMin));
+  }
+}
+C.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+C.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+C.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+C.addEventListener('touchend', e => { e.preventDefault(); onUp(); }, { passive: false });
+
+/* ── resize / letterbox ──────────────────────────────────*/
+const RENDER_SCALE = 0.78; // internal render resolution multiplier — the
+// per-pixel vortex-sum loop (up to 61 iterations) is the real cost, so this
+// trims fragment-shader work directly; the imagery is already soft/blurred
+// gradients, so the CSS upscale is not visible in practice.
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  C.width = Math.round(w * RENDER_SCALE); C.height = Math.round(h * RENDER_SCALE);
+  C.style.width = w + 'px'; C.style.height = h + 'px';
+  const ca = w / h;
+  letterboxScale = ca > 1 ? [1 / ca, 1] : [1, ca];
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── main loop ────────────────────────────────────────── */
+let simTime = 0, lastT = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  simTime += dt;
+  if (now - modeStart > HOLD) { modeStart = now; applyMode(modeIdx + 1); }
+
+  if (modeIdx === 2 && forceAuto) force = Math.min(1, force + dt * 0.045);
+
+  gl.viewport(0, 0, C.width, C.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(pLoc);
+  gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(U.uLetterboxScale, letterboxScale[0], letterboxScale[1]);
+  gl.uniform1f(U.uViewR, VIEW_R);
+  gl.uniform1f(U.uTime, simTime);
+  gl.uniform1f(U.uForce, force);
+  gl.uniform1fv(U.uLinePhase, linePhase);
+
+  if (modeIdx === 0 || modeIdx === 1) {
+    gl.uniform1i(U.uMode, 0);
+    latt = buildLattice(omega);
+    if (modeIdx === 1) {
+      tkachenkoDisplace(latt.pts, latt.a, omega, simTime, vortUpload);
+    } else {
+      for (let i = 0; i < latt.pts.length; i++) { vortUpload[i*2] = latt.pts[i][0]; vortUpload[i*2+1] = latt.pts[i][1]; }
+    }
+    gl.uniform2fv(U.uVort, vortUpload);
+    gl.uniform1i(U.uVortCount, latt.pts.length);
+    gl.uniform1f(U.uCoreR, 0.16 * latt.a);
+  } else {
+    gl.uniform1i(U.uMode, 1);
+  }
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  if (modeIdx === 2) {
+    statValEl.textContent = force.toFixed(2) + (force >= 0.5 ? ' ≈ CASCADE' : ' ≈ INERTIAL');
+  } else {
+    statValEl.textContent = omega.toFixed(2) + '  (' + latt.pts.length + ' vortices, a=' + latt.a.toFixed(3) + ')';
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
