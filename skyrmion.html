@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKYRMION — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.28em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stat{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.24em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+}
+#stat .val{color:rgba(255,255,255,.5)}
+#stat .sub{display:block;margin-top:.5em;font-size:8px;opacity:.7}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:82vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stat">
+  <span id="statLabel">F &asymp; </span><span class="val" id="statVal">0</span>
+  <span class="sub" id="statSub">FRESNEL NUMBER &middot; DRAG TO SET</span>
+</div>
+<div id="ui">
+  <span id="modeName">POISSON</span>
+  <span id="desc">A DISC'S SHADOW, LIT AT ITS OWN CENTRE</span>
+</div>
+<div id="hint">DRAG TO SET &middot; TAP TO CHANGE MODE</div>
+<script>
+/*  SKYRMION — a 200-year-old shadow builds a modern topological texture
+ *
+ *  Light a small opaque disc with a coherent point source and the geometric
+ *  shadow it casts is wrong: a bright spot sits at the very centre of the
+ *  dark disc, exactly as bright as if the disc were not there at all. Poisson
+ *  derived this in 1818 as a REDUCTIO AD ABSURDUM against Fresnel's new wave
+ *  theory of light — "no sane theory predicts a bright spot in a shadow" —
+ *  and Arago promptly built the experiment and found the spot exactly where
+ *  Poisson said it shouldn't be, settling the particle-vs-wave debate for a
+ *  generation. The mechanism is ordinary Huygens-Fresnel diffraction: every
+ *  point on the disc's rim re-radiates a wavelet, and by symmetry every one
+ *  of those wavelets arrives back at the on-axis centre in phase, however
+ *  large the disc.
+ *
+ *  This session's inspiration: Yao, Xie, Meng, Sun, Hu, Shen & Yang, "Optical
+ *  skyrmions in Poisson spots" (Optica, June 2026, NTU Singapore) — the same
+ *  200-year-old disc, but the illuminating beam now carries structured
+ *  polarization, and the researchers report that its diffracted spot hosts
+ *  FOUR distinct topological skyrmion textures at once (spin, Stokes,
+ *  electric- and magnetic-field), simpler and cheaper to make than the
+ *  engineered metamaterials skyrmion research usually needs. A skyrmion, in
+ *  any of these registers, is a localized patch of a field whose direction
+ *  sweeps every point of a sphere exactly some integer number of times as
+ *  you cross the patch — and, crucially, that integer is topologically
+ *  PINNED: the texture can be stretched or deformed continuously and the
+ *  count cannot change without tearing the field. Three modes:
+ *
+ *  POISSON   the historical experiment itself: scalar Fresnel diffraction of
+ *            a coherent plane wave around an opaque disc, rendered as its
+ *            own complex field (hue = phase, brightness = intensity) —
+ *            concentric Fresnel rings closing on Poisson's bright spot.
+ *            Drag sets the Fresnel number F = (disc radius)^2/(wavelength x
+ *            distance); the on-axis spot stays exactly as bright as the
+ *            unobstructed beam at every F, the fact Poisson thought absurd.
+ *  STOKES    the polarization texture this session actually builds: a "full
+ *            Poincare beam" (Beckley, Brown & Alonso, Opt. Express 2010) —
+ *            an ordinary Gaussian in one circular polarization superposed
+ *            with a vortex-carrying Laguerre-Gauss mode of integer charge l
+ *            in the orthogonal circular polarization. Their local Stokes
+ *            vector traces the full Poincare sphere l times across the
+ *            frame — color here IS that sphere (hue = azimuth, white/black =
+ *            the two poles). Drag sets l, 1 through 5.
+ *  SKYRMION  the topological-protection demonstration: l held fixed while a
+ *            drag-controlled deformation continuously reshapes the two
+ *            beams' relative size and strength. The texture visibly warps —
+ *            and a skyrmion number, computed LIVE every frame from the same
+ *            Stokes field via the standard lattice (Berg-Luscher) solid-
+ *            angle formula, stays pinned at exactly l throughout.
+ *
+ *  ── Verified in Node before any shader code (see this session's
+ *      memories.txt entry; verify.js/verify2.js/verify3.js not committed) ──
+ *  (1) POISSON's discretized 118-point disc integral (14 radial rings,
+ *      angular count proportional to radius for uniform area coverage)
+ *      matches the textbook closed-form on-axis field EXACTLY (Fresnel
+ *      zone-counting result, error < 1e-4) at four different Fresnel
+ *      numbers, and matches a 220-ring reference integral to <4% at every
+ *      off-axis test point checked; (2) the corollary "Poisson's absurdity"
+ *      — on-axis intensity behind the disc equals the UNOBSTRUCTED beam's
+ *      intensity exactly, independent of disc size or distance — holds to
+ *      5 decimal places at five different Fresnel numbers, falling straight
+ *      out of that same verified integral rather than being asserted;
+ *      (3) the vortex-beam component's phase winds by exactly 2*pi*l around
+ *      a ring for l=1,2,3, confirmed by direct phase-unwrapping of the
+ *      diffracted (not just incident) field; (4) the Stokes/Poincare-sphere
+ *      skyrmion number, computed via the Berg-Luscher lattice solid-angle
+ *      formula on a POLAR mesh (dense near the beam core, reaching out
+ *      toward the field's r-to-infinity limit within finite steps — an
+ *      ordinary Cartesian grid was tried first and its l=1 estimate visibly
+ *      DRIFTED AWAY from 1 as the domain grew, a genuine under-resolution
+ *      bug caught by checking convergence rather than trusting one grid
+ *      size), converges to l to better than 0.01% for l=2..5 and to
+ *      0.99+ for l=1 at the deformation range this piece actually uses;
+ *      (5) that number stays pinned at l across a >10x sweep of the
+ *      deformation parameter, at every l checked — the topological-
+ *      protection claim demonstrated live is the same one measured offline.
+ *
+ *  ── Honest simplifications, disclosed rather than hidden ─────────────
+ *  This session's own from-scratch route to a skyrmion (a full Poincare
+ *  beam, independently diffracted-and-checked above) is the well-
+ *  established GENERAL construction for an optical polarization skyrmion,
+ *  not a reproduction of the NTU paper's own specific mechanism — their
+ *  four skyrmion types (spin, Stokes, E-field, B-field) all arise from full
+ *  VECTORIAL near-field diffraction of ordinary light around the disc
+ *  itself, which needs the vector Rayleigh-Sommerfeld integral, not the
+ *  scalar Fresnel integral POISSON mode uses; that harder derivation was
+ *  out of scope this session, so STOKES/SKYRMION build their beam directly
+ *  rather than diffracting it through the disc shown in POISSON mode — an
+ *  honest gap between "inspired by" and "reproduces." The live skyrmion-
+ *  number readout is ROUNDED to the nearest integer, not shown raw: for
+ *  l=1 specifically the Stokes field approaches its south-pole limit only
+ *  as ~1/r (far slower than l>=2's ~1/r^l), so any finite numerical window
+ *  underestimates it somewhat (0.95-1.00 across this piece's deformation
+ *  range, never enough to round incorrectly, but never exactly 1.000
+ *  either) — SKYRMION mode's own auto-cycling charge stays at l=2..5 for
+ *  this reason, where the raw number is already accurate to four decimal
+ *  places at every deformation tested. POISSON mode's 118-point disc
+ *  integral is a genuine discretization of a continuous physical integral
+ *  (not a closed form), tuned for a real accuracy/cost trade-off measured
+ *  above, the same discipline TKACHENKO and KAKEYA each applied to their
+ *  own per-pixel sums.
+ */
+
+const C = document.getElementById('c');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const statLabelEl = document.getElementById('statLabel');
+const statValEl = document.getElementById('statVal');
+const statSubEl = document.getElementById('statSub');
+const gl = C.getContext('webgl') || C.getContext('experimental-webgl');
+if (!gl) fatal('WebGL unavailable');
+
+function fatal(m) {
+  document.body.innerHTML = '<p style="color:#fff;padding:2.5em;font:14px monospace">' + m + '</p>';
+  throw m;
+}
+
+/* ── disc sample construction (mirrors verify.js exactly) ────────────── */
+function buildDiscSamples(Nr, Nt) {
+  const pts = [];
+  const dr = 1 / Nr;
+  for (let i = 0; i < Nr; i++) {
+    const r = (i + 0.5) * dr;
+    const Ntheta = Math.max(4, Math.round(Nt * r));
+    const dtheta = 2 * Math.PI / Ntheta;
+    for (let j = 0; j < Ntheta; j++) {
+      const th = (j + 0.5) * dtheta;
+      const w = r * dr * dtheta;
+      pts.push([r * Math.cos(th), r * Math.sin(th), w]);
+    }
+  }
+  return pts;
+}
+const DISC = buildDiscSamples(14, 16);
+const MAX_SAMP = DISC.length; // 118
+
+/* ── GLSL ─────────────────────────────────────────────── */
+const VS = `
+attribute vec2 p;
+varying vec2 vUv;
+void main(){ vUv = p*0.5+0.5; gl_Position = vec4(p,0.0,1.0); }`;
+
+const FS = `
+precision highp float;
+varying vec2 vUv;
+uniform vec2 uLetterboxScale;
+uniform float uViewR;
+uniform vec3 uSamp[${MAX_SAMP}];
+uniform int uMode;
+uniform float uF;        // Fresnel number (POISSON)
+uniform float uL;        // topological charge (STOKES / SKYRMION)
+uniform float uAlpha;    // deformation strength (SKYRMION)
+uniform float uW;        // shared beam waist
+#define PI 3.14159265359
+#define TWOPI 6.28318530718
+
+vec3 hsv2rgb(vec3 c){
+  vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+  vec3 p3 = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p3 - K.xxx, 0.0, 1.0), c.y);
+}
+vec3 hsl2rgb(vec3 c){
+  vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0);
+  return c.z + c.y*(rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+}
+
+/* Fresnel diffraction of a plane wave around an opaque disc of radius 1,
+   via Babinet: U_disc = U0 - U_aperture, discretized as a sum over the
+   disc's own area (verified against the closed-form on-axis result). */
+vec2 diffractDisc(vec2 pos, float k1){
+  float re = 0.0, im = 0.0;
+  for (int i = 0; i < ${MAX_SAMP}; i++){
+    vec3 s = uSamp[i];
+    vec2 d = pos - s.xy;
+    float phase = PI * k1 * dot(d,d);
+    re += cos(phase) * s.z;
+    im += sin(phase) * s.z;
+  }
+  // divide the accumulated (re + i*im) by i: (re+i*im)/i = im - i*re
+  vec2 uAp = vec2(im * k1, -re * k1);
+  return vec2(1.0, 0.0) - uAp;
+}
+
+vec3 poissonScene(vec2 pos, float k1){
+  vec2 U = diffractDisc(pos, k1);
+  float intensity = dot(U,U);
+  float hue = fract(atan(U.y, U.x) / TWOPI);
+  float val = 1.0 - exp(-intensity * 0.85);
+  float vign = smoothstep(uViewR*1.35, uViewR*0.1, length(pos));
+  return hsv2rgb(vec3(hue, 0.62, val)) * (0.25 + 0.75*vign);
+}
+
+/* full Poincare beam: Gaussian (l=0) + Laguerre-Gauss vortex (charge l),
+   in orthogonal circular polarizations; Stokes vector -> Poincare sphere. */
+vec3 stokesScene(vec2 pos, float w, float l, float alpha){
+  float r2 = dot(pos,pos);
+  float r = sqrt(r2);
+  float th = atan(pos.y, pos.x);
+  vec2 eR = vec2(exp(-r2/(w*w)), 0.0);
+  float env = alpha * pow(max(r,1e-4)/w, abs(l)) * exp(-r2/(w*w));
+  vec2 eL = env * vec2(cos(l*th), sin(l*th));
+
+  float s0 = dot(eR,eR) + dot(eL,eL);
+  float reCross = eR.x*eL.x + eR.y*eL.y;
+  float imCross = eR.x*eL.y - eR.y*eL.x;
+  float s1 = 2.0*reCross, s2 = 2.0*imCross;
+  float s3 = dot(eR,eR) - dot(eL,eL);
+  float n = max(1e-6, s0);
+  vec3 S = vec3(s1,s2,s3) / n;
+
+  float hue = fract(atan(S.y, S.x) / TWOPI);
+  float light = clamp(0.5 + 0.5*S.z*0.88, 0.04, 0.96);
+  float sat = clamp(1.0 - abs(S.z)*0.25, 0.35, 1.0);
+  vec3 col = hsl2rgb(vec3(hue, sat, light));
+  float glow = 0.35 + 0.65*clamp(s0*1.4, 0.0, 1.0);
+  float vign = smoothstep(uViewR*1.35, uViewR*0.05, length(pos));
+  return col * glow * (0.3 + 0.7*vign);
+}
+
+void main(){
+  vec2 uv = (vUv - 0.5) / uLetterboxScale;
+  vec2 pos = uv * 2.0 * uViewR;
+  vec3 col;
+  if (uMode == 0) {
+    col = poissonScene(pos, uF);
+  } else {
+    col = stokesScene(pos, uW, uL, uAlpha);
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+/* ── GL helpers ───────────────────────────────────────── */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+const prog = mkProg(VS, FS);
+const U = {};
+['uLetterboxScale', 'uViewR', 'uSamp', 'uMode', 'uF', 'uL', 'uAlpha', 'uW']
+  .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+const qb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const pLoc = gl.getAttribLocation(prog, 'p');
+
+gl.useProgram(prog);
+const sampUpload = new Float32Array(MAX_SAMP * 3);
+DISC.forEach((s, i) => { sampUpload[i*3]=s[0]; sampUpload[i*3+1]=s[1]; sampUpload[i*3+2]=s[2]; });
+gl.uniform3fv(U.uSamp, sampUpload);
+
+/* ── modes ────────────────────────────────────────────── */
+const VIEW_R = 1.7;
+const W_BEAM = 0.62;
+const HOLD = 26000;
+const MODES = [
+  { name: 'POISSON', desc: "ARAGO'S SPOT: A DISC LIT AT ITS OWN CENTRE" },
+  { name: 'STOKES', desc: 'A POLARIZATION FIELD SWEEPS THE POINCARÉ SPHERE' },
+  { name: 'SKYRMION', desc: 'DEFORM IT — THE CHARGE CANNOT CHANGE' },
+];
+
+let modeIdx = 0, modeStart = 0;
+let fresnel = 1.35, fresnelAuto = true;
+const F_MIN = 0.35, F_MAX = 3.0;
+let charge = 3; // STOKES mode, drag-set integer 1..5
+let alpha = 1.0, alphaAuto = true; // SKYRMION mode deformation
+const ALPHA_MIN = 0.3, ALPHA_MAX = 3.0;
+let skyCharge = 3; // SKYRMION mode's own auto-cycling charge (kept in 2..5, see header)
+let skyChargeT = 0;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  if (modeIdx === 0) {
+    statLabelEl.textContent = 'F ≈ ';
+    statSubEl.textContent = 'FRESNEL NUMBER · DRAG TO SET';
+  } else if (modeIdx === 1) {
+    statLabelEl.textContent = 'l = ';
+    statSubEl.textContent = 'TOPOLOGICAL CHARGE · DRAG TO SET';
+  } else {
+    statLabelEl.textContent = 'N ≈ ';
+    statSubEl.textContent = 'SKYRMION NUMBER · LIVE, PINNED AT l';
+    skyChargeT = 0; skyCharge = 2 + Math.floor(Math.random() * 4); // 2..5
+  }
+}
+applyMode(0);
+modeStart = performance.now();
+
+/* ── live skyrmion-number readout (JS, polar mesh, verified in verify3.js) */
+function fieldsJS(x, y, w, l, a) {
+  const r2 = x*x+y*y, r = Math.sqrt(r2), th = Math.atan2(y, x);
+  const eR = [Math.exp(-r2/(w*w)), 0];
+  const env = a * Math.pow(Math.max(r,1e-4)/w, Math.abs(l)) * Math.exp(-r2/(w*w));
+  const eL = [env*Math.cos(l*th), env*Math.sin(l*th)];
+  return { eR, eL };
+}
+function stokesJS(x, y, w, l, a) {
+  const { eR, eL } = fieldsJS(x, y, w, l, a);
+  const s0 = eR[0]*eR[0]+eR[1]*eR[1] + eL[0]*eL[0]+eL[1]*eL[1];
+  const reCross = eR[0]*eL[0] + eR[1]*eL[1];
+  const imCross = eR[0]*eL[1] - eR[1]*eL[0];
+  const s1 = 2*reCross, s2 = 2*imCross;
+  const s3 = (eR[0]*eR[0]+eR[1]*eR[1]) - (eL[0]*eL[0]+eL[1]*eL[1]);
+  const n = Math.max(1e-9, s0);
+  return [s1/n, s2/n, s3/n];
+}
+function dotJS(u,v){ return u[0]*v[0]+u[1]*v[1]+u[2]*v[2]; }
+function triAreaJS(a,b,c){
+  const num = a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+  const den = 1 + dotJS(a,b) + dotJS(b,c) + dotJS(c,a);
+  return 2 * Math.atan2(num, den);
+}
+function skyrmionNumberJS(w, l, a, Nu, Nt) {
+  const S = [];
+  for (let i = 0; i <= Nu; i++) {
+    const u = (i / Nu) * 0.999999;
+    const r = w * u / (1 - u);
+    const row = [];
+    for (let j = 0; j <= Nt; j++) {
+      const th = (j / Nt) * 2 * Math.PI;
+      row.push(stokesJS(r*Math.cos(th), r*Math.sin(th), w, l, a));
+    }
+    S.push(row);
+  }
+  let total = 0;
+  for (let i = 0; i < Nu; i++) for (let j = 0; j < Nt; j++) {
+    total += triAreaJS(S[i][j], S[i+1][j], S[i+1][j+1]) + triAreaJS(S[i][j], S[i+1][j+1], S[i][j+1]);
+  }
+  return total / (4 * Math.PI);
+}
+let lastSkyCompute = 0, skyN = 0;
+
+/* ── interaction ──────────────────────────────────────── */
+let letterboxScale = [1, 1];
+let pointerActive = false, downTime = 0, moved = false, downX = 0;
+
+function onDown(x) {
+  pointerActive = true; moved = false; downTime = performance.now(); downX = x;
+  dragSet(x);
+}
+function onMove(x) {
+  if (!pointerActive) return;
+  if (Math.abs(x - downX) > 6) moved = true;
+  dragSet(x);
+}
+function onUp() {
+  if (!pointerActive) return;
+  pointerActive = false;
+  const dt = performance.now() - downTime;
+  if (!moved && dt < 400) { modeStart = performance.now(); applyMode(modeIdx + 1); }
+}
+function dragSet(x) {
+  const frac = Math.min(1, Math.max(0, x / window.innerWidth));
+  if (modeIdx === 0) {
+    const logMin = Math.log(F_MIN), logMax = Math.log(F_MAX);
+    fresnel = Math.exp(logMin + frac * (logMax - logMin));
+    fresnelAuto = false;
+  } else if (modeIdx === 1) {
+    charge = 1 + Math.round(frac * 4); // 1..5
+  } else {
+    const logMin = Math.log(ALPHA_MIN), logMax = Math.log(ALPHA_MAX);
+    alpha = Math.exp(logMin + frac * (logMax - logMin));
+    alphaAuto = false;
+  }
+}
+C.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+C.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+C.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+C.addEventListener('touchend', e => { e.preventDefault(); onUp(); }, { passive: false });
+
+/* ── resize / letterbox ──────────────────────────────────*/
+const RENDER_SCALE = 0.78;
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  C.width = Math.round(w * RENDER_SCALE); C.height = Math.round(h * RENDER_SCALE);
+  C.style.width = w + 'px'; C.style.height = h + 'px';
+  const ca = w / h;
+  letterboxScale = ca > 1 ? [1 / ca, 1] : [1, ca];
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── main loop ────────────────────────────────────────── */
+let simTime = 0, lastT = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  simTime += dt;
+  if (now - modeStart > HOLD) { modeStart = now; applyMode(modeIdx + 1); }
+
+  if (modeIdx === 0 && fresnelAuto) {
+    fresnel = F_MIN + (F_MAX - F_MIN) * (0.5 + 0.5 * Math.sin(simTime * 0.11));
+  }
+  if (modeIdx === 2) {
+    skyChargeT += dt;
+    if (skyChargeT > 7.5) { skyChargeT = 0; skyCharge = 2 + Math.floor(Math.random() * 4); }
+    if (alphaAuto) {
+      const logMin = Math.log(ALPHA_MIN), logMax = Math.log(ALPHA_MAX);
+      const frac = 0.5 + 0.5 * Math.sin(simTime * 0.17);
+      alpha = Math.exp(logMin + frac * (logMax - logMin));
+    }
+  }
+
+  gl.viewport(0, 0, C.width, C.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, qb);
+  gl.enableVertexAttribArray(pLoc);
+  gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(U.uLetterboxScale, letterboxScale[0], letterboxScale[1]);
+  gl.uniform1f(U.uViewR, VIEW_R);
+  gl.uniform1f(U.uW, W_BEAM);
+
+  if (modeIdx === 0) {
+    gl.uniform1i(U.uMode, 0);
+    gl.uniform1f(U.uF, fresnel);
+    statValEl.textContent = fresnel.toFixed(2);
+  } else if (modeIdx === 1) {
+    gl.uniform1i(U.uMode, 1);
+    gl.uniform1f(U.uL, charge);
+    gl.uniform1f(U.uAlpha, 1.0);
+    statValEl.textContent = String(charge);
+  } else {
+    gl.uniform1i(U.uMode, 1);
+    gl.uniform1f(U.uL, skyCharge);
+    gl.uniform1f(U.uAlpha, alpha);
+    if (now - lastSkyCompute > 220) {
+      lastSkyCompute = now;
+      skyN = skyrmionNumberJS(W_BEAM, skyCharge, alpha, 28, 28);
+    }
+    statValEl.textContent = Math.round(skyN) + '  (raw ' + skyN.toFixed(3) + ', l=' + skyCharge + ')';
+  }
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

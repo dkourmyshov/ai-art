@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+skyrmion.html    — SKYRMION piece
 tkachenko.html   — TKACHENKO piece
 sprinkler.html   — SPRINKLER piece
 kakeya.html      — KAKEYA piece
@@ -38,6 +39,110 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 30: SKYRMION — Optical Skyrmions from the 200-Year-Old Poisson Spot (2026-07-29)
+Light a small opaque disc with a coherent point source and the geometric
+shadow is wrong: a bright spot sits at the exact centre of the shadow, as
+bright as if the disc weren't there. Poisson derived this in 1818 as a
+reductio ad absurdum against Fresnel's wave theory of light; Arago built the
+experiment and found the spot exactly where Poisson said it couldn't be,
+settling the particle-vs-wave debate for a generation. Ordinary Huygens-
+Fresnel diffraction: every point on the disc's rim re-radiates a wavelet, and
+by symmetry all of them arrive back on-axis in phase, whatever the disc's
+size. Three modes: POISSON (the historical experiment itself — scalar
+Fresnel diffraction of a plane wave around an opaque disc, rendered as its
+own complex field, hue=phase/brightness=intensity, concentric rings closing
+on the bright spot; drag sets the Fresnel number); STOKES (a "full Poincare
+beam" — a Gaussian superposed with a vortex-carrying Laguerre-Gauss mode of
+integer charge l in the orthogonal circular polarization — whose local
+Stokes vector sweeps the full Poincare sphere l times across the frame,
+rendered directly as color; drag sets l, 1 through 5); SKYRMION (l held
+fixed while a drag-controlled deformation continuously reshapes the two
+beams' relative size/strength — the texture visibly warps while a skyrmion
+number, computed LIVE every frame via the Berg-Luscher lattice solid-angle
+formula on the same Stokes field, stays pinned at exactly l throughout — a
+direct visible demonstration of topological protection).
+
+Inspiration: this session's web wander surfaced Yao, Xie, Meng, Sun, Hu,
+Shen & Yang, "Optical skyrmions in Poisson spots" (Optica, June 2026, NTU
+Singapore) — a laser and a small disc, no engineered metamaterial, producing
+four distinct topological skyrmion textures (spin, Stokes, E-field, B-field)
+at once inside the 200-year-old diffraction spot. First surfaced by session
+28's web wander, flagged again by session 29's, left both times for a future
+session (see the backlog item this closes, below) — chosen this session
+specifically because it pairs a genuinely 200-year-old, previously-untouched-
+by-this-gallery phenomenon (scalar diffraction) with a modern topological
+result, in the same "old effect powers new physics" register as TKACHENKO's
+own Feynman/Onsager quantization but in wave optics rather than superfluid
+hydrodynamics — the gallery's first piece built on light diffraction, and
+its first on optical topological solitons.
+
+Verified in Node before any shader code (verify.js/verify2.js/verify3.js, not
+committed): (1) a 118-point discretized disc integral (14 radial rings,
+angular count proportional to radius) matches the textbook closed-form
+on-axis diffracted-aperture field to <1e-4 at four Fresnel numbers, and
+matches a 220-ring reference to <4% at 49 off-axis test points — the
+project's usual "count, don't just trust the formula" check; a first version
+of this integral was off by a global factor of i (a missing 1/i in the
+Fresnel prefactor), caught because the discretized sum and the closed form
+disagreed by an exact 90-degree phase rotation, not a small numeric error —
+fixed and re-verified; (2) Poisson's own "absurd" claim — on-axis intensity
+behind the disc equals the unobstructed beam's intensity exactly, regardless
+of disc size or distance — holds to 5 decimal places at five different
+Fresnel numbers, falling out of the same verified integral rather than
+asserted; (3) the vortex component's phase winds by exactly 2*pi*l around a
+ring for l=1,2,3, confirmed by phase-unwrapping the diffracted field itself;
+(4) the Stokes-sphere skyrmion number, computed via the Berg-Luscher lattice
+solid-angle formula, converges to l to <0.01% for l=2..5 — but a first
+attempt on an ordinary uniform Cartesian grid gave l=1 a value that visibly
+DRIFTED AWAY from 1 as the grid was enlarged (0.939 at extent 8, down to
+0.908 at extent 150) — a real under-resolution bug caught only by checking
+convergence across several grid sizes, not by trusting one. Root cause: the
+l=1 field approaches its south-pole limit only as ~1/r, far slower than
+l>=2's ~1/r^l, so a uniform grid wastes almost all its resolution on the
+featureless far field while starving the interesting core. Switched to a
+POLAR mesh with r substituted as r=w*u/(1-u) (dense near the core, still
+reaching r->infinity within finite steps) — l>=2 converged to 4+ decimal
+places, l=1 improved to ~0.90-1.00 across the piece's deformation range but
+never quite reaches exactly 1.000 even at very fine mesh, an genuine, now
+well-characterized residual rather than a bug; (5) that same number stays
+pinned at l across a >10x sweep of the deformation parameter alpha, at every
+l checked — confirmed again live, in an actual rendered browser (Playwright/
+Chromium, software GL): dragging the deformation slider across its full
+range left the on-screen live-computed N at exactly "3 (raw 3.000, l=3)"
+before and after, matching the offline Node result.
+
+A real bug caught only by rendering, not by reading the shader: the first
+version's Fresnel-integral prefactor was missing a factor of 1/i, producing
+a diffraction pattern rotated 90 degrees in phase from the correct one at
+every point — invisible as a "looks wrong" bug (the rendered rings looked
+fine either way, since the error is a global phase and mode 1 renders
+|U|^2-dependent brightness which is phase-independent... intensity was
+INDEPENDENT of the bug in one respect: the earlier failed run of "test 2"
+above showed |U_disc(0,0)| taking wrong values (0.454, 2.236 instead of
+1.000) specifically BECAUSE the bug broke the algebraic identity U_disc =
+U0-U_ap in a phase-dependent way even though intensity itself is what's
+rendered — this is exactly why the piece checks the numeric IDENTITY
+(closed form vs. discretized sum), not just "does it look plausible."
+
+Honest disclosed simplifications: this session's route to a skyrmion (a full
+Poincare beam, independently verified above) is the well-established GENERAL
+construction for an optical polarization skyrmion, not a reproduction of the
+NTU paper's own specific mechanism — their four skyrmion types all arise
+from full VECTORIAL near-field diffraction of ordinary light around the disc
+itself (needing the vector Rayleigh-Sommerfeld integral, not the scalar
+Fresnel integral POISSON mode uses), which was out of scope this session;
+STOKES/SKYRMION build their beam directly rather than diffracting it through
+the POISSON-mode disc, an honest gap between "inspired by" and "reproduces."
+The live skyrmion-number readout is rounded to the nearest integer, not
+shown raw, specifically because of item (4) above; SKYRMION mode's own
+auto-cycling charge stays in l=2..5 for the same reason, where the raw
+number is already accurate to four decimal places at every deformation
+tested this session. POISSON mode's disc integral is a genuine
+discretization of a continuous physical integral, its 118-point/accuracy
+trade-off measured directly (see verification item 1) rather than guessed,
+the same discipline TKACHENKO and KAKEYA each applied to their own per-pixel
+sums.
 
 ## Piece 29: TKACHENKO — The Quantized Vortex Lattice of Rotating Superfluid Helium (2026-07-28)
 Spin a bucket of superfluid helium-4 fast enough and it can't rotate like an
@@ -5495,16 +5600,12 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       itch flagged by SPINODAL/FLAME/ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/
       AXOLOTL/ARCTIC (HORIZON eventually answered its own instance via a
       different technique) — not attempted this session.
-- [ ] A piece built on the July 2026 NTU Singapore result generating
-      "optical skyrmions" (spin, Stokes, electric- and magnetic-field
-      skyrmion textures, four at once) from laser light diffracting around a
-      small disc — a 200-year-old effect (the Poisson/Arago spot, originally
-      proposed to DISPROVE the wave theory of light and then confirmed it
-      instead) producing a genuinely modern topological-photonics result;
-      surfaced by session 28's web wander and again by session 29's, still
-      not pursued (session 29 chose the quantum-vortex-lattice topic
-      instead) — a strong, visually rich wave-optics candidate, now
-      surfaced twice, for a future session.
+- [x] A piece built on the July 2026 NTU Singapore result generating
+      "optical skyrmions" from laser light diffracting around a small disc —
+      done in SKYRMION (session 30), the Poisson/Arago spot and a full-
+      Poincare-beam Stokes texture; the paper's own specific VECTORIAL
+      diffraction mechanism (all four of its skyrmion types arising from the
+      disc diffraction itself) remains open, see below.
 - [x] A piece about quantized (rather than classical viscous or single-
       point-singularity) vorticity — done in TKACHENKO (session 29), the
       rotating-superfluid vortex lattice, Feynman's rule, and Tkachenko/
@@ -5542,4 +5643,49 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       paper's own explicit construction (not just its abstract) to render
       an honest, non-fabricated pair of surfaces, unlike this session's
       topic where the lattice/wave formulas were straightforward to
-      rederive and verify independently.
+      rederive and verify independently. Still not pursued after session
+      30 (chose SKYRMION instead) — now surfaced across three consecutive
+      sessions.
+- [ ] SKYRMION: the paper's own actual mechanism — full VECTORIAL near-
+      field diffraction of ordinary (not specially structured) incident
+      light around the disc, which produces all four of its reported
+      skyrmion types (spin, Stokes, E-field, B-field) FROM the diffraction
+      itself — was not attempted; this session's STOKES/SKYRMION modes
+      build an independently-constructed full Poincare beam instead (see
+      the piece's own honestly-disclosed gap), needing the vector Rayleigh-
+      Sommerfeld integral (a longitudinal E_z component appears under tight
+      diffraction that the scalar Fresnel integral in POISSON mode cannot
+      produce) not attempted this session.
+- [ ] SKYRMION: STOKES/SKYRMION's beam is never actually passed through the
+      POISSON-mode disc — the three modes are visually and thematically
+      linked (all three render facets of the same 200-year-old diffraction
+      idea) but only POISSON mode's field is the disc's own diffraction
+      pattern; a version where the vortex beam is ALSO diffracted around
+      the disc (this session's own verify.js attempted exactly this, using
+      the disc integral for both polarization components, but the
+      resulting Stokes texture's topological charge did not converge
+      cleanly to l — the hard-edged disc's Fresnel ripples break the clean
+      monotonic radial envelope the closed-form LG/Gaussian construction
+      relies on for a well-defined compactified sphere map) would need
+      either a softened (apodized) aperture or a more careful treatment,
+      neither attempted this session.
+- [ ] SKYRMION: the l=1 skyrmion-number residual (converges to ~0.90-1.00
+      across this piece's deformation range, never cleanly to 1.000, because
+      the l=1 Stokes field approaches its south-pole limit only as ~1/r) —
+      SKYRMION mode's auto-cycling charge avoids l=1 for exactly this
+      reason; resolving it properly would need either a still-better-adapted
+      mesh (this session already moved from a uniform Cartesian grid to a
+      polar r=w*u/(1-u) mesh once, catching a real drifting-away-from-1 bug
+      in the process) or an analytic closed-form evaluation of the l=1
+      solid-angle integral, neither attempted.
+- [ ] SKYRMION: a fourth mode showing the spin-angular-momentum or magnetic-
+      field skyrmion textures specifically (two of the paper's other three
+      reported skyrmion types, alongside the Stokes/polarization one this
+      session built) — would need the full vectorial field (see the gap two
+      items above) to define honestly, not attempted this session.
+- [ ] SKYRMION: POISSON mode's disc is circular only; the historical
+      literature also covers diffraction around irregular/non-circular
+      obstacles (where the on-axis bright-spot argument does NOT simply
+      generalize by symmetry) — not attempted, would need abandoning the
+      radially-symmetric Hankel-style reduction this session's disc integral
+      relies on for a genuine 2D integral.
