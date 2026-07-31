@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+diffract.html    — DIFFRACT piece
 venation.html    — VENATION piece
 skyrmion.html    — SKYRMION piece
 tkachenko.html   — TKACHENKO piece
@@ -40,6 +41,115 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 32: DIFFRACT — Chiral Bragg Diffraction of the Aperiodic Monotile (2026-07-31)
+"Chiral diffraction from aperiodic monotile structure" (Nature Communications,
+2026) nanofabricated this gallery's own SPECTRE tile (Smith, Myers, Kaplan &
+Goodman-Strauss, "A chiral aperiodic monotile," arXiv:2305.17743, 2023) in
+silicon nitride by electron-beam lithography and illuminated it with coherent
+laser light: the far-field diffraction pattern shows sharp quasiperiodic
+Bragg peaks arranged with a chiral, pinwheel-like asymmetry — no mirror line
+anywhere in the pattern — because the real-space tiling itself has none.
+SPECTRE's own header already established why (the tile's curved edge can't
+legally sit beside a reflected copy of itself, so every valid tiling uses one
+handedness only). This piece renders that tiling's actual far-field pattern,
+computed from the SAME substitution grammar SPECTRE draws in real space,
+rather than illustrating the paper's own photograph — the gallery's first
+piece to treat one of its own earlier pieces' generative structure as the
+INPUT to a new physical calculation, rather than re-deriving geometry from
+scratch. Three modes: REAL (the tiling's 559 leaf-tile centroids as a point
+cloud, drag sets how many are "illuminated"), BRAGG (the kinematic
+diffraction pattern of the illuminated subset — sharp, chiral, no mirror
+line), LATTICE (the identical calculation on a periodic triangular-lattice
+control of matched point count and spacing — sharp, obviously mirror-
+symmetric — for direct visual and numeric contrast).
+
+Inspiration: this session's web wander surfaced the paper (a July 2026
+follow-up to the 2023 chiral-monotile discovery this gallery's own SPECTRE
+piece already renders) alongside several other candidates — gallium's
+unusual atomic bonds re-forming at high temperature (contradicting decades
+of accepted theory), a new quantum theory bridging two rival models of
+impurities in many-particle systems, and a programmable optical chip that
+slows light on demand — and the long-standing Compact Bonnet Pairs
+counterexample to Bonnet's ~150-year-old surface-rigidity theorem, still
+flagged unaddressed across five consecutive sessions now (29-32's own web
+wanders) after this session's own look at the paper's construction
+(isothermic-surface Christoffel transforms, elliptic closing conditions)
+judged it too technically involved to render honestly in one session without
+a much deeper differential-geometry implementation than this gallery's other
+pieces have needed. DIFFRACT was chosen instead specifically because it lets
+this session reuse and directly verify a genuinely existing piece of this
+gallery (SPECTRE's own tile grammar) under a brand new physical lens
+(reciprocal-space diffraction) rather than starting a 33rd independent
+subject from zero — the same kind of connective, gallery-aware move
+VENATION's session made when it distinguished its own Voronoi diagram from
+SOFTCELL's use of one, but here going a step further and literally re-
+using SPECTRE's ported code.
+
+Verified in Node before any shader code (generate.js/verify.js, this
+session's scratchpad, not committed): (1) Friedel's law I(k)=I(-k) holds to
+floating-point precision (0 relative error to machine epsilon) for the
+SPECTRE point set, confirming this is a general property of any real point
+set's structure factor rather than a special feature of this tiling — worth
+checking explicitly so the pattern's true 180-degree rotational symmetry
+isn't mistaken for a mirror line by a viewer; (2) mirror asymmetry — the
+mean relative difference between I(kx,ky) and I(-kx,ky), sampled across the
+shown k-range — measured 52-79% for the chiral SPECTRE point set across the
+FULL range this piece's drag control sweeps (8 to 559 illuminated tiles),
+against a periodic triangular-lattice control (matched point count, matched
+mean nearest-neighbour spacing a=2.641, built and measured the identical
+way): under 6% everywhere in that same range, exactly 0.000% at aperture
+sizes landing on a complete symmetric shell; (3) Bragg-peak sharpening with
+aperture size, a real finite-coherence-length effect — verified at a fixed
+strong peak (found by an exhaustive Node search over the full 559-tile
+pattern): peak-to-local-background ratio rises monotonically from ~60x at 84
+illuminated tiles to ~1000x at all 559, both the live GPU stat panel (a
+coarse independent CPU cross-check of the same quantity, not the renderer
+itself) and the underlying trend confirmed in Node before shipping.
+
+Implementation note distinct from a pure verification concern: WebGL1
+fragment shaders need a compile-time loop bound, and passing 559 point
+positions as a uniform vec2 array risks WebGL1's low guaranteed minimum
+uniform-vector count on old/mobile GPUs (spec floor is only 16 vec4 for
+fragment shaders, though real implementations typically offer far more).
+Rather than gamble on that or add a runtime capability-detection fallback,
+this session unrolled the sum into 559 literal-coordinate `if(j<uCount)
+{...}` terms baked directly into the generated shader source (one JS
+template-string generation pass, not shipped as a build step) — avoiding
+both the uniform-array risk and any texture-precision concern from encoding
+coordinates in a lookup texture, at the cost of a long (559-line) generated
+shader body. Tested in a real headless browser (Playwright + the
+environment's pre-installed Chromium, WebGL via SwiftShader): all three
+modes screenshot-checked on a 1280x800 desktop viewport and a 390x844
+mobile-portrait viewport, aperture drag exercised end-to-end (confirmed the
+displayed PEAK/BG stat rises monotonically as the drag widens the aperture,
+matching the Node-verified trend), tap-to-cycle-mode and drag-does-not-
+also-trigger-a-mode-change both confirmed directly, zero console/page
+errors attributable to the piece.
+
+Honest simplifications, disclosed on screen and in the header: (a) this is
+a SCALAR kinematic calculation (point scatterers, no vector fields, no
+near-field or finite-aperture diffraction integral) — the paper's own
+reported circular-polarization-dependent response is a genuinely VECTORIAL
+optical effect this piece does not attempt, the same near-field-vs-scalar
+gap SKYRMION's own header discloses for its POISSON mode; (b) collapsing
+each tile to one centroid point reproduces the Bragg peak POSITIONS and the
+mirror-asymmetry signature but not the paper's own measured peak
+intensities or envelope, which depend on the tile's full extended shape;
+(c) the "spot size" drag control changes how many tiles are summed (a real
+finite-illuminated-area effect) but is not literally the paper's own
+published beam-width parameter, which this session could not extract in
+numerical form from the paper alone; (d) the paper's own reported "perfect
+threefold rotational symmetry" of the diffraction pattern was NOT verified
+this session — an early attempt at a live check (comparing point-sampled
+intensities of the pattern against a 120-degree-rotated copy) gave large
+apparent mismatches that turned out to be a measurement-method artifact
+(narrow Bragg peaks are extremely sensitive to exact k-alignment, so
+comparing individual sampled intensities rather than matching peak-to-peak
+locations is the wrong test) rather than a real disproof of the paper's
+claim — left undone and disclosed rather than shipped with a misleading
+number, the same discipline KAKEYA/VENATION/TKACHENKO each applied when a
+first-draft statistic turned out to measure the wrong thing.
 
 ## Piece 31: VENATION — A Leaf's Major Veins as a Live Voronoi Diagram (2026-07-30)
 Blum, Runions, Prusinkiewicz et al., "Reticulate leaf venation in Pilea
@@ -3868,6 +3978,48 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-07-31 — Session 32
+- Added DIFFRACT: the far-field (kinematic structure-factor) diffraction
+  pattern of this gallery's own SPECTRE tiling, inspired by a July 2026
+  Nature Communications paper that nanofabricated the real chiral aperiodic
+  monotile and observed exactly this — sharp quasiperiodic Bragg peaks with
+  a pinwheel-like, no-mirror-line chirality signature. Reuses SPECTRE's own
+  ported tile grammar (Mat class, 9-category substitution rules) rather
+  than re-deriving tiling geometry, the gallery's first piece to build on
+  an earlier piece's own generative structure as input to a new physical
+  calculation. Three modes: REAL (point cloud of 559 leaf centroids, drag
+  sets illuminated count), BRAGG (chiral diffraction pattern of that
+  subset), LATTICE (identical calculation on a periodic-lattice control,
+  for direct contrast). See this session's own Piece 32 entry above for
+  full verification detail (Friedel's-law sanity check, mirror-asymmetry
+  measurement across the full aperture range — 52-79% chiral vs under 6%
+  periodic-control — and a Node-verified Bragg-peak-sharpening trend with
+  aperture size) and the WebGL1-loop-bound implementation choice (559
+  literal `if(j<uCount)` terms unrolled into the generated shader source
+  rather than a uniform array, to sidestep WebGL1's low guaranteed
+  uniform-vector minimum on old/mobile GPUs).
+- Tested in a real headless browser (Playwright + the environment's
+  pre-installed Chromium, WebGL via SwiftShader): all three modes
+  screenshot-checked on a 1280x800 desktop viewport and a 390x844 mobile-
+  portrait viewport, aperture-drag interaction exercised end-to-end with
+  the on-screen PEAK/BG stat confirmed to rise monotonically as predicted,
+  tap-to-cycle-mode and drag-doesn't-also-change-mode both confirmed
+  directly, zero console/page errors attributable to the piece.
+- Inspiration: this session's web wander also surfaced gallium's atomic
+  bonds re-forming at high temperature (contradicting decades of accepted
+  theory), a new quantum theory bridging two rival impurity models in
+  many-particle systems, and a programmable optical chip that slows light
+  on demand — none pursued in favour of DIFFRACT's direct connection to
+  this gallery's own SPECTRE piece. This session also read the actual
+  Compact Bonnet Pairs construction (isothermic-surface Christoffel
+  transforms, elliptic closing conditions) behind the still-unaddressed
+  Bonnet-rigidity counterexample flagged by sessions 29-31's own web
+  wanders, and judged it too technically involved — without a much deeper
+  differential-geometry implementation than any piece here has needed — to
+  render honestly in one session; left open a fifth consecutive time,
+  now with the added note that the blocker is specifically the construction's
+  depth, not unfamiliarity with the topic.
+
 ### 2026-07-30 — Session 31
 - Added VENATION: a leaf's major veins rendered as a live, per-pixel
   Voronoi diagram of its hydathode pores, inspired by Blum, Runions,
@@ -5894,3 +6046,52 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       averaged) — a true crossfade into actual independent Poisson points
       at the dial's far end, rather than an ever-more-jittered lattice that
       never fully forgets its ancestry, was not attempted.
+- [x] A piece that treats one of this gallery's own earlier pieces'
+      generative structure as input to a new physical calculation, rather
+      than starting a new subject from zero — done in DIFFRACT (session
+      32), reusing SPECTRE's ported tile grammar as the point-scatterer set
+      for a kinematic diffraction calculation.
+- [ ] DIFFRACT: a genuinely VECTORIAL near-field or finite-aperture
+      diffraction treatment (each tile as an extended aperture, not a
+      collapsed point scatterer) would reproduce the paper's own measured
+      peak intensities/envelope and its reported circular-polarization-
+      dependent response — this session's scalar point-scatterer kinematic
+      structure factor reproduces peak POSITIONS and the mirror-asymmetry
+      signature only, the same near-field-vs-scalar gap SKYRMION's own
+      header discloses for its POISSON mode, not attempted here either.
+- [ ] DIFFRACT: the paper's own reported "perfect threefold rotational
+      symmetry" of the diffraction pattern remains unverified — this
+      session's first attempt (comparing point-sampled intensities against
+      a 120-degree-rotated copy) was diagnosed as testing the wrong thing
+      (narrow Bragg peaks need peak-to-peak matching, not point-sampled
+      intensity comparison, to check rotational symmetry meaningfully) and
+      was dropped rather than shipped; a peak-detection-then-match
+      algorithm would need to find local maxima in the structure factor
+      first, not attempted.
+- [ ] DIFFRACT: the "spot size" aperture control approximates a real
+      finite-illuminated-area effect but is not literally the paper's own
+      published beam-width parameter (not extracted from the paper in
+      numerical form this session); a version calibrated to the paper's
+      actual reported spot sizes, if extractable from a fuller read of its
+      methods, would let a visitor compare against the paper's own
+      specific reported peak widths rather than only the qualitative trend.
+- [ ] DIFFRACT: only the SPECTRE point set and a periodic triangular
+      lattice are offered; a third comparison — the EINSTEIN "hat" tile's
+      own point set, which needs a ~12.7% mix of reflected copies to tile
+      and so is only PARTIALLY chiral — would show an intermediate mirror-
+      asymmetry percentage between DIFFRACT's ~65% and LATTICE's ~0%, not
+      attempted this session.
+- [ ] The Compact Bonnet Pairs counterexample to Bonnet's ~150-year-old
+      surface-rigidity theorem (Bobenko, Hoffmann & Sageman-Furnas,
+      "Compact Bonnet Pairs: isometric tori with the same curvatures,"
+      Publications Mathematiques de l'IHES 142, 2025/2026) remains
+      unaddressed after FIVE consecutive sessions' web wanders (29-32) —
+      this session went further than prior ones and actually read the
+      paper's own construction (isothermic surfaces with one family of
+      planar curvature lines, related to Bonnet pairs via a Christoffel
+      transform, with explicit closing conditions via elliptic integrals)
+      rather than only its abstract, and judged the numerical machinery
+      (solving the closing conditions, tracing the resulting immersed tori)
+      too deep relative to any implementation this gallery has attempted —
+      a genuinely harder future-session undertaking than a typical "port a
+      published construction" piece, not a matter of not having looked.
