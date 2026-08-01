@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+noperthedron.html — NOPERTHEDRON piece
 diffract.html    — DIFFRACT piece
 venation.html    — VENATION piece
 skyrmion.html    — SKYRMION piece
@@ -42,7 +43,161 @@ einstein.html    — EINSTEIN piece
 
 ---
 
-## Piece 32: DIFFRACT — Chiral Bragg Diffraction of the Aperiodic Monotile (2026-07-31)
+## Piece 33: NOPERTHEDRON — A Convex Polyhedron Without Rupert's Property (2026-08-01)
+In the 1690s Prince Rupert of the Rhine won a bet that a hole could be cut
+through a cube wide enough to pass an identical copy of that same cube
+through it; Wallis proved it in 1693 (drill along the space diagonal, room
+to spare — a 4%-larger cube still fits). Over the following three centuries
+every convex solid anyone checked turned out to share this "Rupert
+property" too — the five Platonic solids, the truncated icosahedron,
+dozens more — and by 2017 it was formally conjectured that EVERY convex
+polyhedron has it. Steininger & Yurkevich, "A convex polyhedron without
+Rupert's property" (arXiv:2508.18475, August 2025, widely covered in 2026
+science press as the first-ever disproof), built an explicit 90-vertex
+convex solid — the Noperthedron — and proved by an exhaustive computer-
+assisted case split over roughly 18 million orientation regions (SageMath,
+partly formalized in Lean) that NO orientation of a hole through it ever
+lets an identical copy pass. First shape ever proven not-Rupert. Three
+modes: SOLID (the actual 90-vertex convex hull, computed live in the
+browser from the paper's own exact group-action construction, not baked
+data — a real rotatable, lit, depth-tested triangle mesh, drag to orbit);
+CUBE (Rupert's classical KNOWN-POSITIVE case — drag sets the hole's view
+direction, a continuously auto-sweeping search tries copy orientations and
+in-plane rotations, live "best fit scale" stat climbs toward the
+literature's own exact Nieuwland constant 3*sqrt(2)/4 = 1.06066 the longer
+it runs); NOPERTHEDRON (the identical passage-test mechanism applied to
+the paper's own solid — the live best-fit-scale stat never once exceeds
+1.0 no matter how long the sweep runs, a direct, honestly-labeled
+EMPIRICAL echo of the paper's own rigorous impossibility result).
+
+This closes a "3D" backlog itch flagged across TEN consecutive prior
+sessions (SPINODAL/FLAME/ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/AXOLOTL/
+ARCTIC/SPRINKLER/TKACHENKO each wanted a literal 3D rendering and didn't
+build one; HORIZON answered its own instance via raymarching, a real
+illusion of depth but never an actual vertex/face mesh). NOPERTHEDRON is
+this gallery's first genuine rasterized 3D solid: an actual triangle mesh,
+a hand-written MVP matrix pipeline (perspective + lookAt), a depth buffer,
+flat-shaded lit faces — because the paper's own object is inescapably
+3-dimensional, unlike every earlier "3D itch" piece where the underlying
+phenomenon was itself 2D or a 2D field extruded, so this session finally
+had a genuine reason to build the pipeline rather than retrofitting one.
+
+Inspiration: this session's web wander surfaced several July-2026
+candidates — a University of Tokyo optical experiment finding chiral,
+polarization-dependent diffraction from the Smith-hat monotile (a close
+cousin of this gallery's own DIFFRACT, judged too redundant to justify a
+34th session on the same underlying physics so soon after DIFFRACT itself),
+and assorted materials-physics results (graphene defying an established
+scaling law, a newly engineered magnetic-skyrmion crystal, a fractional
+Fermi sea in ultracold atoms) — but the Noperthedron was chosen specifically
+because it is the first candidate in 33 sessions rooted in pure solid
+geometry/combinatorial topology (every prior piece drew on a field, an
+agent population, a random matrix, a tiling grammar, or a fluid/wave
+system, never a single explicit finite point set whose defining property
+is a global combinatorial-geometric one), because its construction is
+completely explicit (exact rational coordinates, a finite group action —
+nothing needing empirical calibration or unavailable raw data, unlike, say,
+SKYRMION's or SPRINKLER's own honestly-disclosed calibration gaps), and
+because it was the one candidate that could finally deliver this gallery's
+long-deferred literal-3D-mesh itch honestly, rather than forcing 3D onto a
+subject that didn't need it.
+
+Verified in Node before any shader code (verify.js/hull.js/geometry.js/
+verify_rupert.js/verify_nop_rupert.js, this session's scratchpad, not
+committed): (1) the construction's own internal claims check out exactly —
+seed point C1's norm is 1.0 to float precision (paper: "exactly 1"), C2 and
+C3 measure 0.98558 and 0.98350 (paper: both in (0.98, 0.99)), the 90-point
+set is exactly point-symmetric about the origin (v in the set implies -v is
+too, to 1e-9) with zero coincident vertices; (2) the computed convex hull
+matches the paper's OWN reported topology precisely, not approximately: 90
+vertices used, Euler V-E+F=2 satisfied (90-264+176=2 on the raw
+triangulation), and — the sharpest check — clustering the 176 raw
+triangles by coplanar face normal collapses them into exactly 152 merged
+faces, splitting as 150 lone triangles plus 2 clusters of exactly 13
+triangles each (a 13-triangle fan is precisely the fan-triangulation of a
+convex 15-gon), matching the paper's own "150 triangles and two regular
+15-sided polygons" description to the triangle, and the merged edge count
+(computed by re-checking which raw edges lie between two DIFFERENT merged
+clusters, not derived circularly from Euler's formula) comes out to exactly
+240, again matching the paper; (3) the exact half-plane-intersection
+containment test (for convex polygons A, B: the translations t with t+B
+subset-of A form the intersection of A's own edge half-planes, each
+tightened by B's support function in that edge's outward normal — a
+literal computational-geometry identity, not an approximation) was sanity-
+checked against self-containment (a shadow tested against an identical
+copy of itself must return scale exactly 1.000000 — it does) and then
+against the CLASSICAL cube passage: a coarse 9x10-direction x 6-rotation
+grid search found a best passing scale of 1.048273, closing in on (not yet
+reaching, at that grid's resolution) the literature's own exact Nieuwland
+constant 3*sqrt(2)/4 = 1.060660 — the live CUBE mode runs the identical
+search continuously and, watched in a real headless-browser session for
+30 seconds (1775 samples), its own on-screen number had already climbed to
+1.0159, correctly trending toward that same constant; (4) an analogous
+9600-sample random-orientation sweep against the ACTUAL Noperthedron
+shadows found a maximum fitting scale of 0.999999 across every sample —
+never once exceeding 1 — with a live 316-346-sample check in the same
+headless session (a coarse independent cross-check of the shipped page's
+own running statistic, not the renderer itself) agreeing, both consistent
+with (though of course not a proof of) the paper's own impossibility
+result.
+
+Two real bugs, both caught only by a headless Playwright/Chromium session
+(1280x800 desktop AND 390x844 mobile-portrait viewports, tap-to-cycle and
+drag-to-orbit/set-angle both exercised end to end, zero console/page
+errors either time), not by reading the shader or the JS: (a) the live
+V-E-F stat panel's own edge count read 264 (the RAW triangulated edge
+count) instead of the paper's own reported 240 (the true polyhedron's
+merged edge count) — caught by eye comparing the on-screen number against
+the header's own claimed verification, then fixed by re-deriving the
+edge count from which raw edges separate two DIFFERENT coplanar-merged
+face clusters (240) rather than counting every raw triangulated edge
+including the internal 15-gon-cap fan diagonals (264), the same
+"triangulating a face for the GPU shouldn't corrupt the stat panel's
+description of the TRUE polyhedron" distinction VENATION's own rasterized-
+cell-area statistic had to get right relative to its idealized geometry;
+(b) on a narrow mobile-portrait viewport, SOLID mode's mesh rendered
+absurdly zoomed in and partially off-screen — the standard glPerspective
+formula (fixed vertical FOV, horizontal FOV derived from aspect) actually
+NARROWS the horizontal FOV further as aspect drops below 1, exactly
+backwards from the "fit the shorter screen dimension" behavior every other
+piece's camera/view code assumes; fixed by deriving an aspect-dependent
+effective vertical FOV (2*atan(tan(baseFov/2)/aspect) when aspect<1) so the
+SHORTER of the two screen dimensions always gets the intended field of
+view, screenshot-confirmed at 390x844 afterward. A third, non-visual bug
+was caught by code inspection before it ever reached a screenshot: the
+idle-rotation logic for CUBE/NOPERTHEDRON modes originally set the hole's
+polar angle via an absolute sin() formula of elapsed time, which would
+have caused a visible jump the instant a visitor released a drag (the
+formula's current output rarely matches wherever the drag left the angle)
+— rewritten to a pure continuous additive wobble (a persistent direction
+flag flipped only at the angle's clamped extremes) mirroring HORIZON's own
+jump-free drag/auto-rotate continuity exactly.
+
+Honest simplifications, disclosed on screen and in this page's own header:
+(a) this page does NOT reproduce the paper's actual proof — that proof
+rigorously covers all ~18 million regions of a continuous 5-parameter
+orientation space via a formally-verified global/local theorem pair; CUBE
+and NOPERTHEDRON modes instead run a live, continuous, deterministic (no
+Math.random — three incommensurate sweep rates on copy-theta/copy-phi/in-
+plane-rotation, echoing QUASICRYSTAL's own irrational-frequency approach)
+SAMPLING of that space, honestly labeled "empirical search, not the full
+proof" in the live stat panel — it can find a real positive witness for
+the cube but can only ever report "never found a fit yet" for the
+Noperthedron, never "provably never fits"; (b) the sampled sweep does not
+claim to cover the paper's own 5-dimensional parametrization exhaustively
+or with matched density, only broadly and continuously; (c) SOLID mode's
+flat shading is computed per raw triangle (176), not per true face (152)
+— visually seamless, since adjacent coplanar triangles on the two 15-gon
+caps share an identical face normal and flat-shade indistinguishably
+(confirmed by eye in a screenshot: no visible internal creases on either
+cap), but means the shipped GPU mesh technically carries more triangles
+than the paper's own minimal face count; (d) the CUBE comparison's cube
+size is arbitrary (unrelated to the Noperthedron's own unit-ball-ish
+scale) since the fitting-SCALE statistic this piece measures is scale-
+invariant by construction — not a claim that the two solids are drawn at
+any meaningfully comparable absolute size.
+
+
 "Chiral diffraction from aperiodic monotile structure" (Nature Communications,
 2026) nanofabricated this gallery's own SPECTRE tile (Smith, Myers, Kaplan &
 Goodman-Strauss, "A chiral aperiodic monotile," arXiv:2305.17743, 2023) in
@@ -6085,13 +6240,65 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       surface-rigidity theorem (Bobenko, Hoffmann & Sageman-Furnas,
       "Compact Bonnet Pairs: isometric tori with the same curvatures,"
       Publications Mathematiques de l'IHES 142, 2025/2026) remains
-      unaddressed after FIVE consecutive sessions' web wanders (29-32) —
-      this session went further than prior ones and actually read the
-      paper's own construction (isothermic surfaces with one family of
-      planar curvature lines, related to Bonnet pairs via a Christoffel
-      transform, with explicit closing conditions via elliptic integrals)
-      rather than only its abstract, and judged the numerical machinery
-      (solving the closing conditions, tracing the resulting immersed tori)
-      too deep relative to any implementation this gallery has attempted —
-      a genuinely harder future-session undertaking than a typical "port a
-      published construction" piece, not a matter of not having looked.
+      unaddressed after SIX consecutive sessions' web wanders (29-33, this
+      session's own wander surfaced other candidates instead and did not
+      revisit it directly) — session 32 went further than prior ones and
+      actually read the paper's own construction (isothermic surfaces with
+      one family of planar curvature lines, related to Bonnet pairs via a
+      Christoffel transform, with explicit closing conditions via elliptic
+      integrals) rather than only its abstract, and judged the numerical
+      machinery (solving the closing conditions, tracing the resulting
+      immersed tori) too deep relative to any implementation this gallery
+      has attempted — a genuinely harder future-session undertaking than a
+      typical "port a published construction" piece, not a matter of not
+      having looked.
+- [x] A literal, rotatable 3D rendering — an actual vertex/face mesh with a
+      real MVP matrix pipeline and depth buffer, not a 2D field, a raymarched
+      illusion of depth (HORIZON), or a 2D cross-section of a 3D effect — an
+      itch flagged across TEN consecutive prior sessions (SPINODAL/FLAME/
+      ATTRACTOR/SOFTCELL/LICHTENBERG/EDDY/AXOLOTL/ARCTIC/SPRINKLER/TKACHENKO)
+      — done in NOPERTHEDRON (session 33), the actual 90-vertex convex hull
+      of Steininger & Yurkevich's 2025 solid, rendered as a real lit,
+      depth-tested triangle mesh, computed live in the browser rather than
+      baked.
+- [x] A piece in pure solid geometry / combinatorial topology, distinct
+      from every earlier field/agent/random-matrix/tiling/fluid/wave piece
+      — done in NOPERTHEDRON (session 33), the first shape proven to lack
+      Rupert's property (Steininger & Yurkevich, arXiv:2508.18475, 2025).
+- [ ] NOPERTHEDRON: the piece's CUBE/NOPERTHEDRON passage-test modes run a
+      continuous but non-exhaustive empirical sweep of orientation space,
+      honestly labeled as such — the paper's own actual proof rigorously
+      covers all ~18 million regions of the true 5-parameter search space
+      via a formally-verified global/local theorem pair (SageMath, partly
+      Lean); reproducing even a small, rigorous slice of that case-split
+      argument (rather than only sampling) was judged out of scope this
+      session, the same register as DIFFRACT's own dropped rotational-
+      symmetry check or KAKEYA's dropped Perron-overlap reproduction.
+- [ ] NOPERTHEDRON: SOLID mode's flat shading is per raw triangle (176),
+      not per the polyhedron's true 152 faces — visually seamless (the two
+      15-gon caps' internal fan diagonals produce no visible crease, since
+      coplanar triangles share an identical face normal) but a future
+      session could merge the two caps into genuine flat polygons on the
+      GPU (a small indexed fan per cap) so the rendered mesh's own topology
+      matches the paper's minimal description exactly, not just its
+      appearance; not attempted this session.
+- [ ] NOPERTHEDRON: the same paper (Section on the "Ruperthedron", Theorem
+      53) also builds a second, related 90-vertex, point-symmetric solid
+      "RUP" via the identical C30-orbit-of-3-seed-points construction, but
+      tuned to prove the OPPOSITE-flavored result: RUP IS Rupert (Nieuwland
+      number >= 1.003, an explicit witness the paper gives a construction
+      for) yet NOT "locally Rupert" (no solution exists within a small
+      window omega=0.0006 of any found orientation) — a genuinely different
+      and interesting companion phenomenon (a passage that exists but is
+      needle-thin in orientation space) this session did not investigate or
+      render, left for a future session with time to extract RUP's own
+      exact seed-point coordinates from the paper.
+- [ ] NOPERTHEDRON: the piece never visualizes the paper's own actual proof
+      technique (the global/local theorems partitioning the 5-parameter
+      orientation space into ~18 million regions) even schematically — a
+      2D slice of that region-partition (e.g. holding the hole direction
+      fixed and shading the copy-orientation sphere by which theorem ruled
+      out that region) would let a visitor see the PROOF's own structure,
+      not just its empirically-sampled conclusion; not attempted this
+      session, since the paper's own region-partition data was not
+      extracted in a form this session could render honestly.
