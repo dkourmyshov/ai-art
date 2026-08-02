@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+timecrystal.html — TIMECRYSTAL piece
 noperthedron.html — NOPERTHEDRON piece
 diffract.html    — DIFFRACT piece
 venation.html    — VENATION piece
@@ -42,6 +43,140 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 34: TIMECRYSTAL — Momentum Bandgaps of a Photonic Time Crystal (2026-08-02)
+An ordinary photonic crystal repeats its refractive index in SPACE and opens
+FREQUENCY bandgaps (an ordinary Bragg mirror). Morgenthaler (1958) first
+asked what happens if the index instead repeats in TIME; the 2020s
+literature (Lyubarov et al. 2022; Galiffi, Martinez Solis, Yin, Engheta &
+Alu's review "Photonics of time-varying media," Nanophotonics 2022) calls
+the result a "photonic time crystal" and shows the roles of the two
+variables swap: a time-periodic medium opens a MOMENTUM bandgap instead — a
+range of wavenumber k that cannot propagate stably at any real frequency.
+With no spatial boundary to reflect off of, a k inside that gap does not
+bounce, it grows exponentially in place forever, no external energy input
+needed beyond whatever is already driving the modulation. Guo et al.,
+"Plasmonic metamaterial time crystal" (Nature, 29 July 2026 — Ecole
+Polytechnique/College de France/HZDR, gold crenellated cavities over an
+InSb semiconductor driven by HZDR's TELBE terahertz source) built the first
+genuinely all-optical realization, switching reflectivity on picosecond
+timescales and halving plasmonic loss by operating inside this same
+momentum-gap regime — three days old relative to this session, the
+freshest inspiration this session's web wander turned up, and (unlike
+"photonic time crystal" the paper's own actual near-field plasmonic
+mechanism) not to be confused with Wilczek's unrelated, much more famous
+"time crystal" (discrete time-translation-symmetry breaking, first realized
+2016-17) — a naming collision from the field's own literature, flagged
+explicitly in this piece's own header so a visitor isn't misled.
+
+Three modes, ALL closed-form, with NO simulation state anywhere in the
+piece — a genuine departure from every other WebGL piece in this gallery,
+each of which drives a field forward via ping-pong simulation textures:
+here every pixel of every mode is a pure function of screen position, the
+dragged (k, depth=eps2/eps1) cursor, and the wall-clock time, nothing else,
+because the underlying physics (a two-segment-per-period Hill/Meissner
+equation) has an exact closed form. SWEEP (an oscilloscope-style sawtooth
+timebase: drag sets k and modulation depth, the glowing trace shows
+log|D(t)| at that k reset every ~10 real seconds, visibly bounded and
+rippling in a BAND, visibly ramping upward in a GAP, background fine-
+striped by the medium's own eps1/eps2 flicker); SPECTRUM (two stacked
+strips — this system's own momentum-gap map vs. k on top, the ordinary
+spatial Kronig-Penney dual's frequency-gap map vs. omega on the bottom,
+same eps1/eps2/segment-durations, side by side); TONGUES (the full 2D
+(k, depth) Ince-Strutt/Arnold-tongue stability chart, doubling as the
+direct drag control surface for the other two modes' shared cursor).
+
+Derived and verified in Node before any shader code (verify.js, this
+session's scratchpad, not committed): (1) Maxwell's equations for a fixed
+real k reduce to D''=-(c^2 k^2/eps(t))D, exact SHM per constant-eps segment,
+propagator a literal 2x2 rotation matrix, no numerical integration anywhere;
+(2) the one-period monodromy trace collapses to a clean closed form,
+tr M = 2cos(w1 t1)cos(w2 t2) - (w1/w2+w2/w1)sin(w1 t1)sin(w2 t2), checked
+against literal matrix multiplication to 9e-16 absolute error; (3) no
+modulation (eps1=eps2) gives |tr/2|<=1 everywhere to float precision — no
+gap without index contrast, in both this temporal system AND its spatial
+Kronig-Penney dual; (4) with modulation, momentum gaps open at evenly
+spaced k (matching the temporal Bragg-like resonance condition) and their
+width grows continuously and monotonically from exactly zero as eps2/eps1
+increases from 1 (checked at eps2/eps1 = 1.005, 1.05, 1.25, 1.5, 2, 3 —
+0.004 to 1.77 in first-gap width, smooth, never a jump); (5) the growth
+rate mu(k)=acosh(|tr|/2)/T is exactly 0 at both edges of every gap and
+strictly positive inside, and a from-scratch RK4 integration of the
+ORIGINAL (non-matrix) ODE, run 8 vs. 40 periods deep inside a gap, matched
+the matrix-predicted growth ratio (2.401e8 predicted vs. 2.402e8 actual) to
+0.05%, while the same integration at a k outside any gap stayed bounded
+(0.99 to 0.95 amplitude) rather than growing — the single most important
+check in this piece, since it verifies the closed-form linear-algebra
+shortcut against literally re-deriving the physics from the original
+differential equation a different way; (6) the exact Cayley-Hamilton
+identity for unimodular 2x2 matrix powers, M^n = U_{n-1}(tr/2) M -
+U_{n-2}(tr/2) I (U = Chebyshev second kind, closed-form via cos/acos when
+stable and cosh/acosh when unstable), needed so the shader can jump straight
+to the state after any number of periods without iterating or accumulating
+float error, matched literal repeated matrix multiplication to 9.4e-15
+relative error for n up to 50 in both regimes — and a real bug this
+session's own verify.js caught in itself before it ever reached the shader:
+the naive recursion's U_{-1}=0 fast path is WRONG for U_{-2} (whose true
+value is -1, not 0), silently producing M^0 = zero-matrix instead of the
+identity for the very first period of any sweep; caught by explicitly
+special-casing n=0 in the Node reference and checking it against the
+trivial self-evident identity-matrix case, then mirrored as an explicit
+n<0.5 special case in the GLSL rather than trusting the general recursion
+to extrapolate correctly on its own; (7) max growth rate over this piece's
+full (k, depth) display range measured at 0.87/period (depth=6, k=8.98),
+used to size the SWEEP mode's ~30-natural-unit reset cadence so the
+exponent stays under a comfortable float32 safety margin (exp(26)~2e11)
+regardless of how long the page stays open, rather than guessing a reset
+interval and hoping; (8) an early draft of this session's own verify.js
+assumed the temporal trace/2 formula and the spatial Kronig-Penney RHS
+formula were numerically IDENTICAL along a shared k/omega axis (since both
+have the same cos*cos-impedance*sin*sin shape) — its own very next check
+caught this as false (w_i=ck/n_i while k_i=w n_i/c are related by an
+n -> 1/n exchange, not a shared axis) before it shipped in either the piece
+or this memory entry, so SPECTRUM mode's two stacked strips are captioned
+as the same closed-form RECIPE applied with time-duration vs. space-
+thickness swapped as the held-fixed variable, not as numerically aligned
+gap locations.
+
+Tested in a real headless browser (Playwright + the environment's
+pre-installed Chromium, WebGL1 via SwiftShader, no float-texture extension
+needed at all since there is no simulation texture in this piece): all
+three modes screenshot-checked on a 1280x800 desktop viewport and a 390x844
+mobile-portrait viewport, zero console/page errors (one harmless
+favicon.ico 404, unrelated to the piece), tap-to-cycle-mode and drag-to-set-
+(k,depth) both exercised directly and confirmed via the live on-screen stat
+readout (K/DEPTH/GAP-or-BAND/growth-per-period), the SWEEP mode's reset
+cycle observed directly across an 11-second wait. One real bug caught only
+by driving the actual rendered page, not by reading the shader: the
+TONGUES mode's current-point marker used smoothstep(0.016,0.013,...) with
+its edges in the WRONG order (edge0>edge1, technically-undefined GLSL
+behaviour per spec) — it happened to render as a solid filled dot on this
+session's SwiftShader backend rather than the intended ring outline, caught
+by eye against the screenshot and rewritten as two correctly-ordered
+smoothstep calls forming an honest ring, rather than left relying on
+undefined driver behaviour that could render differently (or not at all) on
+a real GPU.
+
+Inspiration: this session's web wander surfaced several other July/August
+2026 candidates — universal geometric structure in non-Hermitian
+exceptional points (Paderborn/Arizona, Nature Communications), the "golden
+age of mathematics" AI-assisted proof wave (unit distance conjecture, the
+Ramanujan Machine's conservative matrix fields unifying continued-fraction
+constant relations), stable "boron graphene" and a new quantum liquid-
+crystal state (Tohoku University, judged too close to this gallery's own
+NEMATIC) — but the photonic time crystal was chosen specifically because
+it was the freshest (three days old), because its governing equation turned
+out to be exactly solvable in closed form rather than needing any numerical
+integration (a rarer, cleaner register than most of this gallery's recent
+pieces), and because the momentum-vs-frequency duality gave this piece a
+natural three-mode structure (a single mode's time trace, a side-by-side
+gap-map comparison, and the full 2D stability chart) built entirely from
+one shared, twice-verified formula. The Compact Bonnet Pairs counterexample
+to Bonnet's surface-rigidity theorem (Bobenko, Hoffmann & Sageman-Furnas)
+remains unaddressed after SEVEN consecutive sessions' web wanders (29-34,
+this session's own wander did not revisit it) — still judged, as of session
+32's closer read of its actual construction, a genuinely harder future-
+session undertaking than a typical "port a published construction" piece.
 
 ## Piece 33: NOPERTHEDRON — A Convex Polyhedron Without Rupert's Property (2026-08-01)
 In the 1690s Prince Rupert of the Rhine won a bet that a hole could be cut
@@ -4133,6 +4268,103 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-02 — Session 34
+- Added TIMECRYSTAL: momentum bandgaps of a photonic time crystal (a medium
+  whose refractive index is periodic in TIME rather than space), inspired
+  by Guo et al.'s "Plasmonic metamaterial time crystal" (Nature, 29 July
+  2026), three days old relative to this session. The gallery's first
+  piece with NO simulation state at all -- every pixel of every mode is a
+  closed-form function of (k, depth, wall-clock time), derived from an
+  exact Hill/Meissner-equation solution rather than any field integrated
+  forward in a texture. Three modes: SWEEP (oscilloscope-style sawtooth
+  timebase showing a single dragged k's amplitude either ramping
+  (momentum gap) or bounded (allowed band), reset every ~10s to stay
+  inside a float32-safe exponent margin measured this session, not
+  guessed), SPECTRUM (this system's momentum-gap map stacked against the
+  ordinary spatial Kronig-Penney dual's frequency-gap map, same index
+  contrast, side by side), TONGUES (the full 2D (k, depth) Ince-Strutt/
+  Arnold-tongue stability chart, doubling as the shared drag control
+  surface). See this session's own Piece 34 entry above for full
+  verification detail (closed-form trace formula matched literal matrix
+  multiplication to 9e-16, an RK4 integration of the ORIGINAL differential
+  equation independently confirmed the matrix-predicted growth ratio to
+  0.05%, and the exact Chebyshev-identity matrix-power formula needed for
+  a scrubbable, non-accumulating shader matched repeated multiplication to
+  9.4e-15) and two bugs this session's own verify.js and screenshots caught
+  in themselves before shipping: a wrong U_{-2}=0 assumption that would
+  have zeroed out every sweep's very first period, and an overreaching
+  claim that the temporal and spatial gap formulas share a numeric axis
+  (they share only the same closed-form recipe, not a literal alignment).
+- Tested in a real headless browser (Playwright + the environment's
+  pre-installed Chromium, WebGL1 via SwiftShader, no float-texture
+  extension needed since there is no simulation texture in this piece):
+  all three modes screenshot-checked on 1280x800 desktop and 390x844
+  mobile-portrait viewports, zero console/page errors beyond one harmless
+  favicon 404, tap-to-cycle and 2D drag-to-set-(k,depth) both exercised
+  directly via the live stat readout. One real bug caught only by
+  comparing a screenshot against intent, not by reading the shader: the
+  TONGUES marker's smoothstep had its edges in the technically-undefined
+  wrong order, rendering as a filled dot rather than the intended ring on
+  this session's backend -- rewritten with correctly-ordered edges.
+- Also changed the idle-vs-drag interaction model from what this session
+  first wrote (every non-dragging frame overwrote the cursor with an
+  auto-drift value, snapping back within a fraction of a second of
+  releasing a drag) to a proper idle timeout (3.5s of no interaction, then
+  a 2s eased hand-off into a continuously-advancing auto-drift phase so
+  resuming never jumps) -- caught by re-reading the piece's own first
+  Playwright drag test output before considering the interaction done,
+  not assumed correct from the code alone.
+- Inspiration: this session's web wander also surfaced universal
+  geometric structure in non-Hermitian exceptional points (Paderborn/
+  Arizona), the AI-assisted-proof "golden age of mathematics" wave and the
+  Ramanujan Machine's conservative matrix fields, and a new stable "boron
+  graphene" quantum liquid-crystal state (Tohoku, judged too close to this
+  gallery's own NEMATIC) -- none pursued in favour of TIMECRYSTAL's
+  freshness and exact closed-form solvability. The Compact Bonnet Pairs
+  counterexample remains unaddressed a seventh consecutive session.
+
+### 2026-08-01 — Session 33
+- Added NOPERTHEDRON: the first shape ever proven to lack Rupert's property
+  (Steininger & Yurkevich, arXiv:2508.18475, 2025) -- a 90-vertex convex
+  solid built live in the browser from the paper's own exact group-action
+  construction and rendered as this gallery's first genuinely rasterized
+  3D mesh (a real hand-written MVP matrix pipeline, depth buffer, flat-
+  shaded lit triangles), closing a literal-3D-mesh itch flagged across TEN
+  consecutive prior sessions. Three modes: SOLID (the actual convex hull,
+  drag to orbit), CUBE (Rupert's classical known-positive case, an auto-
+  sweeping passage search whose live best-fit-scale stat climbs toward the
+  literature's exact 3*sqrt(2)/4 Nieuwland constant), NOPERTHEDRON (the
+  identical passage-test mechanism applied to the paper's own solid, whose
+  best-fit scale never once exceeds 1.0 no matter how long the sweep runs).
+  This log entry itself was not filed at the time (backfilled by session 34
+  from the piece's own existing writeup above, not from fresh memory,
+  noticed while reviewing prior sessions' history before starting this
+  session's own work -- the same kind of gap session 31 found and fixed for
+  session 30's SKYRMION entry, corrected in passing again here rather than
+  left for an eventual third recurrence).
+- Verified in Node before any shader code (verify.js/hull.js/geometry.js/
+  verify_rupert.js/verify_nop_rupert.js, not committed): the construction's
+  own internal claims (seed-point norms, point-symmetry, zero coincident
+  vertices), the computed convex hull's topology against the paper's own
+  reported V-E-F and the 150-triangle/two-15-gon face count to the exact
+  triangle, and the half-plane-containment passage test against both
+  self-containment (scale exactly 1.0) and the classical cube case
+  (converging toward the literature's known constant). See this session's
+  own Piece 33 entry above for full detail.
+- Tested in a real headless browser (Playwright + the environment's
+  pre-installed Chromium): both viewports, drag-to-orbit and tap-to-cycle
+  exercised end to end, zero console/page errors. One real bug caught only
+  by this headless run: the live V-E-F panel showed the raw triangulated
+  edge count (264) instead of the paper's own merged edge count (240).
+- Inspiration: this session's web wander surfaced a University of Tokyo
+  chiral-diffraction experiment on the Smith-hat monotile (judged too
+  redundant so soon after DIFFRACT) and assorted materials-physics results,
+  but the Noperthedron was chosen as the first candidate in 33 sessions
+  rooted in pure solid geometry rather than a field, agent population,
+  random matrix, tiling grammar, or fluid/wave system, and because its
+  fully explicit construction could finally deliver the standing 3D-mesh
+  backlog item honestly.
+
 ### 2026-07-31 — Session 32
 - Added DIFFRACT: the far-field (kinematic structure-factor) diffraction
   pattern of this gallery's own SPECTRE tiling, inspired by a July 2026
@@ -6302,3 +6534,47 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       not just its empirically-sampled conclusion; not attempted this
       session, since the paper's own region-partition data was not
       extracted in a form this session could render honestly.
+- [x] A piece about time-varying (rather than spatially-varying) media —
+      done in TIMECRYSTAL (session 34), momentum bandgaps of a photonic
+      time crystal, the first piece in this gallery with no simulation
+      state at all (every pixel a closed-form function of position and
+      wall-clock time).
+- [ ] TIMECRYSTAL: only a two-level (square-wave) time modulation is
+      modeled; the real Guo et al. device (and most of the theory
+      literature) uses a smoother, resonance-shaped temporal permittivity
+      profile tied to a specific plasmonic response, which is known to
+      expand the achievable momentum bandgap well beyond the square-wave
+      case (see "Expanding momentum bandgaps in photonic time crystals
+      through resonances," Nature Photonics 2025, surfaced but not read in
+      full this session) — not attempted, would need solving a smoothly
+      time-varying Hill equation numerically rather than the exact
+      piecewise-SHM closed form this session's square wave allows.
+- [ ] TIMECRYSTAL: the piece is a scalar (TE, fixed-k) 1D treatment only;
+      the real device modulates a genuinely 2D plasmonic metamaterial
+      surface and the momentum bandgap is a property of a 2D k-vector, not
+      a 1D scalar k — a full 2D momentum-space (kx,ky) gap map, closer to
+      the paper's own actual geometry, was not attempted this session.
+- [ ] TIMECRYSTAL: no lasing/spontaneous-emission analogy mode — a
+      companion piece of literature (arXiv:2507.19916, "Analogs of
+      spontaneous emission and lasing in photonic time crystals,"
+      surfaced by this session's web wander but not read in full) predicts
+      that a two-level emitter coupled to a time-crystal medium lases via
+      the SAME momentum-gap amplification this piece already shows for a
+      bare wave, without needing population inversion in the usual sense —
+      a genuinely different, richer phenomenon than plain parametric growth,
+      not attempted this session.
+- [ ] TIMECRYSTAL: SPECTRUM mode's two strips are captioned as sharing a
+      recipe, not an axis (see this session's own header note and Piece 34
+      entry on the k<->omega, n<->1/n duality) — a future session could
+      derive and display the ACTUAL exact correspondence transformation
+      between the two problems (rather than leaving the two axes only
+      qualitatively comparable), if one exists in closed form for this
+      exact two-segment case; not attempted this session, since deriving
+      it was judged secondary to shipping the correctly-caveated version.
+- [ ] TIMECRYSTAL: depth (eps2/eps1) and the segment-duration ratio t1:t2
+      are independent knobs in the real Meissner/Hill equation, but this
+      piece fixes t1=t2=0.5 always and exposes only depth as a drag axis;
+      a visitor-draggable duty cycle (echoing the same "expose the second
+      hidden parameter" idea LICHTENBERG flagged for eta and ISING for
+      temperature) would show the tongue structure skew asymmetrically,
+      not attempted this session.
