@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLEAVE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stat{
+  position:fixed;top:1.4rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stat .val{color:rgba(255,255,255,.55)}
+#stat .sudden{color:rgb(255,150,80)}
+#stat .gradual{color:rgb(90,180,230)}
+#stat .sub{display:block;margin-top:.4em;font-size:8px;opacity:.75}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #ui{max-width:84vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stat">
+  <span id="statLabel">K0 </span><span class="val" id="statVal">0.0</span>
+  <span class="sub" id="statSub">T 0.0 &middot; &lt;n&gt; 0.0 &middot; GRADUAL</span>
+</div>
+<div id="ui">
+  <span id="modeName">SHUTTER</span>
+  <span id="desc">AN INCIDENT PHOTON MEETS A CLOSING SHUTTER</span>
+</div>
+<div id="hint">drag: set K0 (x) &amp; removal time T (y) &middot; tap: change mode</div>
+<script>
+/*  CLEAVE — truncate a photon, get a swarm
+ *
+ *  A photon is a single elementary excitation of the field; it cannot
+ *  literally be cut into two smaller photons. So what happens if you try
+ *  anyway -- snip an optical pulse in half in mid-flight with a shutter?
+ *  Rukan, Gulla & Skaar, "A truncated photon" (Phys. Rev. Lett. 137, 033601,
+ *  2026; arXiv:2510.21636, Univ. of Oslo) answer this precisely: the result
+ *  is neither a smaller photon nor a simple photon/vacuum mixture. It is a
+ *  genuine superposition and mixture of photon numbers running all the way
+ *  to infinity -- cutting away part of a photon conjures a whole swarm of
+ *  new ones out of the vacuum. This session's web wander surfaced it via
+ *  Science News' August 2026 coverage ("what would happen if you tried to
+ *  break a photon in half"), a few days old relative to this session and,
+ *  unlike most of this gallery's inspirations, genuinely disorienting on
+ *  first read rather than just visually striking.
+ *
+ *  THE PAPER'S SETUP (read from the actual PDF, arXiv:2510.21636v2, this
+ *  session's own scratchpad, not committed): a single photon travels right
+ *  toward a perfectly reflecting shutter sitting at x=0. The shutter is
+ *  removed -- not moved, REMOVED, a boundary condition disappearing in time
+ *  rather than in space -- which by Noether's theorem breaks time-
+ *  translation symmetry and does not conserve field energy. Matching E and
+ *  B continuously across the removal is a genuine Bogoliubov transformation
+ *  mixing creation and annihilation operators of the forward- and backward-
+ *  propagating continuum modes (their Eqs. 9-17); acting on the incident
+ *  one-photon state this produces a multimode squeezed vacuum with one
+ *  extra excitation riding on top (their Eq. 19) -- "rather complicated,"
+ *  in the paper's own words. Two closed-form results from that machinery
+ *  are used HERE, exactly as given in the paper, everything else in this
+ *  piece is this session's own simplified stand-in for the parts too deep
+ *  to reproduce in a shader:
+ *
+ *  (i) EQ. 30, the shutter's static (pre-removal) power transmissivity as
+ *      a thin dielectric slab of strength kappa0:
+ *          |T(w)|^2 = 1 / (1 + (w*kappa0)^2/4)
+ *      an exact Lorentzian, used AS-IS here (SPECTRUM mode) and also
+ *      applied "instantaneously" to the time-varying kappa(t) during a
+ *      gradual removal, in SHUTTER mode below -- that instantaneous-static
+ *      substitution is this session's own approximation, not the paper's;
+ *      the paper's real removal dynamics are non-local in time.
+ *
+ *  (ii) EQ. 29, the paper's own closed-form UPPER BOUND on the expected
+ *      created-photon number for a gradual removal from strength kappa0
+ *      over a duration T (their kappa(t): constant kappa0 for t<=-T, a
+ *      monotonically decreasing quadratic to 0 over -T<t<=0):
+ *          <n> <= kappa0/(4T) + kappa0^2/(16T^2)
+ *      correctly diverging as T->0 (an instantaneous cut makes infinitely
+ *      many photons -- the paper's own headline result) and vanishing as
+ *      T->infinity (a slow enough shutter is adiabatic and creates none).
+ *      This session's own verify.js (scratchpad, not committed) checked
+ *      both limits, the exact continuity of kappa(t) at its two junctions,
+ *      and that this piece's own specific monotonically-decreasing
+ *      quadratic choice for kappa(t) -- kappa0*(t/T)^2 on -T<t<=0, one
+ *      valid member of the family the bound (ii) was derived for, not
+ *      the paper's own unspecified exact profile -- reproduces those
+ *      limits before any of it reached the shader.
+ *
+ *  WHAT THIS PIECE DOES NOT REPRODUCE: the paper's actual quantum state
+ *  (Eq. 19) is a multimode continuum squeezed state entangled between
+ *  forward and backward propagating modes, with a singular integration
+ *  kernel from the Fourier transform of a Heaviside step -- not remotely
+ *  shader material. For the SWARM mode's photon-NUMBER distribution, this
+ *  session instead uses the standard, exactly-solvable SINGLE-MODE squeezed
+ *  vacuum (textbook quantum optics, not from this paper): mean photon
+ *  number <n>=sinh^2(r) fixes the squeezing r via the piece's own <n> from
+ *  (ii) above, then
+ *      P(2n) = (2n)!/(2^(2n) (n!)^2) * tanh(r)^(2n) / cosh(r),  P(odd)=0.
+ *  This is the closest EXACTLY solvable toy standing in for the paper's own
+ *  genuinely multimode state -- chosen because the paper itself calls its
+ *  own result "a multimode squeezed vacuum" and single-mode squeezed vacuum
+ *  is the textbook case of exactly that same object with the entanglement
+ *  structure stripped out, not because the two states coincide. Verified in
+ *  verify.js: two independently-derived formulas for P(2n) (direct number-
+ *  distribution formula vs. squared Fock amplitude) agree to machine
+ *  precision, every P(n) sums to 1.000000 (checked at nbar = 0.01 to 20),
+ *  odd-n mass is exactly 0 in all cases, and P(0) is provably the single
+ *  largest bar for every r (the ratio P(2n+2)/P(2n) = tanh^2(r) times a
+ *  factor rising from 1/2 at n=0 toward 1, so it is always < 1) -- meaning
+ *  the single most likely outcome of truncating a photon is ALWAYS exactly
+ *  zero extra photons, even as squeezing grows and the tail (extending, in
+ *  the true state, all the way to infinity) thickens underneath it. SWARM
+ *  mode caps the displayed bar range and the nbar used to build it at 40
+ *  (real <n> can run past 1000 at this piece's most sudden corner) and
+ *  says so explicitly in the stat readout when the true bound exceeds it.
+ *
+ *  SHUTTER mode is a spacetime diagram (x horizontal, t vertical, a
+ *  scanning "now" line sweeping upward on a repeating cycle) in the same
+ *  spirit as the paper's own Fig. 1: the incident pulse (blue, moving up-
+ *  right, envelope exp(-((t-x)/sigma)^2) cos(w0(t-x))) is shown unmodified
+ *  for x<0; for x>0 the SAME pulse is shown scaled in energy by the
+ *  instantaneous transmissivity (i) at its own crossing time tau=t-x; a
+ *  second, backward-moving band (x<0 only, coordinate rho=t+x) shows the
+ *  reflected energy, scaled by 1-|T|^2 at ITS crossing time -- exactly
+ *  "a part of the leading tail gets reflected before t=0," the paper's own
+ *  Fig. 1 caption. The bright vertical line at x=0 is kappa(t)/kappa0
+ *  itself, the shutter visibly closing. The soft violet glow straddling
+ *  the closing shutter is not a wave at all -- its brightness is
+ *  1-exp(-<n>/2) from (ii), standing in for the created-photon swarm,
+ *  deliberately rendered as diffuse and particle-like rather than a
+ *  coherent band, to visually separate "the classical-looking pulse this
+ *  session drew in closed form" from "the genuinely quantum byproduct."
+ */
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:2rem">WebGL not available</p>'; throw 0; }
+
+const NBARS = 48; // displayed n=0..47; only even bars are ever nonzero
+
+const VS = `
+attribute vec2 a;
+varying vec2 uv;
+void main(){ uv = a*.5+.5; gl_Position = vec4(a,0.,1.); }
+`;
+
+const FS = `
+precision highp float;
+varying vec2 uv;
+uniform float uMode;   // 0=SHUTTER 1=SPECTRUM 2=SWARM
+uniform float uTime;
+uniform float uK0, uT;
+uniform vec2  uRes;
+uniform float uHist[${NBARS}];
+
+const float OMEGA0 = 6.0;   // fixed pulse/probe frequency, natural units (c=1)
+const float SIGMA  = 0.4;   // pulse temporal width
+const float KMIN = 0.3, KMAX = 3.0;
+const float SPEC_WMIN = 0.2, SPEC_WMAX = 14.0;
+const float XRANGE = 6.0, TRANGE = 6.0;   // SHUTTER mode spacetime half-extents
+const float CYCLE = 9.0;                  // seconds per "now" sweep
+
+// static thin-shutter power transmissivity, paper Eq. 30
+float T2(float w, float k0){ return 1.0/(1.0 + (w*k0)*(w*k0)*0.25); }
+
+// this session's own monotonically-decreasing quadratic removal profile,
+// kappa0 for t<=-T, kappa0*(t/T)^2 for -T<t<=0, 0 for t>0 -- one member of
+// the family the paper's Eq. 29 bound was derived for
+float kappaOf(float t, float k0, float T){
+  if (t <= -T) return k0;
+  if (t >= 0.0) return 0.0;
+  float u = t / T;
+  return k0 * u * u;
+}
+
+// paper Eq. 29, upper bound on created-photon number for this removal
+float nBound(float k0, float T){ return k0/(4.0*T) + (k0*k0)/(16.0*T*T); }
+
+void main(){
+  vec3 col = vec3(0.0);
+
+  if (uMode < 0.5) {
+    // SHUTTER: spacetime diagram, x=uv.x*2*XRANGE-XRANGE, t=uv.y*2*TRANGE-TRANGE
+    float x = (uv.x*2.0-1.0) * XRANGE;
+    float t = (uv.y*2.0-1.0) * TRANGE;
+
+    float simNow = mod(uTime, CYCLE) / CYCLE * (2.0*TRANGE) - TRANGE;
+    float future = smoothstep(0.0, 0.05, t - simNow);
+    if (future > 0.001) {
+      // not yet reached by the sweep: faint grid only
+      float gx = abs(fract(x*0.5+0.5)-0.5);
+      float gt = abs(fract(t*0.5+0.5)-0.5);
+      float grid = (smoothstep(0.485,0.5,gx) + smoothstep(0.485,0.5,gt)) * 0.03;
+      gl_FragColor = vec4(vec3(grid), 1.0);
+      return;
+    }
+
+    float tau = t - x;   // forward characteristic (constant along right-movers)
+    float rho = t + x;   // backward characteristic (constant along left-movers)
+
+    float kTau = kappaOf(tau, uK0, uT);
+    float kRho = kappaOf(rho, uK0, uT);
+    float Ttau2 = T2(OMEGA0, kTau);
+    float Trho2 = T2(OMEGA0, kRho);
+
+    float envTau = exp(-(tau*tau)/(SIGMA*SIGMA)) * cos(OMEGA0*tau);
+    float envRho = exp(-(rho*rho)/(SIGMA*SIGMA)) * cos(OMEGA0*rho);
+
+    float fwdScale = x < 0.0 ? 1.0 : sqrt(Ttau2);
+    float fwd = envTau * fwdScale;
+    vec3 fwdCol = vec3(0.25,0.55,0.95) * fwd * 1.4;
+
+    float bwdMask = x < 0.0 ? 1.0 : 0.0;
+    float bwd = envRho * sqrt(max(1.0 - Trho2, 0.0)) * bwdMask;
+    vec3 bwdCol = vec3(0.15,0.45,0.4) * bwd * 1.1;
+
+    col = fwdCol + bwdCol;
+
+    // shutter indicator: bright vertical line at x=0, brightness = kappa(t)/kappa0
+    float shutterK = kappaOf(t, uK0, uT) / uK0;
+    float xline = smoothstep(0.02, 0.0, abs(x)) ;
+    col += vec3(0.9,0.92,1.0) * xline * shutterK * 0.8;
+
+    // created-photon fog: diffuse glow around the transition event, brightness
+    // saturates with the paper's own <n> bound so it never blows out
+    float nb = nBound(uK0, uT);
+    float fogStrength = 1.0 - exp(-nb/2.0);
+    vec2 fogCenter = vec2(0.0, -uT*0.5);
+    float d2 = ((x-fogCenter.x)*(x-fogCenter.x) + (t-fogCenter.y)*(t-fogCenter.y));
+    float fogScale = 0.6 + uT*0.7;
+    float fog = exp(-d2/(fogScale*fogScale)) * fogStrength;
+    col += vec3(0.75,0.35,0.9) * fog * 0.55;
+
+    float edge = smoothstep(0.03, 0.0, abs(t - simNow));
+    col += vec3(1.0) * edge * 0.35;
+
+  } else if (uMode < 1.5) {
+    // SPECTRUM: 2D map of the static shutter's own |T(w)|^2 (paper Eq. 30)
+    // over (w horizontal, kappa0 vertical), plus markers at the current
+    // dragged kappa0 and the piece's fixed probe frequency w0.
+    float w = SPEC_WMIN + uv.x*(SPEC_WMAX-SPEC_WMIN);
+    float k0 = KMIN + uv.y*(KMAX-KMIN);
+    float t2 = T2(w, k0);
+    vec3 lo = vec3(0.35,0.08,0.05), hi = vec3(0.15,0.55,0.85);
+    col = mix(lo, hi, pow(t2, 0.35));  // perceptual remap only -- T2 itself unchanged
+
+    float kLine = smoothstep(0.006,0.0, abs(uv.y - (uK0-KMIN)/(KMAX-KMIN)));
+    float wLine = smoothstep(0.005,0.0, abs(uv.x - (OMEGA0-SPEC_WMIN)/(SPEC_WMAX-SPEC_WMIN)));
+    col += vec3(1.0) * kLine * 0.35;
+    col += vec3(1.0,0.9,0.6) * wLine * 0.35;
+    vec2 mark = vec2((OMEGA0-SPEC_WMIN)/(SPEC_WMAX-SPEC_WMIN), (uK0-KMIN)/(KMAX-KMIN));
+    float dMark = length((uv-mark)*uRes/uRes.y);
+    float ring = smoothstep(0.01,0.013,dMark) - smoothstep(0.013,0.016,dMark);
+    col += vec3(1.0) * ring;
+
+  } else {
+    // SWARM: bar chart of the toy squeezed-vacuum P(n), n=0..NBARS-1,
+    // uHist[] computed and uploaded from JS each frame (verified log-space
+    // formula, see verify.js) -- not recomputed per-pixel.
+    float nf = uv.x * float(${NBARS});
+    int idx = int(nf);
+    float h = 0.0;
+    for (int i = 0; i < ${NBARS}; i++) {
+      if (i == idx) h = uHist[i];
+    }
+    float barH = pow(clamp(h,0.0,1.0), 0.38);
+    float xin = fract(nf);
+    float barMask = step(0.08, xin) * step(xin, 0.92);
+    float below = step(uv.y, barH);
+    float isEven = mod(floor(nf), 2.0) < 0.5 ? 1.0 : 0.0;
+    vec3 barCol = mix(vec3(0.35,0.1,0.45), vec3(0.85,0.4,0.95), barH);
+    col = barCol * barMask * below * (0.55 + 0.45*isEven);
+
+    float baseline = smoothstep(0.0025,0.0,uv.y);
+    col += vec3(0.3) * baseline;
+
+    float gridline = 0.0;
+    for (int g = 0; g < 10; g++) {
+      float gx = (float(g)*5.0) / float(${NBARS});
+      gridline += smoothstep(0.0015,0.0, abs(uv.x-gx)) * 0.05;
+    }
+    col += vec3(gridline);
+  }
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+  return p;
+}
+const prog = mkProg(VS, FS);
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aLoc = gl.getAttribLocation(prog, 'a');
+const U = {};
+['uMode','uTime','uK0','uT','uRes','uHist'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+/* ── shared JS-side physics (mirrors the shader / verify.js exactly) ───── */
+const KMIN = 0.3, KMAX = 3.0;
+const TMIN = 0.02, TMAX = 3.0;
+const NBAR_CAP = 40;
+
+function nBound(k0, T) { return k0/(4*T) + (k0*k0)/(16*T*T); }
+
+// Lanczos log-gamma, for the log-space squeezed-vacuum P(2n) formula
+function lgamma(x) {
+  const g = 7;
+  const c = [0.99999999999980993,676.5203681218851,-1259.1392167224028,
+    771.32342877765313,-176.61502916214059,12.507343278686905,
+    -0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI/Math.sin(Math.PI*x)) - lgamma(1-x);
+  x -= 1;
+  let a = c[0];
+  const t = x + g + 0.5;
+  for (let i = 1; i < g+2; i++) a += c[i]/(x+i);
+  return 0.5*Math.log(2*Math.PI) + (x+0.5)*Math.log(t) - t + Math.log(a);
+}
+function logFact(n) { return lgamma(n+1); }
+
+function squeezedHist(nbar) {
+  const r = Math.asinh(Math.sqrt(nbar));
+  const out = new Float32Array(NBARS);
+  const logTanh = Math.log(Math.tanh(r));
+  const logSech = -Math.log(Math.cosh(r));
+  for (let n = 0; 2*n < NBARS; n++) {
+    const logP = logFact(2*n) - 2*n*Math.log(2) - 2*logFact(n) + 2*n*logTanh + logSech;
+    out[2*n] = Math.exp(logP);
+  }
+  return out;
+}
+
+/* ── mode / parameter state ─────────────────────────────────────────────── */
+
+const MODES = [
+  { name:'SHUTTER',  desc:'AN INCIDENT PHOTON MEETS A CLOSING SHUTTER' },
+  { name:'SPECTRUM', desc:'THE STATIC SHUTTER\'S OWN TRANSMISSIVITY |T(W)|²' },
+  { name:'SWARM',    desc:'CREATED PHOTON NUMBER: 0 TO INFINITY, RARELY MORE THAN 0' },
+];
+const MODE_MS = 30000;
+
+let modeIdx = 0, modeStart = performance.now();
+let dragK0 = 1.2, dragT = 0.5;
+let dragging = false, dragStartXY = null, dragged = false;
+let autoT = 1.3;
+let lastInteract = performance.now();
+const IDLE_MS = 3500, RESUME_MS = 2000;
+let idleAnchorK0 = dragK0, idleAnchorT = dragT;
+
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const statValEl = document.getElementById('statVal');
+const statSubEl = document.getElementById('statSub');
+
+function setMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+}
+
+function updateStats() {
+  const trueN = nBound(dragK0, dragT);
+  const regimeGradual = dragT > dragK0/4;
+  statValEl.textContent = dragK0.toFixed(2);
+  const nStr = trueN >= 1000 ? trueN.toExponential(2) : trueN.toFixed(2);
+  const capNote = trueN > NBAR_CAP ? ' (capped)' : '';
+  if (regimeGradual) {
+    statSubEl.innerHTML = `T ${dragT.toFixed(2)} &middot; &lt;n&gt; <span class="gradual">${nStr}${capNote}</span> &middot; <span class="gradual">GRADUAL</span>`;
+  } else {
+    statSubEl.innerHTML = `T ${dragT.toFixed(2)} &middot; &lt;n&gt; <span class="sudden">${nStr}${capNote}</span> &middot; <span class="sudden">SUDDEN</span>`;
+  }
+}
+
+/* ── render loop ────────────────────────────────────────────────────────── */
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+resize();
+
+let startTime = performance.now();
+let histCache = new Float32Array(NBARS);
+function loop(now) {
+  if (now - modeStart > MODE_MS) { modeStart = now; setMode(modeIdx+1); }
+
+  autoT += 0.0026;
+  const autoK0 = KMIN + (KMAX-KMIN) * (0.5 + 0.5*Math.sin(autoT));
+  // log-mapped T so the "sudden" corner (small T, where the interesting
+  // divergence lives) gets as much drag travel as the gradual end
+  const logTMIN = Math.log(TMIN), logTMAX = Math.log(TMAX);
+  const autoT_T = Math.exp(logTMIN + (logTMAX-logTMIN) * (0.5 + 0.5*Math.sin(autoT*0.53 + 2.1)));
+  if (!dragging) {
+    const idleFor = now - lastInteract;
+    if (idleFor <= IDLE_MS) {
+      idleAnchorK0 = dragK0; idleAnchorT = dragT;
+    } else {
+      const blend = Math.min(1, (idleFor - IDLE_MS) / RESUME_MS);
+      dragK0 = idleAnchorK0 + (autoK0 - idleAnchorK0) * blend;
+      dragT = idleAnchorT + (autoT_T - idleAnchorT) * blend;
+    }
+  }
+  updateStats();
+
+  const nb = Math.min(nBound(dragK0, dragT), NBAR_CAP);
+  histCache = squeezedHist(Math.max(nb, 1e-6));
+
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.useProgram(prog);
+  gl.enableVertexAttribArray(aLoc);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform1f(U.uMode, modeIdx);
+  gl.uniform1f(U.uTime, (now-startTime)/1000);
+  gl.uniform1f(U.uK0, dragK0);
+  gl.uniform1f(U.uT, dragT);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform1fv(U.uHist, histCache);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  requestAnimationFrame(loop);
+}
+setMode(0);
+requestAnimationFrame(loop);
+
+/* ── interaction: drag sets (K0, T) from pointer position; tap advances mode ── */
+function xyFromEvent(e) {
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX, y: t.clientY };
+}
+function applyDragXY(x, y) {
+  const fx = Math.min(1, Math.max(0, x / window.innerWidth));
+  const fy = Math.min(1, Math.max(0, 1 - y / window.innerHeight));
+  dragK0 = KMIN + fx*(KMAX-KMIN);
+  const logTMIN = Math.log(TMIN), logTMAX = Math.log(TMAX);
+  dragT = Math.exp(logTMIN + fy*(logTMAX-logTMIN));
+  lastInteract = performance.now();
+}
+function onDown(e) { const p = xyFromEvent(e); dragStartXY = p; dragging = true; dragged = false; }
+function onMove(e) {
+  if (!dragging) return;
+  const p = xyFromEvent(e);
+  if (Math.hypot(p.x-dragStartXY.x, p.y-dragStartXY.y) > 6) dragged = true;
+  if (dragged) applyDragXY(p.x, p.y);
+}
+function onUp() {
+  if (dragging && !dragged) { setMode(modeIdx + 1); lastInteract = performance.now(); }
+  dragging = false;
+}
+canvas.addEventListener('mousedown', onDown);
+window.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, {passive:false});
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, {passive:false});
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(); }, {passive:false});
+</script>
+</body>
+</html>

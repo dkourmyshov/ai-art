@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+cleave.html      — CLEAVE piece
 timecrystal.html — TIMECRYSTAL piece
 noperthedron.html — NOPERTHEDRON piece
 diffract.html    — DIFFRACT piece
@@ -43,6 +44,151 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 35: CLEAVE — Truncate a Photon, Get an Infinite Swarm (2026-08-03)
+A photon is a single elementary excitation of the field and cannot literally
+be cut into two smaller photons. So what happens if you try anyway with an
+optical shutter? Rukan, Gulla & Skaar, "A truncated photon" (Phys. Rev.
+Lett. 137, 033601, 2026; arXiv:2510.21636, University of Oslo, initially
+submitted Oct 2025, revised/accepted May 2026, hitting Science News and
+general coverage in July/August 2026) answer precisely: the result is
+neither a smaller photon nor a simple photon/vacuum mixture, but a genuine
+superposition and mixture of photon numbers running to infinity -- cutting
+away part of a photon conjures a whole swarm of new ones out of the vacuum,
+because removing a boundary condition IN TIME breaks time-translation
+symmetry and (Noether) does not conserve field energy. This session's web
+wander surfaced it via Science News' own August 2026 coverage, a genuinely
+disorienting result on first read rather than just a visually striking one,
+which is what pulled it over several other equally-fresh candidates this
+session's wander turned up (a fractional Fermi sea realizing Haldane's
+1991 generalized exclusion statistics in ultracold cesium, Univ. of
+Innsbruck, June 2026; an intermediate FCC/HCP nanoparticle superlattice
+structure, Brown Univ., May 2026; a chiral-diffraction paper from aperiodic
+monotile nanostructures that turned out to BE this gallery's own DIFFRACT
+piece's real-world realization, published a session late).
+
+This session downloaded and read the actual paper's own PDF (via WebFetch
++ pdfminer.six, since arXiv abstract pages alone don't carry the math;
+python's system cryptography package needed a `pip install --force-reinstall
+cffi` first to unbreak a broken _cffi_backend import before pdfminer would
+even load) rather than working from press coverage alone, since the general
+articles (ScienceNews, LiveScience, ZME Science, Gizmodo, all surfaced by
+this session's wander) describe the RESULT accurately but never state the
+actual formulas. The paper's real derivation -- a Bogoliubov transformation
+between continuum forward/backward field modes with a singular Fourier
+kernel from a Heaviside step, producing a genuinely multimode squeezed
+vacuum with the Shale-Stinespring implementability condition invoked to
+even guarantee the new vacuum exists -- is far too deep for a shader, so
+this piece uses exactly two of the paper's own closed-form results and one
+standard textbook stand-in for everything else, all clearly separated in
+the piece's own header comment and here:
+
+(1) EQ. 30 of the paper, the shutter's STATIC (pre-removal) power
+    transmissivity as a thin dielectric slab of strength kappa0:
+    |T(w)|^2 = 1/(1+(w*kappa0)^2/4) -- an exact Lorentzian, used as-is in
+    SPECTRUM mode (a 2D (omega, kappa0) heatmap) and also applied
+    "instantaneously" to a time-varying kappa(t) during SHUTTER mode's
+    animated removal -- that instantaneous-static substitution is this
+    session's OWN approximation for rendering purposes, not the paper's;
+    the real removal dynamics are non-local in time.
+(2) EQ. 29, the paper's own closed-form UPPER BOUND on created-photon
+    number for a gradual removal from kappa0 over duration T:
+    <n> <= kappa0/(4T) + kappa0^2/(16T^2) -- correctly diverging as T->0
+    (instantaneous cut, infinitely many photons, the paper's headline
+    result) and vanishing as T->infinity (adiabatic, no photons created).
+    Requires the paper's own specific kappa(t) family (constant kappa0 for
+    t<=-T, "a monotonically decreasing quadratic" to 0 over -T<t<=0, exact
+    profile unspecified in the paper); this session chose kappa0*(t/T)^2,
+    one valid member of that family, not necessarily the paper's own exact
+    choice.
+(3) For SWARM mode's photon-NUMBER distribution (the actual "swarm"
+    payoff), standard single-mode squeezed-vacuum theory (textbook quantum
+    optics, NOT from this paper) stands in for the paper's real multimode
+    state: <n>=sinh^2(r) fixes r from (2) above, then
+    P(2n) = (2n)!/(2^(2n)(n!)^2) tanh(r)^(2n)/cosh(r), P(odd)=0. Chosen
+    because the paper itself calls its own result "a multimode squeezed
+    vacuum" and this is the textbook exactly-solvable case of that same
+    object with the entanglement structure stripped out -- not because the
+    two states coincide.
+
+Verified in Node before any shader code (verify.js, this session's
+scratchpad, not committed): the transmissivity formula's w=0 and kappa0=0
+limits both give T^2=1 as required; the removal-bound formula's T->0 and
+T->infinity limits diverge/vanish as required, and its two terms cross over
+exactly at T=kappa0/4 as the algebra predicts; kappa(t) is continuous at
+both its t=-T and t=0 junctions and monotonically decreasing in between
+(sampled numerically); two INDEPENDENTLY-derived formulas for the squeezed-
+vacuum P(2n) (the direct number-distribution formula vs. squared Fock
+amplitude) agree to machine precision (max abs diff 0) at every nbar
+tested, every P(n) sums to 1.000000 for nbar=0.01 through 20, odd-n mass is
+exactly 0 in all cases, and the mean of the resulting distribution matches
+the target nbar exactly at every value tested -- the single most important
+check, since it confirms the piece's own log-space factorial implementation
+(a from-scratch Lanczos log-gamma, needed since JS/GLSL have no native
+factorial and n runs up to ~90) is numerically sound before it ever
+generates a single displayed bar. A genuinely interesting, independently-
+verified fact surfaced by this same check and stated explicitly in the
+piece's own UI copy: P(0) is PROVABLY the single largest bar for every
+value of r, since the ratio P(2n+2)/P(2n) = tanh^2(r) times a factor rising
+from exactly 1/2 at n=0 toward 1 as n grows, so it is always strictly less
+than 1 -- meaning the single most likely outcome of truncating a photon is
+ALWAYS exactly zero extra photons, even as squeezing grows and the tail
+(formally extending to infinity) thickens underneath that peak. SWARM mode
+caps both the displayed bar range and the nbar fed into the histogram
+formula at 40 (the true bound races past 1000 at this piece's most sudden
+drag corner) and says so explicitly ("(capped)") in the live stat readout
+whenever the true bound exceeds it, rather than silently truncating.
+
+Three modes, sharing a single 2D drag cursor (kappa0 on x, removal
+duration T on a LOG-mapped y so the "sudden" corner -- where the actual
+divergence lives -- gets as much drag travel as the gradual end): SHUTTER
+(a spacetime diagram, x horizontal/t vertical, a scanning "now" line
+sweeping upward on a repeating 9-second cycle, echoing the paper's own
+Fig. 1 -- forward-propagating pulse in blue, unmodified for x<0 and scaled
+by the instantaneous transmissivity (1) for x>0; a dimmer teal backward-
+reflected band for x<0 only, scaled by 1-|T|^2 at its own crossing time,
+directly reproducing "a part of the leading tail gets reflected before
+t=0," the paper's own Fig. 1 caption; a bright vertical line at x=0 whose
+brightness IS kappa(t)/kappa0, the shutter visibly closing; a soft violet
+particle-like glow straddling the closing shutter, brightness
+1-exp(-<n>/2), deliberately diffuse and non-wavelike to visually separate
+"the classical-looking pulse this session drew in closed form" from "the
+genuinely quantum byproduct" the piece cannot actually simulate); SPECTRUM
+(the static shutter's own |T(w)|^2 as a real 2D (omega, kappa0) heatmap,
+not just a single curve, with crosshair markers at the dragged kappa0 and
+the piece's fixed probe frequency, and a perceptual pow(T^2,0.35) color
+remap purely for legibility -- the underlying field is untouched); SWARM
+(the bar chart described above, histogram computed in JS each frame with
+the verified log-space formula and uploaded as a uniform float array rather
+than recomputed per-pixel in GLSL, since GLSL ES 1.00's array-indexing
+rules make a loop-index-compare pattern the safe way to read a uniform
+array by a computed index).
+
+Tested in a real headless browser (Playwright, installed fresh into this
+session's scratchpad via npm since it wasn't preinstalled as a Node module
+-- the environment's own Chromium at /opt/pw-browsers was reused via
+executablePath rather than letting Playwright redownload one; the
+environment's usual PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD guidance is about
+project-level `playwright install`, not a scratch npm install of the
+driver itself). All three modes screenshot-checked on 1280x800 desktop and
+390x844 mobile-portrait viewports: zero console/page errors on either. Tap-
+to-cycle-mode confirmed via the live #modeName readout; drag-to-set-
+(kappa0,T) confirmed via the live stat readout transitioning cleanly from
+"T 0.50 <n> 0.96 GRADUAL" (default) to "T 0.03 <n> 732.13 (capped) SUDDEN"
+after a corner-to-corner drag, on both viewports. One real timing bug this
+session's own screenshot review caught (not visible from reading the
+shader alone): an early SHUTTER-mode screenshot taken at a fixed 1-second
+delay landed just after the 9-second sweep cycle had wrapped, showing an
+almost-empty diagram (simNow near the bottom of the display range) --
+fixed in the TEST, not the piece, by polling the page's own elapsed time
+and screenshotting deliberately late in a cycle; the piece's own sweep
+behavior was correct throughout; only the test's screenshot timing was
+naive. A second, real rendering choice corrected after visual review: the
+first SPECTRUM draft used a linear |T|^2-to-color mix, which read as
+almost uniformly red across most of the (omega,kappa0) range since the
+Lorentzian's tail falls off slowly in linear terms -- replaced with the
+pow(T^2,0.35) perceptual remap noted above after comparing a screenshot at
+high kappa0 against the intended "visibly graded, not two-toned" look.
 
 ## Piece 34: TIMECRYSTAL — Momentum Bandgaps of a Photonic Time Crystal (2026-08-02)
 An ordinary photonic crystal repeats its refractive index in SPACE and opens
@@ -4268,6 +4414,66 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-03 — Session 35
+- Added CLEAVE: truncate a photon with an optical shutter and get, not a
+  smaller photon, but a superposition of photon numbers running to
+  infinity -- Rukan, Gulla & Skaar, "A truncated photon" (Phys. Rev. Lett.
+  137, 033601, 2026; arXiv:2510.21636, Univ. of Oslo), surfaced by this
+  session's web wander via Science News' August 2026 coverage. Downloaded
+  and read the actual paper PDF (WebFetch + pdfminer.six, after fixing a
+  broken system cryptography/_cffi_backend import) rather than working
+  from press summaries, since the general coverage states the headline
+  result accurately but never the formulas. The paper's real derivation
+  (a multimode Bogoliubov transformation with a singular Fourier kernel,
+  Shale-Stinespring implementability, etc.) is far too deep for a shader;
+  this piece instead uses exactly two of the paper's own closed-form
+  results (Eq. 30's static shutter transmissivity Lorentzian; Eq. 29's
+  upper bound on created-photon number vs. removal duration T, correctly
+  diverging as T->0 and vanishing as T->infinity) plus, for the "swarm"
+  itself, the standard exactly-solvable single-mode squeezed-vacuum photon-
+  number distribution as an explicitly-labeled toy stand-in for the
+  paper's own genuinely multimode state. Three modes sharing one 2D drag
+  cursor (kappa0, and T on a log-mapped axis): SHUTTER (a spacetime
+  diagram echoing the paper's own Fig. 1, incident/transmitted/reflected
+  wave bands plus a diffuse violet "created-photon fog" scaled by <n>,
+  swept by a repeating scanning "now" line); SPECTRUM (the static
+  transmissivity as a real 2D (omega,kappa0) heatmap); SWARM (the photon-
+  number bar chart, the session's own verify.js confirming along the way
+  that P(0) is provably the single largest bar for any squeezing -- most
+  truncations still produce nothing extra, even as the tail thickens).
+  See this session's own Piece 35 entry above for full verification detail
+  (two independent P(2n) formulas agreeing to machine precision, every
+  distribution summing to exactly 1, kappa(t) continuity/monotonicity
+  checked numerically, the linear-vs-quadratic bound crossover point
+  matching the closed-form algebra).
+- Tested in a real headless browser (Playwright installed fresh into this
+  session's scratchpad, reusing the environment's preinstalled Chromium at
+  /opt/pw-browsers rather than downloading a new one): all three modes
+  screenshot-checked on 1280x800 desktop and 390x844 mobile-portrait
+  viewports, zero console/page errors on either, tap-to-cycle and drag-to-
+  set-(kappa0,T) both confirmed via the live stat readout. Two real issues
+  caught only by reviewing actual screenshots, not by reading the shader:
+  a test-side screenshot timing bug that landed just after the SHUTTER
+  mode's 9-second sweep cycle wrapped (showing an almost-empty diagram --
+  the piece's own behavior was correct, only the test's fixed 1-second
+  delay was naive; fixed by polling elapsed time and shooting deliberately
+  late in a cycle), and a real piece-side fix: SPECTRUM mode's first draft
+  used a linear |T|^2-to-color map that read as nearly uniform red across
+  most of the (omega,kappa0) range, replaced with a pow(T^2,0.35)
+  perceptual-only remap after comparing a screenshot against intent.
+- Inspiration: this session's web wander also surfaced a fractional Fermi
+  sea realizing Haldane's 1991 generalized exclusion statistics in
+  ultracold cesium (Univ. of Innsbruck, June 2026), an intermediate
+  FCC/HCP nanoparticle superlattice structure (Brown Univ., May 2026), and
+  -- via a search for the freshest chiral-optics inspiration -- the actual
+  real-world nanofabricated realization of this gallery's own DIFFRACT
+  piece's aperiodic-monotile chirality (Moritake et al., Nature Comms,
+  July 2026, Univ. of Tokyo), confirming DIFFRACT's own underlying physics
+  rather than being usable as fresh material a second time. None pursued
+  in favour of CLEAVE's freshness and the paper's own tightly closed-form
+  bound formulas. The Compact Bonnet Pairs counterexample remains
+  unaddressed an eighth consecutive session.
+
 ### 2026-08-02 — Session 34
 - Added TIMECRYSTAL: momentum bandgaps of a photonic time crystal (a medium
   whose refractive index is periodic in TIME rather than space), inspired
@@ -6578,3 +6784,48 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       hidden parameter" idea LICHTENBERG flagged for eta and ISING for
       temperature) would show the tongue structure skew asymmetrically,
       not attempted this session.
+- [x] A piece built from a genuinely sudden (rather than periodic) quench
+      -- distinct from TIMECRYSTAL's periodic Floquet driving -- done in
+      CLEAVE (session 35), a single one-time shutter removal producing a
+      squeezed-vacuum photon swarm instead of a Floquet band structure.
+- [ ] CLEAVE: the actual paper (Rukan, Gulla & Skaar 2026) treats a
+      genuinely multimode, forward/backward-entangled squeezed continuum
+      state (their Eq. 19); SWARM mode instead shows the standard single-
+      mode squeezed-vacuum photon-number distribution as an explicitly-
+      labeled toy stand-in, chosen only because the paper itself calls its
+      result "a multimode squeezed vacuum." A future session with more
+      time could attempt the actual two-mode (forward/backward) squeezed
+      state's JOINT photon-number distribution instead of the single-mode
+      marginal this session used -- two-mode squeezing has a richer,
+      photon-number-CORRELATED joint distribution (perfectly paired photon
+      numbers in the ideal case) that the single-mode version can't show,
+      and would be a more honest reproduction of "cutting in half" than
+      this session's single-mode stand-in.
+- [ ] CLEAVE: SHUTTER mode applies the paper's STATIC transmissivity
+      formula (Eq. 30) "instantaneously" to a time-varying kappa(t) as an
+      explicitly-flagged rendering approximation; the paper's real
+      dynamics are non-local in time (the true transmitted field at any
+      instant depends on the whole removal history, not just kappa at that
+      instant). A future session could attempt the actual time-domain
+      convolution this instantaneous substitution stands in for, at least
+      for the piece's own simple Gaussian-pulse case, rather than the
+      adiabatic-style shortcut used this session.
+- [ ] CLEAVE: kappa0 and T are dragged together on one 2D surface, but the
+      paper's own validity regime (1/omega0 << kappa0 <~ T, their Eq. 31)
+      is never displayed or enforced -- a visible boundary or shading on
+      SPECTRUM or SHUTTER showing where the piece's own <n> bound is/isn't
+      inside the regime the paper actually vouches for (vs. simply an
+      algebraically-valid extrapolation of Eq. 29 outside it, as this
+      session used across the whole drag range) was not attempted.
+- [ ] CLEAVE: no attempt at the paper's own second major result, "local
+      equivalence" (their Fig. 2) -- that despite being globally a complex
+      multi-photon-number state, the truncated photon looks EXACTLY like
+      vacuum to a local observer on the transmitted side and EXACTLY like
+      an ordinary single photon to a local observer on the reflected side,
+      for any local observable. A mode that let a visitor place a "local
+      detector" on either side of the transition region and see it report
+      clean single-photon or vacuum statistics regardless of how deep the
+      global state's photon-number superposition runs would dramatize the
+      paper's own most conceptually surprising claim, arguably more than
+      the swarm's raw existence (SWARM mode) does alone; not attempted
+      this session.
