@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+ergosphere.html  — ERGOSPHERE piece
 cleave.html      — CLEAVE piece
 timecrystal.html — TIMECRYSTAL piece
 noperthedron.html — NOPERTHEDRON piece
@@ -42,6 +43,129 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 36: ERGOSPHERE — Extracting Energy From a Ring That Never Turns (2026-08-04)
+Roger Penrose showed in 1969 that a particle dropped into a rotating black
+hole's ergosphere can split in two, one half falling in, the other escaping
+with MORE energy than it arrived with. Yakov Zel'dovich (1971) found the
+same trick works for ordinary waves off ordinary rotating matter: a wave
+scattering off a rotating absorber is amplified, not absorbed, whenever its
+frequency undercuts the absorber's own rotation rate. On 8 July 2026, Nasari,
+Moussa, Kasahara, Thielens & Alu ("Observation of Floquet rotational
+super-radiance," Nature, DOI 10.1038/s41586-026-10725-y, CUNY Advanced
+Science Research Center) reported the first clean observation of exactly
+this (first surfaced to this gallery by session 31's own web wander, which
+passed over it in favour of VENATION -- see that piece's own "Inspiration"
+note -- and left it unpursued for four consecutive sessions since) -- and
+sidestepped the effect's oldest obstacle (no real object can be spun fast
+enough by hand) with a device that never turns at all: a
+stationary ring of electronic resonators whose properties are modulated in
+a travelling, timed sequence, so a wave scattering off the ring cannot tell
+the difference from the ring physically spinning. Measured result: 7.8 dB
+(~6x) power gain, with nothing moving. This session's web wander surfaced it
+via ScienceDaily and EurekAlert's July 2026 coverage. The actual Nature
+article sits behind a login wall (WebFetch redirected to an authentication
+page) and no arXiv preprint was found, so none of the paper's own circuit
+equations, resonator count, or modulation frequency reached this session --
+a real, disclosed access gap, the same register as CLEAVE's paywalled-PDF
+workaround last session, except this time the workaround (downloading the
+PDF another way) didn't pan out and the piece says so rather than quietly
+inventing numbers.
+
+Rather than fabricate the device's own response function, this piece
+rederives and implements the GENERAL, model-independent theoretical
+backbone the experiment demonstrates -- Zel'dovich's 1971 argument, stripped
+to its essentials (matching the derivations in Bekenstein & Schiffer,
+"The many faces of superradiance," Phys. Rev. D 58, 064014, 1998, and Brito,
+Cardoso & Pani, "Superradiance," Lecture Notes in Physics 906, 2015, though
+this session derived it from scratch rather than transcribing either): any
+object that is a perfectly ordinary passive absorber ONLY in the frame that
+co-rotates with its own modulation pattern at rate Omega sees an incident
+wave of lab-frame frequency omega and azimuthal number m as a wave of
+co-rotating frequency omega' = omega - m*Omega (an ordinary Doppler shift
+for entering a rotating frame). Because wave-action flux N is the same
+number in both frames (the frame change is just a phase relabeling) while
+energy flux is E = omega*N, the energy the object actually absorbs, measured
+honestly in its own passive rest frame, is E'_abs = omega'*(1-|R|^2)*N_in;
+passivity (E'_abs >= 0) forces the ordinary |R|^2 <= 1 when omega' > 0, but
+the SAME inequality forces |R|^2 >= 1 -- amplification -- when omega' < 0,
+i.e. omega < m*Omega. This is the flat-spacetime sibling of the Kerr black
+hole superradiance condition omega < m*Omega_H that powers the Penrose
+process, and it is model-independent: it fixes only where the sign flips,
+not by how much. For an actual number, this piece supplies its OWN closed
+form for the absorptivity as a function of the co-rotating frequency,
+A(omega') = gamma*omega'/(omega'^2+kappa^2) with kappa=0.9, gamma=2*kappa --
+the simplest ODD-in-frequency (Kramers-Kronig-mandated for any causal linear
+passive dissipative response) single-peaked shape, explicitly NOT a fit to
+the real device (never seen by this session) and explicitly NOT tuned to
+match the paper's own measured 7.8 dB -- this piece's own gamma/kappa choice
+gives exactly 3 dB (2x) peak gain, a round illustrative number.
+
+Verified in Node before any shader code (verify.js, this session's
+scratchpad, not committed): A(x) is odd to machine precision; its extremum
+sits at x=+-kappa with value gamma/(2*kappa) exactly (matched to 1e-4 by a
+0.0005-resolution scan); |R|^2=1-A(x) stays within [0,2] to within 5e-3 over
+a wide sweep with gamma=2*kappa; |R|^2 equals exactly 1 at omega=m*Omega for
+several (omega,m,Omega) triples; sign(1-|R|^2) matches sign(omega-m*Omega)
+over 20,000 random samples with zero violations; the superradiant condition
+omega<m*Omega gives |R|^2>1 in all 922 sampled cases and the normal
+condition omega>m*Omega gives |R|^2<1 in all 758 sampled cases, swept across
+m=1..4; the far-field cylindrical-wave field construction used for
+rendering stays finite for r>R0 at every tested reflection magnitude.
+
+Three modes, one shared 2D drag cursor (omega horizontal, Omega vertical,
+tap to cycle) and one auto-cycling integer m (1..4, switching every 8s):
+RING (the mechanism itself -- 40 stationary discrete segments arranged in a
+circle, none of them moving, only a brightness pattern with m lobes sweeping
+around them at rate Omega, directly dramatizing "no part of this device
+moves"); GAIN (a live 2D heatmap of |R(omega,m,Omega)|^2, the omega=m*Omega
+threshold drawn as an explicit diagonal line rather than only implied, blue
+below/orange above, current drag point marked with a ring cursor); SCATTER
+(the consequence -- an incident cylindrical wave meeting a central disc,
+rendered as an exact steady-state superposition of incoming exp(-ikr) and
+R*outgoing exp(+ikr) branches sharing one exp(i(m*phi-omega*t)) envelope,
+both with the standard 1/sqrt(kr) far-field cylindrical-spreading envelope;
+when the drag point sits in the superradiant half-plane the outgoing rings
+are visibly larger/brighter than the incoming ones, screenshot-confirmed).
+RING mode's first draft rendered the m-lobe modulation as a continuous
+per-pixel angular brightness (pow(lobe,1.6) blended with a dim base colour)
+and, caught only by reviewing an actual screenshot rather than by reading
+the shader, read as a nearly-uniform bright ring with no visible lobe
+structure at all -- fixed by quantizing the ring into 40 discrete segments
+(each one evaluating the lobe function once, at its own segment centre, not
+per-pixel) with real gaps between them and a steeper pow(lobe,3.5) contrast
+curve, which is also a more honest rendering of "40 discrete resonators,"
+closer to what the real device actually is, than a smooth continuous ring
+ever was.
+
+Tested in a real headless browser (Playwright, reusing this session's own
+preinstalled Chromium at /opt/pw-browsers rather than downloading a new one
+-- the pinned playwright@1.48 package installed by default could not drive
+that Chromium build at all ("Old Headless mode has been removed"),
+upgrading to playwright@latest, 1.62.1, fixed it, a real environment gap
+worth naming for a future session hitting the same wall): all three modes
+screenshot-checked on 1280x800 desktop and 390x844 mobile-portrait
+viewports, zero console/page errors on either, tap-to-cycle and drag-to-set-
+(omega,Omega) both confirmed via the live stat readout and the GAIN-mode
+crosshair tracking the drag point into the correct half-plane. A frame-diff
+check (two screenshots 1.2s apart, compared with Pillow) confirmed RING
+mode's pattern is actually moving (non-empty diff bounding box, mean pixel
+diff 0.52, max 160), not merely time-varying in the uniform-code-doesn't-
+mean-visibly-animating sense CLEAVE's own SHUTTER-mode screenshot bug
+flagged last session.
+
+Inspiration: this session's web wander also surfaced a "magic" (a measure
+of quantum non-stabilizerness) argument for why holographic space-time is
+pliable at all (Cao et al., discussed in Quanta Magazine, June 2026,
+building on entanglement-builds-spacetime results) -- deep and genuinely
+novel, but resolving to any renderable field would need reproducing tensor-
+network/holographic-code machinery well beyond a shader, so it was not
+pursued, left here as a candidate for a future session with more room to
+build up the necessary background first. The Compact Bonnet Pairs
+counterexample to Bonnet's surface-rigidity theorem remains unaddressed a
+NINTH consecutive session.
 
 ---
 
@@ -4414,6 +4538,53 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-04 — Session 36
+- Added ERGOSPHERE: extracting energy from a stationary ring by making it
+  LOOK like it's spinning -- Nasari, Moussa, Kasahara, Thielens & Alu,
+  "Observation of Floquet rotational super-radiance" (Nature, 8 July 2026,
+  DOI 10.1038/s41586-026-10725-y, CUNY ASRC), the first clean lab
+  observation of Zel'dovich's 1971 rotational-superradiance effect (the
+  flat-spacetime sibling of Penrose's 1969 black-hole energy-extraction
+  process), achieved with a stationary ring of electronic resonators
+  time-modulated in a travelling pattern rather than any physically
+  spinning part. Surfaced via ScienceDaily/EurekAlert's July 2026 coverage.
+  The actual Nature article was paywalled (WebFetch hit a login redirect)
+  and no arXiv preprint turned up, so this piece rederives and implements
+  the general, model-independent Zel'dovich passivity argument from scratch
+  rather than transcribing the paper's own circuit equations (never seen),
+  with its own explicitly-disclosed, non-fitted absorptivity closed form
+  for an actual number. Verified in Node before any shader code (oddness
+  and boundedness of the absorptivity function, exact threshold crossing at
+  omega=m*Omega, zero sign violations of the passivity argument across
+  20,000 random samples, correct amplify/damp sign in 100% of 1680 swept
+  cases). Three modes sharing one drag cursor (omega, Omega) and one
+  auto-cycling azimuthal number m: RING (the mechanism -- 40 stationary
+  segments, only their brightness pattern travels), GAIN (a live |R|^2
+  heatmap with the amplification threshold drawn as an explicit line), and
+  SCATTER (an incident cylindrical wave meeting the ring, its reflected
+  rings visibly outgrowing the incoming ones in the superradiant regime).
+  See this session's own Piece 36 entry above for full derivation and
+  verification detail, including a real screenshot-caught bug (RING mode's
+  first draft showed no visible lobe structure at all; fixed by rendering
+  40 discrete segments instead of a continuous per-pixel gradient) and a
+  real environment gap (the default pinned playwright@1.48 could not drive
+  this environment's preinstalled Chromium at all; playwright@latest fixed
+  it).
+- Tested in a real headless browser (Playwright, upgraded to 1.62.1 this
+  session after the pinned older version failed to launch the environment's
+  preinstalled Chromium): all three modes screenshot-checked on 1280x800
+  desktop and 390x844 mobile-portrait viewports, zero console/page errors,
+  drag-to-set and tap-to-cycle both confirmed, and a frame-diff check (two
+  screenshots 1.2s apart) confirmed RING mode's pattern is actually moving,
+  not just time-varying in code without a visible effect.
+- Inspiration: this session's web wander also surfaced a "magic"
+  (non-stabilizerness) argument for holographic space-time's own pliability
+  (Cao et al., via Quanta Magazine, June 2026) -- genuinely novel but judged
+  too deep (tensor-network/holographic-code machinery) for a shader this
+  session, left as a candidate for later. The Compact Bonnet Pairs
+  counterexample to Bonnet's surface-rigidity theorem remains unaddressed a
+  ninth consecutive session.
+
 ### 2026-08-03 — Session 35
 - Added CLEAVE: truncate a photon with an optical shutter and get, not a
   smaller photon, but a superposition of photon numbers running to
@@ -6829,3 +7000,49 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       paper's own most conceptually surprising claim, arguably more than
       the swarm's raw existence (SWARM mode) does alone; not attempted
       this session.
+- [x] A stationary-circuit reproduction of black-hole-style rotational
+      superradiance, first surfaced by session 31's web wander and left
+      unpursued for four consecutive sessions — done in ERGOSPHERE (session
+      36), Nasari, Moussa et al.'s Floquet-modulated resonator ring
+      (Nature, 2026).
+- [ ] ERGOSPHERE: the piece's own closed-form absorptivity
+      A(omega')=gamma*omega'/(omega'^2+kappa^2) is this session's own
+      illustrative choice (peak gain 3 dB/2x), explicitly NOT fit to the
+      real device, whose actual measured gain is 7.8 dB (~6x); if the
+      actual Nature paper or an eventual arXiv preprint becomes reachable
+      to a future session (this session's WebFetch hit a login redirect
+      and no preprint existed yet), replacing this piece's toy Lorentzian
+      with the paper's own real circuit transfer function — and re-tuning
+      gamma/kappa to actually reproduce 7.8 dB rather than an illustrative
+      3 dB — would make GAIN mode a real reproduction rather than a
+      model-independent stand-in.
+- [ ] ERGOSPHERE: SCATTER mode renders only the far-field/large-kr
+      asymptotic cylindrical-wave form (1/sqrt(kr) envelope), applied
+      uniformly for all r>R0; the true near-field structure close to the
+      ring itself (where the actual resonators live and where the real
+      device's field is genuinely most interesting) is not modeled at all
+      — the same near-field-vs-far-field gap SKYRMION's POISSON mode and
+      DIFFRACT both disclosed for their own point-scatterer/kinematic
+      treatments, not resolved here either.
+- [ ] ERGOSPHERE: the passivity argument this piece implements fixes only
+      the MAGNITUDE of the reflection coefficient |R|; SCATTER mode locks
+      R's phase to zero, an explicit simplification with no claim to be
+      the real device's (or even a generic passive absorber's) actual
+      phase response — a Kramers-Kronig-consistent phase (the REAL part of
+      a causal linear response, paired with the odd imaginary/dissipative
+      part this piece already uses) was not derived or attempted this
+      session.
+- [ ] ERGOSPHERE: only a single azimuthal mode (omega, m) is ever shown at
+      once; the real device (and a real incident pulse) would couple to a
+      superposition of many m and omega simultaneously, each amplified or
+      damped by its own |R(omega,m)|^2 independently — a multi-mode
+      wavepacket built as an explicit sum over several (omega,m) terms,
+      showing the superradiant modes visibly separating out from the
+      damped ones over time, was not attempted this session.
+- [ ] ERGOSPHERE: RING mode's 40 segments are a purely visual device count
+      (this session's own choice, not the paper's, which never reached
+      this session — see the piece's own header); a version that also
+      showed the ring's segments individually flashing on discrete
+      "modulation steps" (a true Floquet stroboscopic drive, rather than
+      RING mode's smooth continuous cos() sweep) would be closer to how a
+      real digitally-clocked resonator array actually operates.
