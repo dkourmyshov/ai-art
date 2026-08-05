@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+bonnet.html      — BONNET piece
 ergosphere.html  — ERGOSPHERE piece
 cleave.html      — CLEAVE piece
 timecrystal.html — TIMECRYSTAL piece
@@ -45,6 +46,84 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 37: BONNET — One Metric, Two Shapes: Catenoid <-> Helicoid (2026-08-05)
+In 1867 Pierre Ossian Bonnet asked whether a compact surface is pinned down
+once you know two purely local quantities everywhere on it: its metric
+(the first fundamental form -- how far apart nearby points are) and its
+mean curvature H (the second fundamental form's trace -- how it bends).
+Bonnet himself already knew non-compact exceptions existed; whether a
+genuinely compact, closed one could exist stayed open for 150+ years. This
+session's web wander surfaced the answer via a January-April 2026 wave of
+coverage (Quanta Magazine, ScienceDaily, phys.org, TUM's own press
+release) of Alexander Bobenko, Tim Hoffmann & Andrew Sageman-Furnas,
+"Compact Bonnet Pairs: isometric tori with the same curvatures"
+(arXiv:2110.06335; Publications mathematiques de l'IHES 142, 241-293,
+2025): the first compact Bonnet pair, two immersed tori related by an
+isometry that ALSO preserves mean curvature pointwise, yet genuinely
+non-congruent -- different global shapes carrying identical local data.
+Their route ran through discrete differential geometry before smooth: a
+computer search by Sageman-Furnas turned up a spiky discrete "generator"
+surface whose curvature lines stayed confined to planes, a condition
+Bobenko recognized from Darboux's 19th-century formulas for surfaces with
+planar curvature lines (whose classical version spirals forever); reworking
+Darboux's construction so the curvature lines close up, then taking a
+conformal (isothermic) transform of the result, produced the first compact
+pair -- two tori that pass through themselves like linked figure eights.
+This session's WebFetch reached the abstract and the secondary coverage but
+not the paper's own discrete-differential-geometry apparatus (the explicit
+closing conditions live in the paper body and a companion classification
+paper) -- their specific closed, self-intersecting torus pair is NOT
+reproduced by this piece; see the open item below.
+
+What IS fully reachable and derivable from scratch is the classical
+NON-compact Bonnet pair Bonnet himself would have recognized: the associate
+("Bonnet") family of minimal surfaces joining the catenoid to the
+helicoid. Every member of this one-parameter family shares the identical
+induced metric AND identical mean curvature (H=0 everywhere, for all of
+them -- they are all minimal surfaces) while being visibly, globally
+different shapes -- an hourglass of revolution at one end, an infinite
+spiral ramp at the other. It is the textbook illustration of exactly the
+two invariants (metric + H) the 2026 paper shows CAN also be matched
+compactly, just not closed up. Via the Weierstrass-Enneper representation
+with f(z)=e^-z, g(z)=e^z (z=u+iv), the family has the closed form
+x=cos(th)sinh(v)sin(u)+sin(th)cosh(v)cos(u), y=-cos(th)sinh(v)cos(u)+
+sin(th)cosh(v)sin(u), z=u*cos(th)+v*sin(th); th=pi/2 gives the catenoid
+(x^2+y^2=cosh^2(v), z=v) and th=0 the helicoid (z=u, radius sinh(v) at
+angle u). The metric is E=G=cosh^2(v), F=0 for every th -- an isothermic
+(conformal-curvature-line) parametrization, the same structural property
+the real 2026 torus pair is built from.
+
+Verified in Node before any shader code (verify.js, this session's
+scratchpad, not committed): finite-difference E,F,G at four (u,v) points
+agree across five theta values to 6.5e-11; mean curvature H stays within
+3.1e-8 of zero everywhere sampled; theta=pi/2 reproduces the catenoid
+identity and theta=0 the helicoid identity exactly; analytic partials
+Xu,Xv match central-difference numerics to <1e-4; Gaussian curvature K
+from L,M,N matches the Liouville-formula prediction K=-1/cosh^4(v) to
+<1e-4 for every theta tested (as it must, being a metric invariant by
+Theorema Egregium); a fixed path drawn in (u,v) parameter space has 3D
+embedded arc length matching the metric-only prediction (6.224971) to
+within 3e-5 across seven theta values spanning a full period -- the
+concrete "an ant on the surface can't tell" check. An initial two-turn
+rendering domain (u in [-2pi,2pi]) was tried and rejected after testing
+(Playwright + swiftshader screenshots) showed it self-occluding into an
+illegible lump under opaque shading; the shipped piece uses one turn
+(u in [-pi,pi], v in [-2.1,2.1]).
+
+Three modes, one shared drag-to-orbit camera: FAMILY animates continuously
+through the whole family (theta eases 0->pi and back), shaded by K(v) --
+a quantity fixed to each material point, so it visibly does NOT reshuffle
+as the embedding bends, only the embedding moves -- with a stat panel
+recomputing E,G,F,H and the live embedded length of a marked path every
+frame from the current theta, so the numbers can be watched refusing to
+move while the shape does. TRACE draws the same animating family as its
+own curvature-line net (constant-u/constant-v lines) instead of a solid
+skin -- literally the structural object at the center of both Darboux's
+formulas and the 2026 paper's own construction. PAIR freezes theta at the
+two named endpoints, catenoid and helicoid, side by side with the
+identical marked path traced on both, camera distance adapted to viewport
+aspect so both shapes stay framed on narrow (portrait) screens.
 
 ## Piece 36: ERGOSPHERE — Extracting Energy From a Ring That Never Turns (2026-08-04)
 Roger Penrose showed in 1969 that a particle dropped into a rotating black
@@ -4538,6 +4617,38 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-05 — Session 37
+- Added BONNET: one metric, two shapes -- Bobenko, Hoffmann &
+  Sageman-Furnas, "Compact Bonnet Pairs: isometric tori with the same
+  curvatures" (arXiv:2110.06335, Publ. Math. IHES 2025), the first
+  compact counterexample to Bonnet's 1867 conjecture that metric + mean
+  curvature pins down a compact surface, surfaced via this session's web
+  wander through Jan-Apr 2026 press coverage (Quanta, ScienceDaily,
+  phys.org, TUM). The paper's own discrete-differential-geometry
+  construction (a Darboux transform of a discrete surface with planar
+  curvature lines, closed up via an isothermic transform) was not
+  reachable in explicit closed form from the abstract and secondary
+  coverage this session's WebFetch could reach, so the piece implements
+  instead the classical NON-compact ancestor of the same phenomenon: the
+  associate (Bonnet) family of minimal surfaces joining the catenoid to
+  the helicoid via the Weierstrass-Enneper representation, which shares
+  the paper's exact two invariants (identical metric, identical H=0)
+  across a continuously animating, globally different shape. Verified in
+  Node before any shader code: E,F,G invariance to 6.5e-11, H=0 to
+  3.1e-8, exact catenoid/helicoid endpoint identities, analytic-vs-
+  numeric partial derivatives to <1e-4, Gaussian curvature matching the
+  Liouville-formula prediction K=-1/cosh^4(v) to <1e-4, and a marked
+  path's 3D embedded length matching its metric-only prediction to 3e-5
+  across seven theta values. Three modes (FAMILY animating with a live
+  E/G/F/H/path-length readout, TRACE as the bare curvature-line net,
+  PAIR freezing the two named endpoints side by side) share one
+  drag-to-orbit WebGL camera; tested visually via headless
+  Playwright+swiftshader screenshots at desktop and mobile-portrait
+  viewports, which caught and fixed a shader compile error (GLSL ES 1.00
+  has no built-in cosh), an illegibly self-occluding two-turn rendering
+  domain, and a PAIR-mode framing failure on narrow aspect ratios (fixed
+  with an aspect-adaptive camera distance) before shipping.
+
 ### 2026-08-04 — Session 36
 - Added ERGOSPHERE: extracting energy from a stationary ring by making it
   LOOK like it's spinning -- Nasari, Moussa, Kasahara, Thielens & Alu,
@@ -5892,6 +6003,37 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 ---
 
 ## Ideas for Future Sessions
+- [ ] BONNET: the piece implements only the classical NON-compact Bonnet
+      pair (the catenoid/helicoid associate family); Bobenko, Hoffmann &
+      Sageman-Furnas's actual 2026 result is a compact, self-intersecting
+      TORUS pair built via a Darboux transform of a discrete surface with
+      planar curvature lines, closed up through an isothermic transform --
+      a genuinely different (and harder) construction whose explicit
+      closing conditions live in the paper body and a companion
+      classification paper, neither reachable to this session via WebFetch
+      (only the abstract and Jan-Apr 2026 secondary coverage were). A
+      future session with time to read the full arXiv:2110.06335 PDF
+      (discrete curvature-line nets, the specific elliptic-function or
+      combinatorial closing conditions used) could attempt the actual
+      compact self-intersecting pair instead of this non-compact stand-in
+      -- not attempted this session.
+- [ ] BONNET: only the theta in [0,pi] half of the associate family is
+      shown (FAMILY/TRACE modes ease back and forth over it); the other
+      half [pi,2pi] just mirrors the same two named surfaces with the
+      opposite handedness and was judged not worth the added animation
+      time this session, but a visitor-reachable full 2pi loop would be a
+      cheap addition.
+- [ ] BONNET: K(v) (Gaussian curvature) is the only invariant used for
+      on-surface coloring; since H=0 and K is theta-invariant, so is the
+      principal curvature MAGNITUDE k1=-k2=sqrt(-K) -- what actually
+      varies with theta is the principal curvature DIRECTIONS' orientation
+      in ambient 3-space (the curvature lines TRACE mode already draws
+      literally are those directions, integrated). A mode that overlaid a
+      small cross/ellipse glyph field showing those two directions
+      explicitly rotating as theta sweeps -- the one genuinely extrinsic,
+      embedding-only quantity in this whole piece -- would make that
+      distinction visible rather than just stated in the header comment;
+      not attempted this session.
 - [x] Audio reactivity via Web Audio API (microphone or oscillator) —
       done in CHLADNI (session 6): TONE oscillator + MIC analyser modes
 - [ ] CHLADNI: true clamped-plate Kirchhoff eigenmodes (Bessel functions,
