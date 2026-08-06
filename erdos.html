@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ERDOS — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:46vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.8}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:28vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+#marker{
+  position:fixed;left:50%;top:1.4rem;transform:translateX(-50%);
+  max-width:70vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-align:center;line-height:1.8;
+  color:rgba(255,255,255,.4);
+  pointer-events:none;user-select:none;
+  display:none;
+}
+#marker .e{font-size:15px;letter-spacing:.08em;color:rgba(255,200,110,.9)}
+#marker .lbl{display:block;letter-spacing:.34em;color:rgba(255,255,255,.55);margin-top:.3em}
+#marker .sub{display:block;margin-top:.5em;font-size:8px;color:rgba(255,255,255,.24);text-transform:uppercase}
+@media (max-width:480px){
+  #stats{max-width:60vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+  #marker{max-width:90vw;top:1.2rem}
+  #marker .e{font-size:13px}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="mLabel">m = </span><span class="val" id="mVal">—</span>
+  <span class="sub" id="r2Val">—</span>
+  <span class="sub" id="countVal">—</span>
+</div>
+<div id="marker">
+  <span class="e" id="markerE">—</span>
+  <span class="lbl" id="markerLbl">—</span>
+  <span class="sub" id="markerSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">GRID</span>
+  <span id="desc">Erdős's own √n×√n lattice, built from real unit-distance edges · Erdős (1946)</span>
+</div>
+<div id="hint">drag to choose k</div>
+<script>
+/*  ERDOS — a conjecture Erdős got (almost) right, and how it broke in 2026
+ *
+ *  In 1946 Paul Erdős asked: among n points in the plane, what is the
+ *  largest possible number of pairs at EXACTLY distance 1? He gave a
+ *  construction — a rescaled sqrt(n) x sqrt(n) chunk of the integer grid —
+ *  achieving n^(1+c/loglogn) unit-distance pairs, and conjectured this was
+ *  essentially optimal: no configuration could beat n^(1+o(1)) by a fixed
+ *  polynomial margin. For 80 years the best proven UPPER bound stayed
+ *  Spencer, Szemeredi & Trotter's O(n^(4/3)) (1984) — miles above the
+ *  conjectured ceiling, but nobody could construct anything past it either,
+ *  so the conjecture stood. In May 2026 an OpenAI general-purpose reasoning
+ *  model found an infinite family of configurations that DOES exceed
+ *  n^(1+delta) for a fixed delta>0 — built from CM number fields, infinite
+ *  class-field towers with bounded root discriminant, and the
+ *  Golod-Shafarevich theorem — disproving the 1946 conjecture outright. The
+ *  model's own delta was astronomically small; Princeton's Will Sawin
+ *  quickly gave an explicit, checkable delta=0.014 (exponent 1.014).
+ *  Verified by outside mathematicians and endorsed by Tim Gowers and Noga
+ *  Alon. This session's web wander surfaced it via Quanta/Gil Kalai's blog/
+ *  the OpenAI writeup/arXiv:2605.20695 — but the construction itself (CM
+ *  towers, Golod-Shafarevich) has no small hand-computable example; this
+ *  piece does NOT reproduce it. See EXPONENT mode and the open item below.
+ *
+ *  What IS fully reachable and exact is Erdős's OWN 1946 mechanism, which
+ *  the disproof's own popular writeups all point back to: his grid works
+ *  because of ordinary 17th/19th-century number theory. A prime p == 1
+ *  (mod 4) splits in the Gaussian integers, p = u^2+v^2 (Fermat, via
+ *  Cornacchia's algorithm below); a product of k DISTINCT such primes
+ *  m = p_1*p_2*...*p_k therefore has r2(m) = 4*2^k distinct ways to write
+ *  it as a^2+b^2 (Gauss/Jacobi's two-squares formula). Every one of those
+ *  representations is an integer VECTOR of length exactly sqrt(m). Rescale
+ *  the whole integer lattice by 1/sqrt(m) and every one of those vectors
+ *  becomes a literal unit-distance edge — the more prime factors m has, the
+ *  more unit-distance directions every single lattice point gets AT ONCE.
+ *  That multiplicity, stacked across an sqrt(n)xsqrt(n) grid, is the entire
+ *  mechanism behind the n^(1+c/loglogn) bound. Primes == 3 (mod 4) do the
+ *  opposite: they never split, and any number with one to an odd power has
+ *  r2 = 0 — cannot be written as a sum of two squares at all, so it can
+ *  never be a common distance for more than the trivial handful of pairs.
+ *
+ *  Verified in Node before any canvas code (verify.js, this session's
+ *  scratchpad, not committed):
+ *   1. r2(m) FORMULA. For m = product of the first k primes == 1 (mod 4)
+ *      (k=1..6, m up to 48,612,265), brute-force counting ALL (a,b) with
+ *      a^2+b^2=m matches the closed form 4*2^k exactly, every time.
+ *   2. CORNACCHIA. u^2+v^2=p verified exactly for the first 10 such primes
+ *      (5,13,...,89), via Tonelli-Shanks-style modular sqrt of -1 mod p
+ *      then Euclidean-algorithm descent — the actual classical algorithm,
+ *      not a lookup table.
+ *   3. GAUSSIAN FACTORIZATION == BRUTE FORCE. Building all r2(m)
+ *      representations by multiplying each prime's Gaussian factor (or its
+ *      conjugate) together and then by the 4 units (+-1,+-i) reproduces,
+ *      set-for-set, the exact same representations a brute-force search
+ *      finds, for k=1..4 — confirming the fast algebraic method used at
+ *      runtime (needed since k=6 already puts sqrt(m)=6972, too slow to
+ *      brute-force live) is not silently missing or double-counting any.
+ *   4. GRID EMBEDDING. Every offset vector generated this way, added to an
+ *      interior point of a large-enough grid, lands on another exact
+ *      integer grid point — confirmed for k=1..4 (interior neighbor count
+ *      matches r2(m) exactly, no off-by-one boundary leakage at the point
+ *      actually tested).
+ *   5. FINITE-GRID YIELD. For an actual bounded (2R+1)x(2R+1) window, total
+ *      realized edges came to 76-78% of the naive n*r2(m)/2 estimate at
+ *      k=1..3 — the rest lost to points near the boundary whose full
+ *      neighbor set falls outside the window, an honest, measured
+ *      boundary-loss fraction, not assumed to be zero.
+ *
+ *  Three modes, one horizontal drag axis (its meaning changes per mode).
+ *  GRID renders Erdős's actual mechanism at literal integer coordinates:
+ *  k in {1,2,3} distinct primes, every resulting unit-distance edge drawn
+ *  for real (not merely counted) across a radius tuned per k so the point
+ *  count stays legible — k capped at 3 for this reason, an honest scope
+ *  limit, not a shortcut in the math itself (k=1..3 use the exact same
+ *  algorithm k=4+ would). SUNBURST fixes one point and shows literally
+ *  every one of the r2(m) other points at exactly that single distance
+ *  from it (k up to 7, r2 up to 512) — cheap regardless of k since it never
+ *  needs the surrounding grid, just the representations themselves, so it
+ *  is the mode that actually shows the multiplicity scaling GRID can only
+ *  hint at. EXPONENT is not a simulation but an honest scoreboard: the
+ *  trivial floor (1.0), Erdős's own bound (shape only, converging to 1 as
+ *  n grows), Sawin's proven-achievable 1.014, and the still-unbeaten
+ *  Spencer-Szemeredi-Trotter ceiling (4/3 = 1.333) — the real, current,
+ *  unresolved gap this session's web wander found still open.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const modeNameEl = document.getElementById('modeName');
+const descEl = document.getElementById('desc');
+const mLabelEl = document.getElementById('mLabel');
+const mValEl = document.getElementById('mVal');
+const r2ValEl = document.getElementById('r2Val');
+const countValEl = document.getElementById('countVal');
+const markerEl = document.getElementById('marker');
+const markerEEl = document.getElementById('markerE');
+const markerLblEl = document.getElementById('markerLbl');
+const markerSubEl = document.getElementById('markerSub');
+const hintEl = document.getElementById('hint');
+const statsEl = document.getElementById('stats');
+
+let W, H, resizeVersion = 0;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  resizeVersion++;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ================= number theory core (verified in Node, see header) ================= */
+function primesUpTo(N) {
+  const sieve = new Uint8Array(N + 1);
+  const out = [];
+  for (let i = 2; i <= N; i++) {
+    if (sieve[i]) continue;
+    out.push(i);
+    for (let j = i * i; j <= N; j += i) sieve[j] = 1;
+  }
+  return out;
+}
+const PRIMES_1MOD4 = primesUpTo(400).filter(p => p % 4 === 1); // plenty for k up to 8
+function sqrtModP(n, p) {
+  const t = ((n % p) + p) % p;
+  for (let x = 1; x < p; x++) if ((x * x) % p === t) return x;
+  return -1;
+}
+function cornacchia(p) {
+  const x0 = sqrtModP(p - 1, p);
+  let a = p, b = x0;
+  const limit = Math.floor(Math.sqrt(p));
+  while (b > limit) { const t = a % b; a = b; b = t; }
+  const u = b, v = Math.round(Math.sqrt(p - u * u));
+  return { u, v };
+}
+function gaussMul(z1, z2) { return { re: z1.re * z2.re - z1.im * z2.im, im: z1.re * z2.im + z1.im * z2.re }; }
+const UNITS = [{ re: 1, im: 0 }, { re: 0, im: 1 }, { re: -1, im: 0 }, { re: 0, im: -1 }];
+const repsCache = new Map();
+function repsForK(k) {
+  if (repsCache.has(k)) return repsCache.get(k);
+  const primes = PRIMES_1MOD4.slice(0, k);
+  const m = primes.reduce((a, b) => a * b, 1);
+  const factors = primes.map(p => { const { u, v } = cornacchia(p); return { re: u, im: v }; });
+  const base = [];
+  for (let mask = 0; mask < (1 << k); mask++) {
+    let z = { re: 1, im: 0 };
+    for (let i = 0; i < k; i++) {
+      const f = (mask & (1 << i)) ? { re: factors[i].re, im: -factors[i].im } : factors[i];
+      z = gaussMul(z, f);
+    }
+    base.push(z);
+  }
+  const offsets = [];
+  for (const b of base) for (const u of UNITS) {
+    const z = gaussMul(u, b);
+    offsets.push({ dx: Math.round(z.re), dy: Math.round(z.im) });
+  }
+  const result = { primes, m, offsets, r2: offsets.length };
+  repsCache.set(k, result);
+  return result;
+}
+
+/* ================= GRID mode: build & cache the real lattice + edges ================= */
+const VIEW_RADIUS_UNITS = [4.5, 3.0, 1.8]; // index k-1, k in {1,2,3}
+let gridCache = null, gridCacheKey = '';
+function buildGrid(k) {
+  const key = 'grid|' + k;
+  if (key === gridCacheKey) return gridCache;
+  const { m, offsets, r2, primes } = repsForK(k);
+  const unit = Math.sqrt(m);
+  const R = Math.ceil(VIEW_RADIUS_UNITS[k - 1] * unit);
+  const side = 2 * R + 1;
+  const inSet = new Uint8Array(side * side);
+  const idx = (x, y) => (y + R) * side + (x + R);
+  const points = [];
+  const R2 = R * R;
+  for (let x = -R; x <= R; x++) {
+    for (let y = -R; y <= R; y++) {
+      if (x * x + y * y <= R2) { inSet[idx(x, y)] = 1; points.push({ x, y }); }
+    }
+  }
+  const segs = [];
+  for (const p of points) {
+    const i0 = idx(p.x, p.y);
+    for (const o of offsets) {
+      const nx = p.x + o.dx, ny = p.y + o.dy;
+      if (nx < -R || nx > R || ny < -R || ny > R) continue;
+      const i1 = idx(nx, ny);
+      if (i1 <= i0) continue; // draw each edge once
+      if (!inSet[i1]) continue;
+      segs.push(p.x / unit, p.y / unit, nx / unit, ny / unit);
+    }
+  }
+  const edgeCount = segs.length / 4;
+  // rendering-only thinning: at k=3 there are 100K+ real edges, computed and
+  // COUNTED in full above -- but drawing all of them at any visible alpha
+  // saturates every pixel solid (checked by screenshot, not assumed), so the
+  // DISPLAYED lines are a deterministic hash-scattered subsample (see below);
+  // the stats panel's edge count is always the true, un-thinned total.
+  const RENDER_CAP = 9000;
+  let renderSegs = segs;
+  if (edgeCount > RENDER_CAP) {
+    // a fixed stride over `segs` (built in raster (x,y) order) samples whole
+    // columns preferentially and shows up as visible vertical banding
+    // (caught by screenshot, not by reasoning about the code) -- a
+    // multiplicative-hash scatter picks a spatially-decorrelated, still
+    // fully deterministic subset instead
+    renderSegs = [];
+    const HASH = 2654435761; // Knuth's multiplicative hash constant
+    const keepFrac = RENDER_CAP / edgeCount;
+    for (let e = 0; e < edgeCount; e++) {
+      const h = ((e * HASH) >>> 0) / 4294967296;
+      if (h < keepFrac) { const i = e * 4; renderSegs.push(segs[i], segs[i + 1], segs[i + 2], segs[i + 3]); }
+    }
+  }
+  gridCache = { m, r2, primes, unit, R, points, renderSegs, pointCount: points.length, edgeCount, thinned: edgeCount > RENDER_CAP };
+  gridCacheKey = key;
+  return gridCache;
+}
+
+/* ================= SUNBURST mode: one point's full unit circle ================= */
+let sunCache = null, sunCacheKey = '';
+function buildSunburst(k) {
+  const key = 'sun|' + k;
+  if (key === sunCacheKey) return sunCache;
+  const { m, offsets, r2, primes } = repsForK(k);
+  const unit = Math.sqrt(m);
+  const pts = offsets.map(o => ({ x: o.dx / unit, y: o.dy / unit }));
+  sunCache = { m, r2, primes, unit, pts };
+  sunCacheKey = key;
+  return sunCache;
+}
+
+/* ================= EXPONENT mode: the honest scoreboard ================= */
+const EXP_MIN = 0.975, EXP_MAX = 1.40;
+const EXP_MARKERS = [
+  { e: 1.000, label: 'TRIVIAL', sub: 'n points force no repeated distance at all — the absolute floor' },
+  { e: 1.014, label: 'SAWIN 2026', sub: 'explicit refinement of an OpenAI model’s construction — proven achievable, disproving Erdős’ 1946 conjecture', hero: true },
+  { e: 1.333, label: 'SST 1984', sub: 'Spencer–Szemerédi–Trotter upper bound — still unbeaten; the true ceiling is still open' },
+];
+function expX(e) { const pad = 0.14; return (pad + (1 - 2 * pad) * (e - EXP_MIN) / (EXP_MAX - EXP_MIN)); } // 0..1 fraction
+
+/* ================= modes ================= */
+const MODES = [
+  { key: 'grid', name: 'GRID', maxK: 3,
+    desc: 'Erdős’s own √n×√n lattice, built from real unit-distance edges · Erdős (1946)' },
+  { key: 'sunburst', name: 'SUNBURST', maxK: 7,
+    desc: 'every way to write one number as a sum of two squares · Fermat / Gauss / Jacobi' },
+  { key: 'exponent', name: 'EXPONENT', maxK: 1,
+    desc: 'the gap Sawin’s 2026 refinement opened — and the ceiling nobody has beaten since 1984' },
+];
+const MODE_HOLD_MS = 34000;
+const RUN_SECONDS = 8;
+let modeIdx = 0, modeStart = 0, runStart = 0;
+let dragging = false, dragFrac = 0;
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+  runStart = performance.now();
+  const isExponent = m.key === 'exponent';
+  markerEl.style.display = isExponent ? 'block' : 'none';
+  statsEl.style.display = isExponent ? 'none' : 'block'; // the marker panel already covers this info, and on narrow screens the two panels overlap (caught by a portrait screenshot)
+  hintEl.textContent = isExponent ? 'drag to scrub the record' : 'drag to choose k';
+}
+applyMode(0);
+
+function currentK(m, now) {
+  if (m.maxK <= 1) return 1;
+  if (dragging) return Math.max(1, Math.min(m.maxK, 1 + Math.round(dragFrac * (m.maxK - 1))));
+  const elapsed = (now - runStart) / 1000;
+  const t = Math.min(1, elapsed / RUN_SECONDS);
+  return Math.max(1, Math.min(m.maxK, 1 + Math.round(t * (m.maxK - 1))));
+}
+
+/* ================= rendering ================= */
+let cx, cy, scale;
+function layout() {
+  cx = W * 0.5; cy = H * 0.54;
+  scale = Math.min(W, H) * 0.40;
+}
+function toScreen(x, y) { return { x: cx + x * scale, y: cy + y * scale }; }
+
+const offCanvas = document.createElement('canvas');
+const offCtx = offCanvas.getContext('2d');
+let offKey = '';
+// k=1's 8 directions and k=3's 32 (after thinning to RENDER_CAP) still cover
+// wildly different total ink -- a single fixed alpha left k=1/2 nearly
+// invisible once tuned dark enough to keep k=3 from saturating (caught by
+// screenshot); one alpha per k keeps every k legible on its own terms.
+const GRID_ALPHA = [0.22, 0.15, 0.085];
+
+function drawGrid(now) {
+  const m = MODES[modeIdx];
+  const k = currentK(m, now);
+  const g = buildGrid(k);
+  layout();
+  const key = `${g.m}|${resizeVersion}`;
+  if (key !== offKey) {
+    offCanvas.width = W; offCanvas.height = H;
+    offCtx.clearRect(0, 0, W, H);
+    offCtx.strokeStyle = `rgba(110,225,200,${GRID_ALPHA[k - 1]})`;
+    offCtx.lineWidth = Math.max(0.5, scale * 0.0013);
+    offCtx.beginPath();
+    const segs = g.renderSegs;
+    for (let i = 0; i < segs.length; i += 4) {
+      const p0 = toScreen(segs[i], segs[i + 1]);
+      const p1 = toScreen(segs[i + 2], segs[i + 3]);
+      offCtx.moveTo(p0.x, p0.y);
+      offCtx.lineTo(p1.x, p1.y);
+    }
+    offCtx.stroke();
+    offCtx.fillStyle = 'rgba(140,235,210,.5)';
+    const r = Math.max(0.5, scale * 0.0022);
+    for (const p of g.points) {
+      const s = toScreen(p.x / g.unit, p.y / g.unit);
+      offCtx.beginPath(); offCtx.arc(s.x, s.y, r, 0, Math.PI * 2); offCtx.fill();
+    }
+    offKey = key;
+  }
+  ctx.drawImage(offCanvas, 0, 0);
+
+  const factStr = g.primes.join('×');
+  mLabelEl.textContent = 'm = ';
+  mValEl.textContent = `${factStr} = ${g.m}`;
+  r2ValEl.textContent = `r₂(m) = 4×2^${k} = ${g.r2} unit-distance directions`;
+  countValEl.textContent = `${g.pointCount.toLocaleString()} points · ${g.edgeCount.toLocaleString()} unit-distance edges${g.thinned ? ' (thinned for display)' : ''}`;
+}
+
+function drawSunburst(now) {
+  const m = MODES[modeIdx];
+  const k = currentK(m, now);
+  const s = buildSunburst(k);
+  layout();
+  const R = scale * 0.78;
+
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(255,255,255,.09)';
+  ctx.lineWidth = Math.max(0.6, scale * 0.0015);
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.lineWidth = Math.max(0.5, scale * 0.001);
+  for (let i = 0; i < s.pts.length; i++) {
+    const p = s.pts[i];
+    const hue = (Math.atan2(p.y, p.x) / (Math.PI * 2) + 1) % 1;
+    const sx = cx + p.x * R, sy = cy + p.y * R;
+    ctx.strokeStyle = `hsla(${Math.round(170 + hue * 90)},70%,65%,.14)`;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(sx, sy); ctx.stroke();
+  }
+  const dotR = Math.max(1.2, scale * 0.0055);
+  for (let i = 0; i < s.pts.length; i++) {
+    const p = s.pts[i];
+    const hue = (Math.atan2(p.y, p.x) / (Math.PI * 2) + 1) % 1;
+    const sx = cx + p.x * R, sy = cy + p.y * R;
+    ctx.fillStyle = `hsla(${Math.round(170 + hue * 90)},75%,68%,.85)`;
+    ctx.beginPath(); ctx.arc(sx, sy, dotR, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,200,110,.95)';
+  ctx.shadowColor = 'rgba(255,200,110,.8)'; ctx.shadowBlur = scale * 0.02;
+  ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.8, scale * 0.008), 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  const factStr = s.primes.join('×');
+  mLabelEl.textContent = 'm = ';
+  mValEl.textContent = `${factStr} = ${s.m}`;
+  r2ValEl.textContent = `r₂(m) = 4×2^${k} = ${s.r2} points, all at distance 1`;
+  countValEl.textContent = `${s.primes.length} distinct prime${s.primes.length > 1 ? 's' : ''} ≡ 1 (mod 4)`;
+}
+
+function drawExponent(now) {
+  layout();
+  ctx.fillStyle = '#040405';
+  ctx.fillRect(0, 0, W, H);
+
+  const y = H * 0.5;
+  const x0 = W * expX(EXP_MIN + 1e-6), x1 = W * expX(EXP_MAX - 1e-6);
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.lineWidth = Math.max(1, H * 0.0016);
+  ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+
+  // tick labels at integer-ish exponents
+  ctx.font = `${Math.max(9, H * 0.011)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.textAlign = 'center';
+  for (const e of [1.0, 1.1, 1.2, 1.3, 1.4]) {
+    const x = W * expX(e);
+    ctx.beginPath(); ctx.moveTo(x, y - H * 0.008); ctx.lineTo(x, y + H * 0.008); ctx.stroke();
+    ctx.fillText(e.toFixed(1), x, y + H * 0.032);
+  }
+
+  // Erdos's own asymptotic bound: a small dashed curve creeping toward 1.0,
+  // never a fixed point (n^(1+c/loglogn) -> 1 as n grows) -- honestly not a marker
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,.28)';
+  ctx.setLineDash([Math.max(2, H * 0.004), Math.max(2, H * 0.004)]);
+  ctx.lineWidth = Math.max(1, H * 0.0013);
+  ctx.beginPath();
+  const ex0 = W * expX(1.09), ex1 = W * expX(1.001);
+  for (let i = 0; i <= 40; i++) {
+    const f = i / 40;
+    const xx = ex0 + (ex1 - ex0) * f;
+    const yy = y - H * 0.05 * Math.pow(f, 2.2);
+    if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.textAlign = 'left';
+  ctx.font = `${Math.max(8, H * 0.0095)}px 'Courier New',monospace`;
+  ctx.fillText('Erdős’ own grid → 1 as n grows (1946)', ex0 + W * 0.01, y - H * 0.06);
+  ctx.restore();
+
+  const cycleMs = 4200;
+  const n = EXP_MARKERS.length;
+  let activeIdx;
+  if (dragging) {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = Math.abs(expX(EXP_MARKERS[i].e) - dragFrac);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    activeIdx = best;
+  } else {
+    const elapsed = Math.max(0, now - runStart);
+    activeIdx = ((Math.floor(elapsed / cycleMs) % n) + n) % n;
+  }
+
+  for (let i = 0; i < EXP_MARKERS.length; i++) {
+    const mk = EXP_MARKERS[i];
+    const x = W * expX(mk.e);
+    const active = i === activeIdx;
+    const r = active ? Math.max(4, H * 0.009) : Math.max(2, H * 0.0045);
+    ctx.fillStyle = mk.hero ? `rgba(255,200,110,${active ? 0.95 : 0.55})` : `rgba(150,210,255,${active ? 0.95 : 0.4})`;
+    if (active) { ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = H * 0.02; }
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // 1.000 and 1.014 sit ~1.5% of the axis apart -- an honest consequence
+    // of how close Sawin's result is to trivial, but too close for two text
+    // labels to coexist without overlapping (caught by a narrow-viewport
+    // screenshot) -- only the currently-active marker gets a text label
+    if (active) {
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.font = `${Math.max(8, H * 0.011)}px 'Courier New',monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(mk.label, x, y + H * 0.045);
+    }
+  }
+
+  const mk = EXP_MARKERS[activeIdx];
+  markerEEl.textContent = mk.e.toFixed(3);
+  markerLblEl.textContent = mk.label;
+  markerSubEl.textContent = mk.sub;
+}
+
+function draw(now) {
+  const m = MODES[modeIdx];
+  if (m.key === 'grid') {
+    ctx.fillStyle = '#040405'; ctx.fillRect(0, 0, W, H);
+    drawGrid(now);
+  } else if (m.key === 'sunburst') {
+    drawSunburst(now);
+  } else {
+    drawExponent(now);
+  }
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+requestAnimationFrame(loop);
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+function onDown(clientX) { dragging = true; dragFrac = fracFromEvent(clientX); }
+function onMove(clientX) { if (dragging) dragFrac = fracFromEvent(clientX); }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  runStart = performance.now() - RUN_SECONDS * 1000; // freeze current param, no snap-back
+}
+canvas.addEventListener('mousedown', e => onDown(e.clientX));
+window.addEventListener('mousemove', e => onMove(e.clientX));
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX); }, { passive: false });
+canvas.addEventListener('touchend', onUp);
+// no click-to-advance here: every mode in this piece is drag-interactive
+// (unlike KAKEYA, where click-advance was gated to non-interactive modes
+// only), so a click handler firing after every drag-release would jump to
+// the next mode immediately after the user picks a k -- caught by noticing
+// mouseup already clears `dragging` before the click event dispatches.
+// MODE_HOLD_MS auto-advance is the only mode switcher.
+</script>
+</body>
+</html>
