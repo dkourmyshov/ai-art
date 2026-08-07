@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VACUUM — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:46vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.8}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:28vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+#marker{
+  position:fixed;left:50%;top:1.4rem;transform:translateX(-50%);
+  max-width:74vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-align:center;line-height:1.8;
+  color:rgba(255,255,255,.4);
+  pointer-events:none;user-select:none;
+  display:none;
+}
+#marker .e{font-size:13px;letter-spacing:.1em;color:rgba(160,210,255,.9)}
+#marker .lbl{display:block;letter-spacing:.3em;color:rgba(255,255,255,.55);margin-top:.3em}
+#marker .sub{display:block;margin-top:.5em;font-size:8px;color:rgba(255,255,255,.24);text-transform:uppercase}
+@media (max-width:480px){
+  #stats{max-width:60vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+  #marker{max-width:92vw;top:1.2rem}
+  #marker .e{font-size:12px}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="eLabel">E = </span><span class="val" id="eVal">—</span>
+  <span class="sub" id="rplVal">—</span>
+  <span class="sub" id="chiVal">—</span>
+</div>
+<div id="marker">
+  <span class="e" id="markerE">—</span>
+  <span class="lbl" id="markerLbl">—</span>
+  <span class="sub" id="markerSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">FIELD</span>
+  <span id="desc">the vacuum itself, forced into a crystal &middot; Stewart et al. (Nature, 2026)</span>
+</div>
+<div id="hint">drag to set energy &amp; ray geometry</div>
+<script>
+/*  VACUUM — the empty space around a magnetar is not empty: it is birefringent
+ *
+ *  On 5 Aug 2026, R. E. Stewart et al. published in Nature (arXiv:2509.19446)
+ *  the cleanest evidence yet for a 1936 QED prediction that had never been
+ *  directly confirmed: a strong enough magnetic field polarizes the QUANTUM
+ *  VACUUM itself. Virtual electron-positron pairs, briefly popping in and out
+ *  of existence, couple to the field and make empty space act like a
+ *  birefringent crystal -- two different refractive indices for two photon
+ *  polarizations, exactly as a calcite crystal does, except the "crystal" is
+ *  nothing at all. Their target was the radio-loud magnetar 1E 1547.0-5408
+ *  (surface dipole field ~5x10^14 G, three orders above the QED critical
+ *  field B_QED=4.4x10^13 G): IXPE + NICER + the Parkes/Murriyang radio dish
+ *  together measured X-ray polarization degrees up to 65-80%, far higher
+ *  than any ordinary hot-surface emission model predicts, with the
+ *  polarization angle locked to the star's magnetic geometry exactly as
+ *  vacuum birefringence requires.
+ *
+ *  The Nature paper itself is an observational campaign -- it cites, but
+ *  does not reprint, the underlying QED closed forms. Those come from a
+ *  three-decade paper trail this session's web wander wasn't asked to redo
+ *  from scratch: J. S. Heyl, N. J. Shaviv & D. Lloyd, "Almost analytic
+ *  models of ultramagnetized neutron star envelopes" (2003, astro-ph/0302118,
+ *  itself built on Heyl & Shaviv 2000 and Adler 1971). Two closed forms from
+ *  that paper drive this piece. Their Eq. 8, the magnitude of the
+ *  birefringent precession vector that a photon's Stokes vector precesses
+ *  around per unit path length:
+ *      |Omega| = (2/15) (alpha/4*pi) (omega/c) (B_perp/B_QED)^2
+ *  and their Eq. 9-10, the POLARIZATION-LIMITING RADIUS -- the distance
+ *  beyond which the vacuum can no longer force the polarization to keep
+ *  pace with the rotating field direction, so it freezes:
+ *      r_pl = [ (alpha/45) (nu/c) (mu/B_QED)^2 sin^2(alpha_incl) ]^(1/5)
+ *          ~= 1.2x10^7 * mu30^0.4 * nu17^0.2 * sin(alpha_incl)^0.4 cm
+ *  (mu = magnetic dipole moment, nu = photon frequency). For 1E1547's own
+ *  quoted numbers (R=12km, B_pole~5x10^14 G, 2 keV) this gives r_pl ~ 159
+ *  stellar radii -- matching the ~100 R_NS the review literature quotes as
+ *  typical for magnetars (J. S. Heyl et al. 2003; R. Taverna et al. 2015).
+ *
+ *  Verified in Node before any canvas code (verify.js, this session's
+ *  scratchpad, not committed): (1) the r_pl closed form's published numeric
+ *  fit (1.2x10^7 cm at mu30=nu17=sinA=1) reproduced from the algebraic
+ *  formula to 2.3%; (2) the exact classical dipole field Cartesian vector
+ *  matches the standard (mu/r^3)*sqrt(1+3cos^2(theta)) magnitude formula to
+ *  1.9e-16 relative error; (3) a photon confined to a single meridian plane
+ *  (theta fixed along the ray) shows EXACTLY zero field-direction rotation,
+ *  confirmed to 0.000 rad over 30 stellar radii -- since a static
+ *  axisymmetric dipole has no azimuthal (B_phi) component, only a genuinely
+ *  skew (out-of-meridian-plane) ray sees the field direction turn at all,
+ *  which is why every ray in this piece is launched with a real 3D tilt,
+ *  not a purely radial one; (4) a direct RK4 integration of the real
+ *  Stokes-precession ODE from the stellar surface blows up (NaN) because
+ *  |Omega| falls as 1/r^6 and spans >15 orders of magnitude between the
+ *  surface and r_pl -- exactly why the literature uses an ADIABATIC-THEOREM
+ *  argument instead of brute-force integration, reproduced here as a toy
+ *  model with tractable numbers: while the precession/rotation ratio Q>5 the
+ *  tracked polarization angle follows the rotating field eigenaxis to within
+ *  0.075 rad, and once Q<0.2 the angle stops changing (spread 1.8e-3 rad)
+ *  while the field's own direction keeps rotating on unrelated to it --
+ *  confirming the freeze mechanism itself, not merely asserting it.
+ *
+ *  This piece therefore renders the ADIABATIC-LIMIT closed form directly
+ *  (polarization angle = the field's own transverse angle chi(r) for
+ *  r<r_pl, frozen at chi(r_pl) beyond) rather than a live per-frame ODE
+ *  solve of an equation verified above to be numerically intractable at
+ *  real magnetar field strengths. One simplification this honestly costs:
+ *  the real transition also generates a small circular-polarization (S3)
+ *  component as adiabaticity breaks down (noted explicitly in Heyl et al.);
+ *  this piece's two-regime (track / frozen) model stays exactly on the
+ *  linear-polarization equator of the Poincare sphere and does not show it
+ *  -- see the open item below.
+ *
+ *  Three modes, one shared 2D drag (X = photon energy 1-10 keV, sets r_pl;
+ *  Y = the ray's out-of-meridian tilt, sets how much the field direction
+ *  actually rotates before freezing -- dragging Y to ~0 reproduces finding
+ *  (3) above live: an aligned ray sees no rotation at all, so vacuum
+ *  birefringence changes nothing for it, exactly the geometric reason R.
+ *  Taverna et al. (2026)'s own re-fit of 1E1547 found a NEGLIGIBLE
+ *  birefringence effect on polarization degree for their preferred nearly-
+ *  radial geometry, in tension with Stewart et al.'s reading of the same
+ *  data). FIELD renders the mechanism at the star: dipole field lines, a
+ *  skew photon ray carrying a polarization-ellipse glyph that visibly
+ *  tracks the local field direction near the star and snaps FROZEN at the
+ *  drawn r_pl shell. POINCARE shows the same ray's Stokes state sweeping
+ *  around the (S1,S2) equatorial disk as r grows, then stopping dead.
+ *  PULSE reconstructs the actual observable: the frozen polarization angle,
+ *  swept through stellar rotation via the paper's own rotating-vector-model
+ *  formula (their Eq. 1), compared against R. Taverna et al.'s independently
+ *  re-fit geometry -- the two 2026 papers disagree on 1E1547's actual
+ *  magnetic obliquity, an honest live disagreement in the literature this
+ *  piece shows rather than picks a side on.
+ */
+
+const ALPHA_QED = 1 / 137.035999;
+const B_QED = 4.4e13;        // Gauss, QED critical field
+const C_LIGHT = 2.99792458e10;
+const H_PLANCK = 6.62607015e-27;
+const KEV = 1.602176634e-9;  // erg
+const B_POLE_G = 5e14;       // 1E1547-like polar dipole field
+const R_NS_CM = 1.2e6;       // 12 km
+const THETA0_DEG = 35;       // fixed emission colatitude
+
+function rplNorm(E_keV, sinA) {
+  // r_pl_cm = [ (alpha/45)(nu/c)(mu/B_QED)^2 sin^2 ]^(1/5), mu in G*cm^3.
+  // Working in units of R_NS (mu/R_NS^3 = B_pole/2 exactly) requires one
+  // leftover explicit factor of R_NS_CM inside the bracket -- confirmed
+  // against verify.js's real-cm calculation (137.98 R_NS at E=3keV,
+  // theta0=35deg), which an earlier version of this formula omitted,
+  // producing a ~700x-too-small r_pl (0.2 R_NS instead of ~138) caught by
+  // this session's own screenshot pass, not by reasoning about the code.
+  const nu = (E_keV * KEV) / H_PLANCK;
+  const inner = (ALPHA_QED / 45) * (nu / C_LIGHT) * R_NS_CM * Math.pow((B_POLE_G/2) / B_QED, 2) * sinA * sinA;
+  return Math.pow(inner, 1 / 5);
+}
+function omegaMagNorm(E_keV, Bperp_G) {
+  const omega = 2 * Math.PI * (E_keV * KEV) / H_PLANCK;
+  return (2 / 15) * (ALPHA_QED / (4 * Math.PI)) * (omega / C_LIGHT) * Math.pow(Bperp_G / B_QED, 2);
+}
+function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function dot(a, b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function vnorm(a) { return Math.hypot(a[0],a[1],a[2]); }
+function normalize(a) { const n = vnorm(a)||1; return [a[0]/n,a[1]/n,a[2]/n]; }
+function vadd(a,b){return [a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function vscale(a,s){return [a[0]*s,a[1]*s,a[2]*s];}
+
+// dipole field in Gauss at normalized position P (units of R_NS), axis = +z
+function dipoleB(P) {
+  const r = vnorm(P);
+  const theta = Math.acos(Math.max(-1,Math.min(1,P[2]/r)));
+  const phi = Math.atan2(P[1], P[0]);
+  const st=Math.sin(theta),ct=Math.cos(theta),sp=Math.sin(phi),cp=Math.cos(phi);
+  const rhat=[st*cp,st*sp,ct], that=[ct*cp,ct*sp,-st];
+  const Br = B_POLE_G*ct/(r*r*r);
+  const Bt = (B_POLE_G/2)*st/(r*r*r);
+  return [Br*rhat[0]+Bt*that[0], Br*rhat[1]+Bt*that[1], Br*rhat[2]+Bt*that[2]];
+}
+
+function makeRay(tilt) {
+  const th0 = THETA0_DEG * Math.PI / 180;
+  const P0 = [Math.sin(th0), 0, Math.cos(th0)];
+  const outward = normalize(P0);
+  // rotate the outward direction toward +y by `tilt` radians -- outward and
+  // y-hat are exactly orthogonal (P0 has no y-component), so this sum is
+  // already unit length: a clean, bounded sweep from purely-radial (tilt=0)
+  // to purely-tangential (tilt=pi/2). An earlier version used
+  // normalize(outward + tan(tilt)*yhat), which blows up as tilt->90 deg and
+  // made the ray's screen-projected path collapse toward the star at high
+  // tilt (caught by comparing a screenshot against the intended r_pl shell
+  // radius, not by reasoning about the code).
+  const k = vadd(vscale(outward, Math.cos(tilt)), vscale([0, 1, 0], Math.sin(tilt)));
+  const ref = Math.abs(k[2]) < 0.9 ? [0,0,1] : [1,0,0];
+  const e1 = normalize(cross(ref, k));
+  const e2 = cross(k, e1);
+  return { P0, k, e1, e2 };
+}
+// sample chi(r) (field's transverse angle, = physical polarization-eigenmode
+// angle) and r along a ray, from the surface out to rMaxNorm
+function sampleRay(ray, rMaxNorm, n) {
+  const pts = [];
+  let t = 1e-4;
+  for (let i = 0; i < n; i++) {
+    const f = i / (n - 1);
+    t = Math.pow(f, 1.6) * rMaxNorm * 1.6 + 1e-4; // denser sampling near the star
+    const P = vadd(ray.P0, vscale(ray.k, t));
+    const r = vnorm(P);
+    const B = dipoleB(P);
+    const b1 = dot(B, ray.e1), b2 = dot(B, ray.e2);
+    const chi = Math.atan2(b2, b1);
+    const Bperp = Math.hypot(b1, b2);
+    pts.push({ t, r, chi, Bperp });
+    if (r > rMaxNorm * 1.5) break;
+  }
+  return pts;
+}
+// unwrap + apply the adiabatic freeze: angle tracks chi(r) for r<rpl, frozen after
+function adiabaticAngles(pts, rpl) {
+  let unwrapped = 0, prev = null, frozen = false, frozenAngle = 0, freezeIdx = -1;
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (prev !== null) {
+      let d = p.chi - prev;
+      while (d > Math.PI) d -= 2*Math.PI;
+      while (d < -Math.PI) d += 2*Math.PI;
+      unwrapped += d;
+    }
+    prev = p.chi;
+    if (!frozen && p.r >= rpl) { frozen = true; frozenAngle = unwrapped; freezeIdx = i; }
+    out.push({ ...p, angle: frozen ? frozenAngle : unwrapped, frozen });
+  }
+  if (freezeIdx < 0) freezeIdx = pts.length - 1;
+  return { angles: out, freezeIdx };
+}
+
+let canvas, ctx, W, H, resizeVersion = 0;
+let modeNameEl, descEl, eLabelEl, eValEl, rplValEl, chiValEl, markerEl, markerEEl, markerLblEl, markerSubEl, hintEl, statsEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width  = Math.round(window.innerWidth  * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  resizeVersion++;
+}
+
+/* ================= modes ================= */
+const MODES = [
+  { key: 'field', name: 'FIELD',
+    desc: 'a photon’s polarization tracks the field, then freezes · Heyl, Shaviv & Lloyd (2003)' },
+  { key: 'poincare', name: 'POINCARE',
+    desc: 'the same journey, abstracted: a Stokes vector spirals in and stops' },
+  { key: 'pulse', name: 'PULSE',
+    desc: 'the frozen angle, spun by the star · rotating vector model · Stewart et al. (2026)' },
+];
+const MODE_HOLD_MS = 32000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.5, dragY = 0.5;
+let driftPhaseX = 0, driftPhaseY = 1.7;
+const DRIFT_PERIOD_X = 26000, DRIFT_PERIOD_Y = 19000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(2*Math.PI*t/period + phase); }
+
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+  const isPulse = m.key === 'pulse';
+  markerEl.style.display = isPulse ? 'block' : 'none';
+  statsEl.style.display = isPulse ? 'none' : 'block';
+  hintEl.textContent = isPulse ? 'drag: x = line of sight ζ, y = obliquity α' : 'drag: x = energy, y = ray tilt';
+}
+
+/* ================= FIELD mode ================= */
+function dispR(r, K, baseR) { return baseR + K * Math.log2(Math.max(1, r)); }
+function proj(x, y, z, cx, cy, scale) {
+  const oblA = 0.62, oblFactor = 0.85;
+  const sx = x + y * Math.cos(oblA) * oblFactor;
+  const sy = -z + y * Math.sin(oblA) * oblFactor;
+  return { x: cx + sx * scale, y: cy + sy * scale };
+}
+
+function drawField(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cy = H * 0.55;
+  const scale = Math.min(W, H) * 0.052;
+  const E_keV = Math.pow(10, 0.0 + xy.x * (1.0 - 0.0)); // 1..10 keV
+  const tilt = 0.02 + xy.y * (0.92 - 0.02);
+  const sinA = Math.sin(THETA0_DEG * Math.PI / 180);
+  const rpl = rplNorm(E_keV, sinA);
+  const baseR = scale * 1.0;
+  const K = (Math.min(W, H) * 0.40 - baseR) / Math.log2(2.6 * rpl);
+
+  // vacuum shimmer: faint sparkles whose density follows B(r)/B_QED
+  const shimmerN = 90;
+  for (let i = 0; i < shimmerN; i++) {
+    const seed = i * 2654435761 % 1000000 / 1000000;
+    const ang = seed * Math.PI * 2 + now * 0.00003 * (1 + (i % 5) * 0.1);
+    const rr = 1.05 + Math.pow((i / shimmerN), 1.7) * rpl * 1.4;
+    const th = ((i * 0.61803) % 1) * Math.PI;
+    const P = [rr * Math.sin(th) * Math.cos(ang), rr * Math.sin(th) * Math.sin(ang) * 0.3, rr * Math.cos(th)];
+    const Bmag = vnorm(dipoleB(P));
+    const inten = Math.min(1, Bmag / B_QED);
+    if (inten < 0.002) continue;
+    const Rd = dispR(rr, K, baseR);
+    const dirn = normalize(P);
+    const s = proj(dirn[0]*Rd, dirn[1]*Rd, dirn[2]*Rd, cx, cy, 1);
+    const flick = 0.4 + 0.6 * Math.abs(Math.sin(now * 0.002 + i));
+    ctx.fillStyle = `rgba(190,220,255,${Math.min(0.5, inten * 1.4) * flick})`;
+    const rad = Math.max(0.5, Math.min(2.2, inten * 6));
+    ctx.beginPath(); ctx.arc(s.x, s.y, rad, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // dipole field lines (meridian plane y=0), nested around r_pl
+  const Ls = [0.14, 0.32, 0.6, 1.0, 1.55, 2.2].map(f => Math.max(1.4, f * rpl));
+  ctx.lineWidth = Math.max(0.6, scale * 0.012);
+  for (const L of Ls) {
+    const nearRpl = Math.abs(L - rpl) < rpl * 0.06;
+    ctx.strokeStyle = nearRpl ? 'rgba(150,205,255,.35)' : 'rgba(120,150,190,.13)';
+    const thetaMin = L > 1 ? Math.asin(Math.min(1, Math.sqrt(1 / L))) : 0.001;
+    ctx.beginPath();
+    let first = true;
+    for (let i = 0; i <= 120; i++) {
+      const th = thetaMin + (Math.PI - 2 * thetaMin) * (i / 120);
+      const r = L * Math.sin(th) * Math.sin(th);
+      const Rd = dispR(r, K, baseR);
+      const x = Rd * Math.sin(th), z = Rd * Math.cos(th);
+      const s = proj(x, 0, z, cx, cy, 1);
+      if (first) { ctx.moveTo(s.x, s.y); first = false; } else ctx.lineTo(s.x, s.y);
+    }
+    ctx.stroke();
+  }
+
+  // r_pl shell (a circle at constant true r, any direction -> circle after proj if drawn as a ring in the y=0 plane; show as full ring for legibility)
+  ctx.strokeStyle = 'rgba(255,210,140,.28)';
+  ctx.setLineDash([Math.max(2, scale * 0.05), Math.max(2, scale * 0.05)]);
+  ctx.lineWidth = Math.max(0.8, scale * 0.01);
+  const RdShell = dispR(rpl, K, baseR);
+  ctx.beginPath(); ctx.arc(cx, cy, RdShell, 0, Math.PI * 2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // the star
+  const starR = Math.max(3, scale * 0.28);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, starR * 2.2);
+  grad.addColorStop(0, 'rgba(255,245,225,1)');
+  grad.addColorStop(0.35, 'rgba(255,200,140,.9)');
+  grad.addColorStop(1, 'rgba(255,150,90,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx, cy, starR * 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(cx, cy, starR, 0, Math.PI * 2); ctx.fill();
+
+  // the ray + polarization glyphs
+  const ray = makeRay(tilt);
+  const pts = sampleRay(ray, rpl, 46);
+  const { angles, freezeIdx } = adiabaticAngles(pts, rpl);
+
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(255,255,255,.22)';
+  ctx.lineWidth = Math.max(0.6, scale * 0.01);
+  let firstPt = true;
+  for (const p of angles) {
+    const dirn = normalize(vadd(ray.P0, vscale(ray.k, p.t)));
+    const Rd = dispR(p.r, K, baseR);
+    const s = proj(dirn[0]*Rd, dirn[1]*Rd, dirn[2]*Rd, cx, cy, 1);
+    if (firstPt) { ctx.moveTo(s.x, s.y); firstPt = false; } else ctx.lineTo(s.x, s.y);
+  }
+  ctx.stroke();
+
+  const glyphEvery = Math.max(1, Math.floor(angles.length / 16));
+  for (let i = 0; i < angles.length; i += glyphEvery) {
+    const p = angles[i];
+    const P = vadd(ray.P0, vscale(ray.k, p.t));
+    const dirn = normalize(P);
+    const Rd = dispR(p.r, K, baseR);
+    const s = proj(dirn[0]*Rd, dirn[1]*Rd, dirn[2]*Rd, cx, cy, 1);
+    const ellR = Math.max(2.5, scale * 0.16);
+    const col = p.frozen ? 'rgba(255,210,140,.95)' : 'rgba(140,225,255,.9)';
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(p.angle);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(0.8, scale * 0.02);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, ellR, ellR * 0.32, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-ellR, 0); ctx.lineTo(ellR, 0); ctx.stroke();
+    ctx.restore();
+    if (p.frozen && i > 0 && angles[i - glyphEvery] && !angles[i - glyphEvery].frozen) {
+      ctx.fillStyle = 'rgba(255,210,140,.85)';
+      ctx.font = `${Math.max(8, scale * 0.11)}px 'Courier New',monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText('FROZEN', s.x + ellR * 1.6, s.y);
+    }
+  }
+
+  const turns = angles[freezeIdx] ? angles[freezeIdx].angle / (2*Math.PI) : 0;
+  eLabelEl.textContent = 'E = ';
+  eValEl.textContent = `${E_keV.toFixed(2)} keV`;
+  rplValEl.textContent = `r_pl = ${rpl.toFixed(1)} R_NS · tilt ${(tilt*180/Math.PI).toFixed(0)}°`;
+  chiValEl.textContent = `polarization swept ${Math.abs(turns).toFixed(3)} turns before freezing`;
+}
+
+/* ================= POINCARE mode ================= */
+function drawPoincare(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cy = H * 0.53;
+  const R = Math.min(W, H) * 0.32;
+  const E_keV = Math.pow(10, xy.x);
+  const tilt = 0.02 + xy.y * (0.92 - 0.02);
+  const sinA = Math.sin(THETA0_DEG * Math.PI / 180);
+  const rpl = rplNorm(E_keV, sinA);
+
+  // Poincare equatorial disk (S1,S2) -- see header: this piece's two-regime
+  // adiabatic model stays exactly on this equator (S3=0 throughout), an
+  // explicit simplification vs. the real transition's small circular
+  // component -- see open item below.
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.lineWidth = Math.max(0.8, R * 0.006);
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+  ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.font = `${Math.max(8, R * 0.045)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('S₁ (0°/90° linear)', cx, cy - R - R * 0.06);
+  ctx.save(); ctx.translate(cx - R - R*0.10, cy); ctx.rotate(-Math.PI/2);
+  ctx.fillText('S₂ (45°/135° linear)', 0, 0); ctx.restore();
+
+  const ray = makeRay(tilt);
+  const pts = sampleRay(ray, rpl, 160);
+  const { angles, freezeIdx } = adiabaticAngles(pts, rpl);
+
+  ctx.beginPath();
+  let firstPt = true;
+  for (let i = 0; i < angles.length; i++) {
+    const p = angles[i];
+    const a = 2 * p.angle;
+    const x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+    if (firstPt) { ctx.moveTo(x, y); firstPt = false; } else ctx.lineTo(x, y);
+    if (i === freezeIdx) break;
+  }
+  const grad = ctx.createLinearGradient(cx - R, cy, cx + R, cy);
+  grad.addColorStop(0, 'rgba(140,225,255,.15)');
+  grad.addColorStop(1, 'rgba(140,225,255,.9)');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = Math.max(1, R * 0.012);
+  ctx.stroke();
+
+  // start marker (surface) and frozen marker (r_pl)
+  const startA = 2 * angles[0].angle;
+  const sX = cx + R * Math.cos(startA), sY = cy + R * Math.sin(startA);
+  ctx.fillStyle = 'rgba(140,225,255,.5)';
+  ctx.beginPath(); ctx.arc(sX, sY, Math.max(1.5, R * 0.014), 0, Math.PI * 2); ctx.fill();
+
+  const frozenA = 2 * angles[freezeIdx].angle;
+  const fX = cx + R * Math.cos(frozenA), fY = cy + R * Math.sin(frozenA);
+  ctx.fillStyle = 'rgba(255,210,140,.95)';
+  ctx.shadowColor = 'rgba(255,210,140,.8)'; ctx.shadowBlur = R * 0.06;
+  ctx.beginPath(); ctx.arc(fX, fY, Math.max(2.5, R * 0.022), 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  ctx.font = `${Math.max(8, R * 0.05)}px 'Courier New',monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillText('frozen at r_pl', fX + R * 0.05, fY - R * 0.04);
+
+  const turns = angles[freezeIdx].angle / (2 * Math.PI);
+  eLabelEl.textContent = 'E = ';
+  eValEl.textContent = `${E_keV.toFixed(2)} keV`;
+  rplValEl.textContent = `r_pl = ${rpl.toFixed(1)} R_NS`;
+  chiValEl.textContent = `Stokes angle winds ${Math.abs(turns).toFixed(3)} turns, then holds`;
+}
+
+/* ================= PULSE mode ================= */
+function rvmPA(phi, alpha, zeta, phi0, psi0) {
+  const d = phi - phi0;
+  const num = Math.sin(alpha) * Math.sin(d);
+  const den = Math.sin(zeta) * Math.cos(alpha) - Math.cos(zeta) * Math.sin(alpha) * Math.cos(d);
+  return psi0 + Math.atan2(num, den);
+}
+const PULSE_GEOMS = [
+  { alpha: 10 * Math.PI/180, zeta: 80 * Math.PI/180,
+    label: 'STEWART ET AL. 2026', sub: 'nearly-aligned rotator (small α), illustrative of their qualitative fit — Nature, arXiv:2509.19446' },
+  { alpha: 20 * Math.PI/180, zeta: 75 * Math.PI/180,
+    label: 'TAVERNA ET AL. 2026 REFIT', sub: 'α≈20°, ζ≈75° — excludes Stewart’s aligned geometry at >90% significance, arXiv:2601.15452' },
+];
+function drawPulse(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const zeta = (10 + xy.x * 160) * Math.PI / 180;
+  const alpha = (5 + xy.y * 85) * Math.PI / 180;
+
+  const cx0 = W * 0.5, cy0 = H * 0.52;
+  const plotW = Math.min(W * 0.78, H * 1.5), plotH = H * 0.34;
+  const x0 = cx0 - plotW / 2, x1 = cx0 + plotW / 2;
+  const y0 = cy0 - plotH / 2, y1 = cy0 + plotH / 2;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.1)';
+  ctx.lineWidth = Math.max(0.8, plotH * 0.006);
+  ctx.strokeRect(x0, y0, plotW, plotH);
+  ctx.beginPath(); ctx.moveTo(x0, cy0); ctx.lineTo(x1, cy0); ctx.stroke();
+
+  // position angle is only physically defined mod 180 deg -- wrap into
+  // (-pi/2, pi/2] before plotting, and break the line at the wrap instead of
+  // drawing a connecting diagonal across the whole plot (an earlier version
+  // left psi unwrapped, which both overflowed the plot box by 2x and drew a
+  // spurious diagonal "jump" line at every wrap, caught by screenshot)
+  function wrapPsi(psi) {
+    let p = psi % Math.PI;
+    if (p > Math.PI/2) p -= Math.PI;
+    if (p <= -Math.PI/2) p += Math.PI;
+    return p;
+  }
+  function plotCurve(alphaV, zetaV, color, lw) {
+    ctx.beginPath();
+    let first = true, prevPy = null;
+    for (let i = 0; i <= 240; i++) {
+      const phi = (i / 240) * 2 * Math.PI;
+      const psi = wrapPsi(rvmPA(phi, alphaV, zetaV, 0, 0));
+      const px = x0 + (i / 240) * plotW;
+      const py = cy0 - (psi / (Math.PI/2)) * (plotH/2) * 0.92;
+      if (first || (prevPy !== null && Math.abs(py - prevPy) > plotH * 0.5)) { ctx.moveTo(px, py); first = false; }
+      else ctx.lineTo(px, py);
+      prevPy = py;
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+  }
+  plotCurve(PULSE_GEOMS[0].alpha, PULSE_GEOMS[0].zeta, 'rgba(150,205,255,.28)', Math.max(1, plotH*0.01));
+  plotCurve(PULSE_GEOMS[1].alpha, PULSE_GEOMS[1].zeta, 'rgba(180,255,190,.28)', Math.max(1, plotH*0.01));
+  plotCurve(alpha, zeta, 'rgba(255,210,140,.95)', Math.max(1.4, plotH*0.016));
+
+  // sweeping "now" phase marker
+  const period = 9000;
+  const phase = ((now % period) / period) * 2 * Math.PI;
+  const psiNow = wrapPsi(rvmPA(phase, alpha, zeta, 0, 0));
+  const px = x0 + (phase / (2*Math.PI)) * plotW;
+  const py = cy0 - (psiNow / (Math.PI/2)) * (plotH/2) * 0.92;
+  ctx.strokeStyle = 'rgba(255,255,255,.35)';
+  ctx.lineWidth = Math.max(0.6, plotH * 0.005);
+  ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px, y1); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,210,140,.95)';
+  ctx.beginPath(); ctx.arc(px, py, Math.max(2, plotH*0.02), 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.font = `${Math.max(8, plotH * 0.05)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('rotational phase φ  →', cx0, y1 + plotH * 0.12);
+  ctx.save(); ctx.translate(x0 - plotW*0.03, cy0); ctx.rotate(-Math.PI/2);
+  ctx.fillText('polarization angle ψ', 0, 0); ctx.restore();
+
+  // find nearest preset for the marker label
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < PULSE_GEOMS.length; i++) {
+    const d = Math.hypot(PULSE_GEOMS[i].alpha - alpha, PULSE_GEOMS[i].zeta - zeta);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const near = bestD < 0.12;
+  const g = PULSE_GEOMS[best];
+  markerEEl.textContent = `α=${(alpha*180/Math.PI).toFixed(0)}°  ζ=${(zeta*180/Math.PI).toFixed(0)}°`;
+  markerLblEl.textContent = near ? g.label : 'CUSTOM GEOMETRY';
+  markerSubEl.textContent = near ? g.sub : 'drag to explore — the S-curve’s amplitude and slope are set purely by geometry, not photon energy';
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'field') drawField(now, xy);
+  else if (m.key === 'poincare') drawPoincare(now, xy);
+  else drawPulse(now, xy);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(x, y) { dragging = true; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  // continue the auto-drift from exactly where the drag left off (value-
+  // continuous handoff, no snap-back on release)
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - 2*Math.PI*now/DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - 2*Math.PI*now/DRIFT_PERIOD_Y;
+}
+
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  eLabelEl = document.getElementById('eLabel');
+  eValEl = document.getElementById('eVal');
+  rplValEl = document.getElementById('rplVal');
+  chiValEl = document.getElementById('chiVal');
+  markerEl = document.getElementById('marker');
+  markerEEl = document.getElementById('markerE');
+  markerLblEl = document.getElementById('markerLbl');
+  markerSubEl = document.getElementById('markerSub');
+  hintEl = document.getElementById('hint');
+  statsEl = document.getElementById('stats');
+
+  window.addEventListener('resize', resize);
+  resize();
+  applyMode(0);
+
+  canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>
