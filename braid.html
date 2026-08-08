@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BRAID — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:48vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.85}
+#stats .link{display:block;margin-top:.55em;font-size:10px;letter-spacing:.2em;color:rgba(255,210,140,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #stats{max-width:62vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="dLabel">d/R = </span><span class="val" id="dVal">—</span>
+  <span class="sub" id="nVal">—</span>
+  <span class="link" id="linkVal">—</span>
+  <span class="sub" id="linkSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">LOOP</span>
+  <span id="desc">the drive: does the loop enclose the exceptional point?</span>
+</div>
+<div id="hint">drag: x = loop offset, y = target winding</div>
+<script>
+/*  BRAID — two eigenvalues, tied into a knot by looping around a singularity
+ *
+ *  In August 2026, Nature Physics published "Laser mode braiding on a chip":
+ *  an array of coupled semiconductor lasers on an integrated photonic chip,
+ *  each pair sharing an EXCEPTIONAL POINT (EP) -- a degeneracy special to
+ *  non-Hermitian (gain/loss) systems where two eigenvalues AND their
+ *  eigenvectors coalesce into one, unlike an ordinary (Hermitian) level
+ *  crossing. By actively driving the chip's gain and detuning around closed
+ *  loops in parameter space, the authors watched the two lasers' complex
+ *  frequencies trace out literal braids in space -- and, closing the loops
+ *  up, genuine mathematical links and knots: Hopf links, trefoil knots,
+ *  Solomon's links. A same-issue News & Views by C. W. J. Koenig & E. J.
+ *  Bergholtz, "Braids of light," frames why this matters: braiding of this
+ *  kind is normally impossible to see directly, since it lives in the
+ *  complex eigenvalue plane, not real space -- the chip makes it a literal,
+ *  photographable object. The general mathematical machinery behind this --
+ *  that a loop encircling an EP of a non-Hermitian Hamiltonian corresponds
+ *  to an element of a braid group, tying the eigenenergies into an actual
+ *  geometric knot along the path, with the discriminant's own winding as
+ *  the knot's writhe -- was established earlier by H. Hu, S. Zhu et al.,
+ *  "Knot topology of exceptional point and non-Hermitian no-go theorem"
+ *  (arXiv:2111.11346, Phys. Rev. Research 4, L022064, 2022), which this
+ *  piece leans on for the (2,N) torus-link naming below rather than
+ *  re-deriving that classification from scratch.
+ *
+ *  Neither the chip's real multimode coupled-laser-rate-equation Hamiltonian
+ *  nor its measured gain/detuning trajectories reached this session in
+ *  closed form -- this piece does not reproduce that specific system.
+ *  Instead it uses the textbook-minimal EP Hamiltonian appearing throughout
+ *  this literature, exactly solvable by hand:
+ *      H(z) = [[0, 1], [z, 0]],   eigenvalues E_pm(z) = +- sqrt(z)
+ *  a single square-root exceptional point sitting at z=0, where both
+ *  eigenvalues AND the one surviving eigenvector coalesce. The control
+ *  parameter is driven the way a real chip actually drives gain/detuning --
+ *  periodically -- around a circle of radius R=1 centered at real offset d:
+ *      z(theta) = d + R*cos(theta) + i*R*sin(theta),   theta: 0 -> 2*pi*N
+ *  If d<R the origin sits inside the loop and each of the N periods should
+ *  wind the eigenvalues around each other once; if d>R the loop misses the
+ *  EP and nothing should braid at all, however many periods are driven.
+ *
+ *  Verified in Node before any canvas code (verify.js, this session's
+ *  scratchpad, not committed), tracking sqrt(z(theta)) by continuous
+ *  argument-unwrapping rather than the principal branch (which would fake a
+ *  discontinuity at an arbitrary cut): (1) for a concentric loop (d=0), one
+ *  full period swaps E_+ and E_- EXACTLY (verified to 1e-9, not just
+ *  visually close) -- E_+(2*pi) equals E_-(0) bit for bit; (2) two periods
+ *  return both eigenvalues to their own original identity, exactly; (3) the
+ *  number of times Re(E_+) crosses Re(E_-) over N periods equals N exactly,
+ *  for N=1..5, matching the (2,N) torus link's own crossing number; (4)
+ *  whether E_+ returns to itself (even N, two separate closed strands after
+ *  closing the loop -- a LINK) or swaps into E_- (odd N, the two strands
+ *  fuse into one closed curve -- a KNOT) was confirmed directly from the
+ *  continuously-tracked endpoints, matching the standard gcd(2,N) component
+ *  count for a (2,N) torus link; (5) using the real physical drive z(theta)
+ *  = d + R*e^{i*theta} repeated for N periods rather than an already-
+ *  multiply-wound circle, the TOTAL winding of z around the origin came out
+ *  to exactly N when d<R and exactly 0 when d>R, for every (d,N) pair
+ *  tested including d just 1% inside vs. just 1% outside R -- the
+ *  topological invariant is quantized and jumps discontinuously exactly at
+ *  d=R, not a smooth function of the offset, confirmed numerically rather
+ *  than only asserted. The specific (2,N) torus link/knot NAMES quoted
+ *  below (Hopf link, trefoil, Solomon's link) are the established
+ *  classification from Hu et al. (2022) applied to this session's own
+ *  verified crossing/parity counts above, not re-derived independently.
+ *
+ *  One drag sets two physically real knobs shared by all three modes: X =
+ *  the loop's offset d from the exceptional point, in units of the loop
+ *  radius R (0 = concentric, always encircling; past 1 = the loop misses
+ *  the EP entirely); Y = the target number of periods N to drive before
+ *  the animation holds and shows the finished braid. LOOP renders the
+ *  actual drive: the z-plane, the EP marked at the origin, the circular
+ *  loop and a point sweeping around it in real time, ticking up a winding
+ *  counter only when the loop truly contains the EP. BRAID renders the
+ *  induced eigenvalue motion literally in 3D -- (Re E, Im E, theta) as an
+ *  actual spatial curve, two colored strands rendered with a real rotating
+ *  camera and depth-sorted (painter's algorithm) occlusion, not a hand-
+ *  picked over/under convention -- so the picture is honestly whatever
+ *  that 3D curve's own true occlusion is from the current viewing angle.
+ *  SPECTRUM unrolls the same motion into the flat 2D "braid diagram" style
+ *  common in this literature: Re(E) against theta, revealing a crossing
+ *  exactly once per period when the loop encircles the EP, and (with no
+ *  special-casing needed -- it falls out of the same formula) exactly zero
+ *  crossings whenever it does not, since a non-encircling loop keeps
+ *  Re(E_+) strictly positive and Re(E_-) strictly negative throughout.
+ */
+
+const TWO_PI = Math.PI * 2;
+
+function sqrtPathContinuous(dRatio, thetaMax, nSamples) {
+  // z(theta) = dRatio + cos(theta) + i*sin(theta) (R=1); track sqrt(z) by
+  // continuously unwrapping z's own argument rather than using the
+  // principal branch, so the curve stays smooth across any cut
+  const pts = new Array(nSamples + 1);
+  let prevArg = 0, unwrapped = 0; // z(0) = dRatio+1, real & positive -> arg 0
+  for (let i = 0; i <= nSamples; i++) {
+    const theta = (i / nSamples) * thetaMax;
+    const zx = dRatio + Math.cos(theta), zy = Math.sin(theta);
+    const arg = Math.atan2(zy, zx);
+    if (i > 0) {
+      let d = arg - prevArg;
+      while (d > Math.PI) d -= TWO_PI;
+      while (d < -Math.PI) d += TWO_PI;
+      unwrapped += d;
+    }
+    prevArg = arg;
+    const mag = Math.sqrt(Math.hypot(zx, zy));
+    const half = unwrapped / 2;
+    pts[i] = { theta, ex: mag * Math.cos(half), ey: mag * Math.sin(half) };
+  }
+  return pts;
+}
+
+const LINK_NAMES = {
+  1: ['UNKNOT', '1 crossing, 1 strand — the pair swaps once, then closes into a single unknotted loop'],
+  2: ['HOPF LINK', '2 crossings, 2 strands — each eigenvalue returns to itself, but the two closed curves stay inseparably linked'],
+  3: ['TREFOIL KNOT', '3 crossings, 1 strand — the simplest genuine knot, fused from both eigenvalue paths'],
+  4: ["SOLOMON'S LINK", '4 crossings, 2 strands — the (2,4) torus link'],
+  5: ['CINQUEFOIL KNOT', '5 crossings, 1 strand — the (2,5) torus knot'],
+  6: ['(2,6) TORUS LINK', '6 crossings, 2 strands'],
+};
+function linkInfo(N, encircling) {
+  if (!encircling) return { name: 'UNLINKED', sub: `${N} lap${N > 1 ? 's' : ''} driven, but the loop misses the exceptional point — 0 net crossings, always trivial` };
+  const found = LINK_NAMES[N];
+  if (found) return { name: found[0], sub: found[1] };
+  return { name: `(2,${N}) TORUS ${N % 2 ? 'KNOT' : 'LINK'}`, sub: `${N} crossings, ${N % 2 ? 1 : 2} strand${N % 2 ? '' : 's'}` };
+}
+
+let canvas, ctx, W, H;
+let modeNameEl, descEl, dLabelEl, dValEl, nValEl, linkValEl, linkSubEl, hintEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+/* ================= modes ================= */
+const MODES = [
+  { key: 'loop', name: 'LOOP', desc: 'the drive itself: does the loop enclose the exceptional point?' },
+  { key: 'braid', name: 'BRAID', desc: 'the same drive, seen through the eigenvalues it moves · Nature Physics (2026)' },
+  { key: 'spectrum', name: 'SPECTRUM', desc: 'unrolled flat: a real-part crossing every time the pair swaps' },
+];
+const MODE_HOLD_MS = 30000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.15, dragY = 0.4;
+let driftPhaseX = 0.6, driftPhaseY = 2.1;
+const DRIFT_PERIOD_X = 31000, DRIFT_PERIOD_Y = 23000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+}
+
+/* ================= shared params ================= */
+const PERIOD_PER_TURN_MS = 2500;
+const HOLD_MS = 3200;
+
+function computeParams(now, xy) {
+  const dRatio = xy.x * 1.6;
+  const Ntarget = 1 + Math.round(xy.y * 5); // 1..6
+  const cycleLen = Ntarget * PERIOD_PER_TURN_MS + HOLD_MS;
+  const tCycle = now % cycleLen;
+  const growMs = Ntarget * PERIOD_PER_TURN_MS;
+  const holding = tCycle >= growMs;
+  const thetaNow = holding ? TWO_PI * Ntarget : TWO_PI * (tCycle / PERIOD_PER_TURN_MS);
+  const encircling = dRatio < 0.998;
+  const achieved = encircling ? Math.min(Ntarget, Math.floor(thetaNow / TWO_PI + 1e-6)) : 0;
+  const critical = Math.abs(dRatio - 1) < 0.03;
+  return { dRatio, Ntarget, thetaNow, holding, encircling, achieved, critical };
+}
+
+function updateStats(p) {
+  dValEl.textContent = p.dRatio.toFixed(2) + (p.critical ? '  (CRITICAL)' : '');
+  nValEl.textContent = `winding so far: ${p.achieved} / target ${p.Ntarget}`;
+  const info = linkInfo(p.holding ? p.Ntarget : Math.max(1, p.achieved || 1), p.encircling && p.achieved > 0 || (p.holding && p.encircling));
+  if (p.holding) {
+    linkValEl.textContent = info.name;
+    linkSubEl.textContent = info.sub;
+  } else {
+    linkValEl.textContent = p.encircling ? 'weaving…' : 'not linking (loop misses EP)';
+    linkSubEl.textContent = p.encircling ? `${p.achieved} of ${p.Ntarget} crossings so far` : '';
+  }
+}
+
+/* ================= LOOP mode ================= */
+function drawLoop(now, xy, p) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cy = H * 0.5;
+  const scale = Math.min(W, H) * 0.24;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = Math.max(0.6, scale * 0.006);
+  ctx.beginPath(); ctx.moveTo(cx - scale * 1.9, cy); ctx.lineTo(cx + scale * 1.9, cy);
+  ctx.moveTo(cx, cy - scale * 1.9); ctx.lineTo(cx, cy + scale * 1.9); ctx.stroke();
+
+  // the loop itself
+  const lx = cx + p.dRatio * scale;
+  ctx.strokeStyle = p.encircling ? 'rgba(140,225,255,.35)' : 'rgba(255,255,255,.16)';
+  ctx.lineWidth = Math.max(1, scale * 0.012);
+  ctx.beginPath(); ctx.arc(lx, cy, scale, 0, TWO_PI); ctx.stroke();
+
+  // exceptional point
+  const pulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 0.22);
+  grad.addColorStop(0, `rgba(255,240,235,${0.95 * pulse})`);
+  grad.addColorStop(0.4, `rgba(255,140,90,${0.5 * pulse})`);
+  grad.addColorStop(1, 'rgba(255,90,60,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx, cy, scale * 0.22, 0, TWO_PI); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.font = `${Math.max(8, scale * 0.045)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('EP', cx, cy - scale * 0.32);
+
+  // moving point + trailing lap
+  const trailSteps = 160;
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= trailSteps; i++) {
+    const th = p.thetaNow - TWO_PI * (1 - i / trailSteps);
+    if (th < 0) continue;
+    const x = lx + scale * Math.cos(th), y = cy + scale * Math.sin(th);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  const tgrad = ctx.createLinearGradient(lx - scale, cy, lx + scale, cy);
+  tgrad.addColorStop(0, 'rgba(255,210,140,.05)');
+  tgrad.addColorStop(1, 'rgba(255,210,140,.9)');
+  ctx.strokeStyle = tgrad;
+  ctx.lineWidth = Math.max(1.2, scale * 0.018);
+  ctx.stroke();
+
+  const px = lx + scale * Math.cos(p.thetaNow), py = cy + scale * Math.sin(p.thetaNow);
+  ctx.fillStyle = 'rgba(255,225,180,.95)';
+  ctx.shadowColor = 'rgba(255,200,140,.8)'; ctx.shadowBlur = scale * 0.06;
+  ctx.beginPath(); ctx.arc(px, py, Math.max(2.5, scale * 0.03), 0, TWO_PI); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.font = `${Math.max(8, scale * 0.05)}px 'Courier New',monospace`;
+  ctx.fillText(`z(θ) = ${p.dRatio.toFixed(2)} + e^{iθ}`, cx, cy + scale * 1.55);
+}
+
+/* ================= BRAID mode (literal 3D) ================= */
+function proj(x, y, hPx, camPhi, cx, cyBase, scale) {
+  // x, y are in eigenvalue units (O(1)) and need the shared `scale`; hPx
+  // arrives already converted to pixels by the caller's heightPerTheta, so
+  // it must NOT be multiplied by `scale` again (an earlier version did,
+  // sending most of the curve tens of thousands of pixels off-screen --
+  // caught by dumping projected sy values directly, not by eye, since only
+  // the curve's first few in-range samples were visible and looked like an
+  // innocuous straight line)
+  const rx = x * Math.cos(camPhi) + y * Math.sin(camPhi);
+  const ry = -x * Math.sin(camPhi) + y * Math.cos(camPhi);
+  const obl = 0.5;
+  return { sx: cx + rx * scale, sy: cyBase - hPx + ry * obl * scale, depth: ry };
+}
+
+function drawBraid(now, xy, p) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cyBase = H * 0.82;
+  const totalHeightPx = H * 0.62;
+  const heightPerTheta = totalHeightPx / (p.Ntarget * TWO_PI);
+  const scale = Math.min(W, H) * 0.16;
+  const camPhi = now * 0.00012;
+
+  const nSamples = Math.max(50, Math.round((p.thetaNow / TWO_PI) * 140) + 4);
+  const pts = sqrtPathContinuous(p.dRatio, Math.max(p.thetaNow, 1e-4), nSamples);
+
+  // EP axis (x=y=0 in eigenvalue space, fixed on screen regardless of camera rotation)
+  const epTop = proj(0, 0, p.thetaNow * heightPerTheta, camPhi, cx, cyBase, scale);
+  const epBot = proj(0, 0, 0, camPhi, cx, cyBase, scale);
+  ctx.strokeStyle = 'rgba(255,140,90,.22)';
+  ctx.setLineDash([4, 5]);
+  ctx.lineWidth = Math.max(0.7, scale * 0.01);
+  ctx.beginPath(); ctx.moveTo(epBot.sx, epBot.sy); ctx.lineTo(epTop.sx, epTop.sy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,160,110,.4)';
+  ctx.font = `${Math.max(8, scale * 0.09)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('EP', epBot.sx, epBot.sy + scale * 0.16);
+
+  // build segments for both strands with depth
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const hA = a.theta * heightPerTheta, hB = b.theta * heightPerTheta;
+    const pA1 = proj(a.ex, a.ey, hA, camPhi, cx, cyBase, scale);
+    const pB1 = proj(b.ex, b.ey, hB, camPhi, cx, cyBase, scale);
+    segs.push({ x0: pA1.sx, y0: pA1.sy, x1: pB1.sx, y1: pB1.sy, depth: (pA1.depth + pB1.depth) / 2, col: 'plus' });
+    const pA2 = proj(-a.ex, -a.ey, hA, camPhi, cx, cyBase, scale);
+    const pB2 = proj(-b.ex, -b.ey, hB, camPhi, cx, cyBase, scale);
+    segs.push({ x0: pA2.sx, y0: pA2.sy, x1: pB2.sx, y1: pB2.sy, depth: (pA2.depth + pB2.depth) / 2, col: 'minus' });
+  }
+  segs.sort((u, v) => v.depth - u.depth); // farthest first
+
+  const lw = Math.max(1.3, scale * 0.03);
+  for (const s of segs) {
+    const near = 1 - Math.min(1, Math.max(0, (s.depth + scale) / (2 * scale)));
+    const alpha = 0.35 + 0.55 * near;
+    ctx.strokeStyle = s.col === 'plus' ? `rgba(140,225,255,${alpha})` : `rgba(255,180,120,${alpha})`;
+    ctx.lineWidth = lw * (0.6 + 0.5 * near);
+    ctx.beginPath(); ctx.moveTo(s.x0, s.y0); ctx.lineTo(s.x1, s.y1); ctx.stroke();
+  }
+
+  // growing tips
+  const last = pts[pts.length - 1];
+  const hLast = last.theta * heightPerTheta;
+  const tip1 = proj(last.ex, last.ey, hLast, camPhi, cx, cyBase, scale);
+  const tip2 = proj(-last.ex, -last.ey, hLast, camPhi, cx, cyBase, scale);
+  for (const [t, col] of [[tip1, 'rgba(180,235,255,.95)'], [tip2, 'rgba(255,205,160,.95)']]) {
+    ctx.fillStyle = col;
+    ctx.shadowColor = col; ctx.shadowBlur = scale * 0.1;
+    ctx.beginPath(); ctx.arc(t.sx, t.sy, Math.max(2, scale * 0.045), 0, TWO_PI); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+/* ================= SPECTRUM mode (flat braid diagram) ================= */
+function drawSpectrum(now, xy, p) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cy = H * 0.52;
+  const plotW = Math.min(W * 0.78, H * 1.7), plotH = H * 0.4;
+  const x0 = cx - plotW / 2, x1 = cx + plotW / 2;
+  const y0 = cy - plotH / 2, y1 = cy + plotH / 2;
+  const thetaFull = p.Ntarget * TWO_PI;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.1)';
+  ctx.lineWidth = Math.max(0.7, plotH * 0.005);
+  ctx.strokeRect(x0, y0, plotW, plotH);
+  ctx.beginPath(); ctx.moveTo(x0, cy); ctx.lineTo(x1, cy); ctx.stroke();
+
+  // period tick marks
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  for (let k = 1; k < p.Ntarget; k++) {
+    const px = x0 + (k * TWO_PI / thetaFull) * plotW;
+    ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px, y1); ctx.stroke();
+  }
+
+  const nSamples = Math.max(50, Math.round((p.thetaNow / TWO_PI) * 140) + 4);
+  const pts = sqrtPathContinuous(p.dRatio, Math.max(p.thetaNow, 1e-4), nSamples);
+  const yScale = (plotH / 2) * 0.85;
+
+  function plot(sign, color, lw) {
+    ctx.beginPath();
+    let first = true;
+    for (const pt of pts) {
+      const px = x0 + (pt.theta / thetaFull) * plotW;
+      const py = cy - sign * pt.ex * yScale;
+      if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+  }
+  plot(1, 'rgba(140,225,255,.9)', Math.max(1.2, plotH * 0.012));
+  plot(-1, 'rgba(255,180,120,.9)', Math.max(1.2, plotH * 0.012));
+
+  // crossing markers: sign changes of ex (since Re(E+) - Re(E-) = 2*ex)
+  ctx.fillStyle = 'rgba(255,255,255,.55)';
+  let crossings = 0;
+  for (let i = 1; i < pts.length; i++) {
+    if ((pts[i - 1].ex >= 0) !== (pts[i].ex >= 0)) {
+      crossings++;
+      const px = x0 + (pts[i].theta / thetaFull) * plotW;
+      ctx.beginPath(); ctx.arc(px, cy, Math.max(2, plotH * 0.012), 0, TWO_PI); ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.font = `${Math.max(8, plotH * 0.045)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('θ (periods of the drive)  →', cx, y1 + plotH * 0.1);
+  ctx.save(); ctx.translate(x0 - plotW * 0.035, cy); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Re(E)', 0, 0); ctx.restore();
+  ctx.textAlign = 'left';
+  ctx.fillText(`${crossings} crossing${crossings === 1 ? '' : 's'} so far`, x0, y0 - plotH * 0.06);
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  const p = computeParams(now, xy);
+  if (m.key === 'loop') drawLoop(now, xy, p);
+  else if (m.key === 'braid') drawBraid(now, xy, p);
+  else drawSpectrum(now, xy, p);
+  updateStats(p);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(x, y) { dragging = true; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+}
+
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  dLabelEl = document.getElementById('dLabel');
+  dValEl = document.getElementById('dVal');
+  nValEl = document.getElementById('nVal');
+  linkValEl = document.getElementById('linkVal');
+  linkSubEl = document.getElementById('linkSub');
+  hintEl = document.getElementById('hint');
+
+  window.addEventListener('resize', resize);
+  resize();
+  applyMode(0);
+
+  canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>

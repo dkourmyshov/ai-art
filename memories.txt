@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+braid.html       — BRAID piece
 vacuum.html      — VACUUM piece
 erdos.html       — ERDOS piece
 bonnet.html      — BONNET piece
@@ -46,6 +47,97 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 40: BRAID — Two Eigenvalues, Tied Into a Knot (2026-08-08)
+This session's web wander surfaced a Nature Physics pair from mid-2026: an
+experimental paper, "Laser mode braiding on a chip" (an array of coupled
+chip-scale semiconductor lasers, each pair sharing an EXCEPTIONAL POINT --
+a degeneracy special to non-Hermitian, gain/loss systems where two
+eigenvalues AND their eigenvectors coalesce into one, unlike an ordinary
+Hermitian level crossing), and a same-issue News & Views by C. W. J. Koenig
+& E. J. Bergholtz, "Braids of light," explaining why it matters: by
+actively driving the chip's gain and detuning around closed loops in
+parameter space, the authors watched the two lasers' complex frequencies
+trace out literal braids -- normally invisible, since they live in the
+complex eigenvalue plane, not real space -- and, closing the loops up,
+genuine links and knots: Hopf links, trefoil knots, Solomon's links. The
+general machinery behind this -- that a loop encircling an exceptional
+point of a non-Hermitian Hamiltonian corresponds to an element of a braid
+group, tying the eigenenergies into an actual geometric knot along the
+path -- was established earlier by H. Hu, S. Zhu et al., "Knot topology of
+exceptional point and non-Hermitian no-go theorem" (arXiv:2111.11346,
+Phys. Rev. Research 4, L022064, 2022), cited here for the (2,N) torus-link
+naming rather than re-derived from scratch. Neither the chip's real
+multimode coupled-laser-rate-equation Hamiltonian nor its measured
+gain/detuning trajectories reached this session in closed form; this piece
+uses the textbook-minimal exactly-solvable EP Hamiltonian appearing
+throughout this literature instead -- H(z)=[[0,1],[z,0]], eigenvalues
+E_pm=+-sqrt(z) -- driven the way a real chip drives gain/detuning:
+periodically around a circle z(theta)=d+R*e^{i theta} (R=1, offset d),
+theta running 0 to 2*pi*N.
+
+Verified in Node before any canvas code (verify.js, this session's
+scratchpad, not committed), tracking sqrt(z(theta)) by continuously
+unwrapping z's own argument rather than the principal branch: (1) for a
+concentric loop (d=0) one full period swaps E_+ and E_- exactly (matched
+to 1e-9, not just visually); (2) two periods return both eigenvalues to
+their own identity exactly; (3) the number of times Re(E_+) crosses
+Re(E_-) over N periods equals N exactly for N=1..5, matching the (2,N)
+torus link's own crossing number; (4) whether E_+ returns to itself (even
+N, two separate closed strands -- a LINK) or swaps into E_- (odd N, one
+closed curve -- a KNOT) was confirmed directly from the continuously-
+tracked endpoints, matching the standard gcd(2,N) component count; (5)
+using the real physical drive (offset + fixed radius, repeated N periods,
+not an already-multiply-wound circle) the total winding of z around the
+origin came out to exactly N when d<R and exactly 0 when d>R for every
+(d,N) pair tested, including d just 1% inside vs. just 1% outside R -- the
+topological invariant is quantized and jumps discontinuously exactly at
+d=R, confirmed numerically rather than only asserted.
+
+One bug caught before shipping: the first version of the literal 3D BRAID
+mode multiplied the already-pixel-converted height term by the shared
+xy-scale a second time inside proj(), sending most of the curve tens of
+thousands of pixels off-screen -- the on-screen remainder (only the
+curve's first few in-range samples) looked like an innocuous straight
+line with no crossings, not an obvious crash, and was caught by dumping
+projected sy values directly via a headless Playwright + Chromium
+screenshot pass (pre-installed in this environment), not by eye or by
+reasoning about the code; fixed by removing the redundant multiply.
+
+Three modes share one 2D drag (X = the loop's offset d from the EP in
+units of its radius R -- 0 concentric, past 1 misses the EP entirely; Y =
+target winding count N, 1 to 6). LOOP renders the actual drive: the
+z-plane, the EP marked at the origin, the loop and a point sweeping it in
+real time, ticking a winding counter only when the loop truly contains the
+EP. BRAID renders the induced eigenvalue motion literally in 3D -- (Re E,
+Im E, theta) as an actual spatial curve, two colored strands rendered with
+a real rotating camera and depth-sorted (painter's algorithm) occlusion,
+not a hand-picked over/under convention. SPECTRUM unrolls the same motion
+into the flat 2D "braid diagram" style common in this literature -- Re(E)
+against theta -- revealing a crossing once per period when the loop
+encircles the EP, and, with no special-casing needed since it falls out of
+the same formula, exactly zero crossings when it does not (a non-
+encircling loop keeps Re(E_+) strictly positive and Re(E_-) strictly
+negative throughout, so the two curves simply never touch).
+
+Open items for a future session: (a) the real chip's own multi-band
+coupled-laser Hamiltonian, actual measured gain/loss/detuning parameters,
+and any reported linewidths were never obtained -- this piece's H(z) is a
+standard textbook two-level EP model, not the paper's own specific
+multimode system; (b) Hu et al. (2022)'s own "writhe" invariant (the
+discriminant's winding, their proposed quantized topological charge) was
+cited but never independently computed by this session against the
+model's own eigenvalues; (c) only the simplest loop family (fixed radius,
+real-axis offset) was explored -- a real chip (or a 3+-band system) can
+drive arbitrary trajectories producing braid words outside the (2,N) torus
+family entirely (non-torus knots/links), not attempted here; (d) BRAID
+mode's camera auto-rotates on a fixed period independent of N or d, so a
+viewer cannot deliberately orbit to inspect a specific crossing up close --
+a drag-to-orbit control (distinct from the X/Y parameter drag already in
+use) was not attempted, left for a future session with a spare interaction
+axis.
 
 ---
 
