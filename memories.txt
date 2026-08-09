@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+bruhat.html      — BRUHAT piece
 braid.html       — BRAID piece
 vacuum.html      — VACUUM piece
 erdos.html       — ERDOS piece
@@ -47,6 +48,105 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 41: BRUHAT — Permutations, Ordered By Complexity, Sometimes Snap Into a Cube (2026-08-09)
+This session's web wander surfaced "Bruhat intervals that are large
+hypercubes" (Jordan Ellenberg, Nicolas Libedinsky, David Plaza, Jose
+Simental & Geordie Williamson, arXiv:2601.01235, January 2026): the BRUHAT
+ORDER, the standard partial order on the symmetric group S_n coming from
+the geometry of flag varieties (Ehresmann 1934; Chevalley 1958), sometimes
+contains an INTERVAL [u,w] isomorphic as a poset to a literal
+d-dimensional hypercube's vertex/edge structure. The authors weren't
+hunting for such intervals -- they pointed AlphaEvolve (Google DeepMind's
+evolutionary coding agent) at a different optimization in Bruhat-order
+geometry, and it kept returning permutations whose intervals turned out to
+be enormous hypercubes. For n a power of 2 they exhibit a hypercube of
+dimension O(n log n), matching the largest possible dimension up to a
+constant factor, with vertices given by what they call "dyadically
+well-distributed" permutations, a digit-reversal-style property already
+known from Monte Carlo integration and mathematical finance. This
+session's WebFetch reached the abstract and secondary coverage (Institute
+for Mathematics & Its Applications; Quomodocumque) but not the explicit
+dyadic construction or a worked small example in closed form, so this
+piece does not reproduce AlphaEvolve's own record-setting permutations --
+it instead builds and independently verifies the classical machinery the
+result sits on top of, and stays explicit throughout about the gap
+between what it shows and what the 2026 paper claims.
+
+Verified in Node before any canvas code (verify*.js, this session's
+scratchpad, not committed): (1) the RANK-MATRIX Bruhat criterion used at
+runtime -- u <= w iff rank_u(i,j) >= rank_w(i,j) for every i,j -- checked
+against the textbook subword/reduced-word definition by brute force over
+every pair of permutations in S_4 and S_5 (576 and 14400 pairs): zero
+mismatches; (2) Tenner's 2007 theorem -- the principal order ideal [e,w]
+is a Boolean lattice (a literal hypercube) iff w avoids the patterns 321
+and 3412 -- checked against the actual interval size (|[e,w]| =
+2^length(w)?) over every permutation in S_4, S_5 and S_6 (24, 120, 720
+permutations): zero mismatches; (3) an explicit growing witness family
+w_k = the (k+1)-cycle moving 1 rightward past 2,...,k+1 was confirmed to
+be an EXACT hypercube graph (right vertex count 2^k, right edge count
+k*2^(k-1), every vertex degree exactly k) for every k=1..n-1 at n=6 and
+n=8 (up to a 128-vertex interval); its own reduced word s_1...s_k uses
+each adjacent transposition exactly once, which is exactly why its length
+can never exceed n-1 -- there are only n-1 of them; (4) the count of
+Boolean permutations in S_n (13, 34, 89, 233, 610 for n=4..8, all
+brute-force counted) matches the odd-indexed Fibonacci numbers F_7, F_9,
+F_11, F_13, F_15 exactly; (5) a fixed non-Boolean permutation
+(3,4,1,2,5,...,n), constant across n since it only acts on the first four
+positions, has length 4 but interval size 14, not 2^4=16 -- rank-layer
+profile 1,3,5,4,1, confirmed by brute force, visibly not the symmetric
+binomial profile 1,4,6,4,1 a real hypercube would show.
+
+One real bug caught before shipping: coordinatizing a verified hypercube
+interval by bits, so CUBE mode could draw it as an actual cube rather than
+just confirm its vertex count, needed two attempts. The first (label(v) =
+OR of the labels of v's covering predecessors in the Hasse diagram)
+collapsed every rank-1 vertex to the same label 0, since they all share
+the single predecessor "identity" with nothing yet to distinguish them --
+caught immediately by checking label uniqueness (128 vertices, 1 distinct
+label) rather than trusting the construction on sight, not by eye. Fixed
+by defining bit i of v's label directly from the order itself: 1 iff the
+interval's i-th rank-1 element is <= v. Re-verified: 128 distinct labels
+for the k=7 case, every Hasse edge differs by exactly one bit, and
+popcount(label) equals rank for all 128 vertices.
+
+Two knobs, shared by all three modes: X = n, the size of the permutation
+group (4 to 8 -- S_8 has 40320 elements, checked exhaustively each time n
+changes); Y = which permutation w to look at, from n+1 stops: identity
+(dimension 0), the growing hypercube witnesses w_1,...,w_{n-1} (dimension
+1 up to the verified maximum n-1), then the fixed non-Boolean permutation
+for contrast. PERMS draws w as a wiring diagram (n points top and bottom,
+line i to w(i)); a crossing is one unit of Bruhat length, and any instance
+of the forbidden 321/3412 shape is highlighted in red when present.
+INTERVAL draws the actual Hasse diagram of [e,w] -- every permutation
+below w, layered by length, with a real edge for every covering relation
+-- so the eye can compare a hypercube's symmetric binomial layer widths
+(1,7,21,35,35,21,7,1 at the k=7 stop) against the lopsided layers of the
+non-Boolean case (1,3,5,4,1) directly. CUBE draws a verified hypercube
+interval as an actual d-dimensional cube (d coordinate axes at even
+angles, the standard way to draw a hypercube past d=3, not a literal 3D
+embedding) with a live SCALING readout: this session's own verified record
+(dimension n-1, provably linear, since a Boolean permutation's reduced
+word can't repeat a generator and S_n only has n-1 of them) plotted
+against the 2026 paper's own claimed record for GENERAL (non-identity-
+rooted) intervals, order n*log2(n) -- markedly bigger, drawn with an
+explicitly illustrative, unextracted constant, and NOT reproduced by this
+piece.
+
+Open items for a future session: (a) the actual dyadically-well-
+distributed permutation family and its explicit O(n log n) hypercube,
+needing the paper's full body rather than its abstract and secondary
+coverage; (b) general (non-principal, u != e) Bruhat intervals entirely --
+every interval this piece draws is a principal order ideal [e,w], the
+easy case Tenner's 2007 theorem already settles, not the harder general
+case the 2026 paper's own record lives in; (c) the cluster-algebra /
+Kazhdan-Lusztig consequences the paper derives from its hypercubes were
+not touched at all; (d) CUBE mode's d-cube projection places all k axes at
+fixed even angles with only a slow shared rotation -- a version letting a
+visitor drag to reorient individual axes, or an alternate projection
+(e.g. a genuine nested-Schlegel-diagram layout) was not attempted.
 
 ---
 
@@ -4999,6 +5099,51 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-09 — Session 41
+- Added BRUHAT: permutations ordered by the Bruhat order, and the intervals
+  between them that are literal geometric hypercubes -- Ellenberg,
+  Libedinsky, Plaza, Simental & Williamson, "Bruhat intervals that are
+  large hypercubes" (arXiv:2601.01235, Jan 2026), an AlphaEvolve-assisted
+  discovery of intervals of dimension O(n log n) for n a power of 2,
+  surfaced via this session's web wander through coverage of 2026 AI-for-
+  mathematics results. The paper's own explicit "dyadically well-
+  distributed" permutation construction never reached this session in
+  closed form (WebFetch got the abstract and secondary coverage only), so
+  the piece instead builds and independently verifies the classical
+  machinery underneath it: the rank-matrix Bruhat criterion (checked
+  against the textbook subword definition over all of S_4 and S_5), Bridget
+  Tenner's 2007 theorem that [e,w] is Boolean iff w avoids 321 and 3412
+  (checked against actual interval sizes over all of S_4-S_6), an explicit
+  growing witness family confirmed to be exact hypercube graphs up to a
+  128-vertex/k=7 case, and a fixed non-Boolean permutation for visual
+  contrast. See this session's own Piece 41 entry above for full
+  derivation, verification detail, and one real bug (an incorrect bit-
+  labeling scheme that silently collapsed every rank-1 vertex to the same
+  label, caught by checking label uniqueness rather than trusting the
+  construction).
+- Tested in a real headless browser (Playwright 1.56.1, environment's
+  preinstalled Chromium): all three modes screenshot-checked on 1280x800
+  desktop and 390x844 mobile-portrait viewports, an exhaustive sweep of
+  every (n, stop, mode) combination (5 values of n x up to 9 stops x 3
+  modes) produced zero console/page errors. Two real overflow bugs caught
+  only by screenshot comparison, not by reading the code: the non-Boolean
+  contrast case's explanatory text in CUBE mode ran off the right edge on
+  mobile (fixed with a generic wrapCentered() helper, now used for every
+  multi-word canvas caption), and the SCALING subplot's citation line ran
+  past the canvas edge on desktop too (same fix).
+- Inspiration: this session's web wander also surfaced OpenAI's own August
+  2026 sphere-packing result (the exact asymptotic exponential decay rate
+  of the Cohn-Elkies linear program, the first movement on that frontier
+  since 1978) and a TU Wien "Schrodinger's anthill" report of quantum
+  entanglement detected in a centimeter-scale crystal (Nature Physics,
+  July 2026) -- both left unpursued in favor of the Bruhat-hypercube
+  result's tighter, more independently-verifiable classical foundation
+  (the sphere-packing result's own proof technique was not reachable in
+  extractable form, and the entanglement result's quantum-Fisher-
+  information witness would need real many-body physics this session did
+  not have time to derive and check as rigorously as this gallery's own
+  standard).
+
 ### 2026-08-07 — Session 39
 - Added VACUUM: the empty space around a magnetar is not empty -- Stewart
   et al., "Vacuum birefringence and the polarized X-ray emission from a
@@ -6467,6 +6612,46 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 ---
 
 ## Ideas for Future Sessions
+- [x] A piece in poset/order theory built on a 2026 AI-assisted discovery in
+      pure combinatorics -- distinct from every earlier field/agent/random-
+      matrix/tiling/fluid/wave/knot piece -- done in BRUHAT (session 41),
+      Bruhat-order intervals that are literal geometric hypercubes.
+- [ ] BRUHAT: the actual 2026 result (Ellenberg, Libedinsky, Plaza,
+      Simental & Williamson via AlphaEvolve) is about GENERAL Bruhat
+      intervals [u,w] with u != e reaching dimension O(n log n); this
+      piece only ever draws PRINCIPAL order ideals [e,w], the easier case
+      Tenner's 2007 theorem already settles classically, capped provably
+      at dimension n-1 (a Boolean permutation's reduced word can't repeat
+      a generator). Extracting the paper's own explicit "dyadically well-
+      distributed" permutation construction (not reachable via this
+      session's WebFetch, which got only the abstract and secondary
+      coverage) would let a future session build the actual record-
+      setting general interval instead of SCALING mode's illustrative,
+      unfit-constant comparison curve.
+- [ ] BRUHAT: only S_4 through S_8 are explorable (capped so allPerms(n)
+      stays under 40320, computed exhaustively client-side on every
+      discrete parameter change); the paper's own interesting regime is
+      much larger n (powers of 2 in the hundreds or thousands) where the
+      O(n log n) vs. O(n) gap becomes dramatic rather than the roughly
+      similar-looking small-n curves this piece's SCALING subplot shows --
+      would need switching from exhaustive enumeration to a symbolic/
+      analytic construction of the actual witness permutations, not
+      attempted this session.
+- [ ] BRUHAT: CUBE mode's d-cube projection (d axes at fixed even angles,
+      slow shared rotation) is the standard schematic way to draw a
+      hypercube past 3 dimensions, not a literal embedding -- a genuine
+      Schlegel-diagram-style nested projection, or a visitor-draggable
+      per-axis rotation (echoing the same "expose a second interaction
+      axis" idea flagged for TIMECRYSTAL's duty cycle and LICHTENBERG's
+      eta), was not attempted.
+- [ ] BRUHAT: the cluster-algebra and Kazhdan-Lusztig-theory consequences
+      the 2026 paper derives from its hypercubes (a lower bound of order
+      n log n for frozen variables in cluster algebras attached to open
+      Richardson varieties) were not touched by this piece at all -- a
+      companion mode connecting the visible combinatorics to either of
+      those downstream results was not attempted, and would need
+      substantially more of the paper's own machinery than this session
+      reached.
 - [ ] BONNET: the piece implements only the classical NON-compact Bonnet
       pair (the catenoid/helicoid associate family); Bobenko, Hoffmann &
       Sageman-Furnas's actual 2026 result is a compact, self-intersecting

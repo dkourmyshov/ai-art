@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BRUHAT — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:50vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .flag{color:rgba(255,150,140,.85)}
+#stats .ok{color:rgba(150,230,255,.9)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.85}
+#stats .link{display:block;margin-top:.55em;font-size:10px;letter-spacing:.2em;color:rgba(255,210,140,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+@media (max-width:480px){
+  #stats{max-width:64vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="nLine">n = —</span>
+  <span class="sub" id="wLine">—</span>
+  <span class="sub" id="lenLine">—</span>
+  <span class="link" id="boolVal">—</span>
+  <span class="sub" id="boolSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">PERMS</span>
+  <span id="desc">a permutation, drawn as a wiring diagram; crossings count its Bruhat length</span>
+</div>
+<div id="hint">drag: x = n (size), y = which permutation</div>
+<script>
+/*  BRUHAT — permutations, ordered by complexity, sometimes snap into a cube
+ *
+ *  In January 2026, Jordan Ellenberg, Nicolas Libedinsky, David Plaza, Jose
+ *  Simental & Geordie Williamson posted "Bruhat intervals that are large
+ *  hypercubes" (arXiv:2601.01235). The BRUHAT ORDER is the standard partial
+ *  order on the symmetric group S_n (permutations of {1,...,n}) coming from
+ *  the geometry of flag varieties (Ehresmann 1934; Chevalley 1958): roughly,
+ *  u <= w when w can be built from u by inserting extra "disorder." An
+ *  INTERVAL [u,w] is a POSET HYPERCUBE when it is isomorphic, as an order,
+ *  to the Boolean lattice of subsets of a d-element set -- literally the
+ *  combinatorics of a d-dimensional cube's vertices and edges, hiding inside
+ *  a permutation group. The authors did not go looking for such intervals;
+ *  they asked AlphaEvolve (Google DeepMind's evolutionary coding agent) to
+ *  optimize something else in Bruhat-order geometry, and it kept returning
+ *  permutations whose intervals turned out to be enormous hypercubes -- for
+ *  n a power of 2, a hypercube of dimension O(n log n), matching the largest
+ *  possible dimension up to a constant factor. Its vertices are what the
+ *  authors call DYADICALLY WELL-DISTRIBUTED permutations, a digit-reversal-
+ *  style property already known from Monte Carlo integration and
+ *  mathematical finance, surfacing unexpectedly in Kazhdan-Lusztig theory
+ *  and cluster algebras.
+ *
+ *  This session's WebFetch reached the paper's abstract and secondary
+ *  coverage (Institute for Mathematics & Its Applications; Quomodocumque)
+ *  but not the explicit dyadic permutation construction or a worked small
+ *  example in closed form -- so this piece does not reproduce AlphaEvolve's
+ *  own record-setting permutations. Instead it builds and INDEPENDENTLY
+ *  VERIFIES the classical machinery the paper's result sits on top of, using
+ *  a different, well-established (2007) construction for actual hypercubes,
+ *  and is explicit throughout about the gap between what's shown and what
+ *  the 2026 paper claims -- see the SCALING readout in CUBE mode.
+ *
+ *  Verified in Node before any canvas code (verify*.js, this session's
+ *  scratchpad, not committed):
+ *  (1) the RANK-MATRIX Bruhat criterion used at runtime here -- u <= w iff
+ *      rank_u(i,j) >= rank_w(i,j) for every i,j, where rank_pi(i,j) counts
+ *      how many of pi's first i values are <= j -- was checked against the
+ *      textbook SUBWORD definition (u <= w iff a reduced word for u is a
+ *      subsequence of a reduced word for w) by brute force over every pair
+ *      of permutations in S_4 and S_5 (576 and 14400 pairs): zero
+ *      mismatches.
+ *  (2) Tenner's 2007 theorem -- the principal order ideal [e,w] is a
+ *      Boolean lattice (a literal hypercube) if and only if w avoids the
+ *      patterns 321 and 3412 -- was checked against the ACTUAL interval
+ *      size (|[e,w]| = 2^length(w)?) by brute force over every permutation
+ *      in S_4, S_5 and S_6 (24, 120, 720 permutations): zero mismatches.
+ *  (3) An explicit growing witness family was built and checked to be an
+ *      EXACT hypercube graph (right vertex count 2^k, right edge count
+ *      k*2^(k-1), every vertex degree exactly k) for every k=1..n-1 at
+ *      n=6 and n=8 (up to k=7, a 128-vertex interval): w_k is the
+ *      (k+1)-cycle moving 1 rightward past 2,...,k+1, i.e.
+ *      w_k = (2,3,...,k+1,1,k+2,...,n) -- its own reduced word s_1 s_2
+ *      ... s_k uses each adjacent transposition exactly once (a signature
+ *      of Boolean permutations noted by Tenner), which is exactly why its
+ *      length can never exceed n-1 -- there are only n-1 adjacent
+ *      transpositions to use.
+ *  (4) Coordinatizing a verified hypercube interval by BITS -- so it can be
+ *      drawn as an actual cube, not just confirmed to have the right vertex
+ *      count -- needed two attempts. The first (label(v) = OR of the labels
+ *      of v's covering predecessors) collapsed every rank-1 vertex to the
+ *      same label 0, since they all share the single predecessor "identity"
+ *      with nothing yet to distinguish them -- caught immediately by
+ *      checking label uniqueness (128 vertices, 1 distinct label) rather
+ *      than trusting the construction on sight. Fixed by defining bit i of
+ *      v's label directly from the order itself: 1 iff the interval's i-th
+ *      rank-1 element is <= v. Re-verified: 128 distinct labels for the
+ *      k=7 case, every edge in the Hasse diagram differs by exactly one
+ *      bit, and popcount(label) equals rank for all 128 vertices.
+ *  (5) A small, explicitly NON-Boolean interval for visual contrast: w =
+ *      (3,4,1,2) padded with identity (constant across n, since it acts
+ *      only on positions 1-4) has length 4 but interval size 14, not
+ *      2^4=16 -- its rank-1 layer has only 3 elements, not the 4 a genuine
+ *      4-cube needs, immediately breaking the count. Full rank-layer
+ *      profile 1,3,5,4,1, confirmed by brute force -- visibly not the
+ *      symmetric binomial profile 1,4,6,4,1 a real hypercube would show.
+ *  (6) The count of Boolean permutations in S_n (13, 34, 89, 233, 610 for
+ *      n=4..8, all brute-force counted) matches the odd-indexed Fibonacci
+ *      numbers F_7, F_9, F_11, F_13, F_15 exactly -- consistent with this
+ *      literature's own note that Boolean permutations are Fibonacci-
+ *      enumerated.
+ *
+ *  Two knobs, shared by all three modes: X = n, the size of the permutation
+ *  group (4 to 8 -- S_8 already has 40320 elements, checked exhaustively
+ *  each time n changes); Y = which permutation w to look at, from n+1
+ *  stops: w=identity (dimension 0), then the growing hypercube witnesses
+ *  w_1,...,w_{n-1} (dimension 1 up to the verified maximum n-1), then one
+ *  fixed non-Boolean permutation for contrast. PERMS draws w itself as a
+ *  wiring diagram (n points top and bottom, line i to w(i)); a crossing is
+ *  one unit of Bruhat length, and any instance of the forbidden 321/3412
+ *  shape is highlighted in red when present. INTERVAL draws the actual
+ *  Hasse diagram of [e,w] -- every permutation below w, layered by length,
+ *  with a real edge for every covering relation -- so the eye can compare
+ *  a hypercube's symmetric binomial layer widths against the lopsided
+ *  layers of the non-Boolean case directly. CUBE takes a verified
+ *  hypercube interval and draws it as an actual d-dimensional cube (d
+ *  coordinate axes at even angles, standard for drawing hypercubes past
+ *  d=3, not a literal 3D embedding) with a live SCALING readout: this
+ *  session's own verified record (dimension n-1, provably linear -- a
+ *  Boolean permutation's reduced word can't repeat a generator, and S_n
+ *  only has n-1 of them) against the 2026 paper's own claimed record for
+ *  GENERAL (non-identity-rooted) intervals, order n*log2(n) -- markedly
+ *  bigger, and NOT reproduced by this piece, since the paper's own dyadic
+ *  witnesses never reached this session in explicit form.
+ *
+ *  Open items for a future session: (a) the actual dyadically-well-
+ *  distributed permutation family and its explicit O(n log n) hypercube,
+ *  which would need the paper's full body rather than its abstract and
+ *  secondary coverage; (b) general (non-principal, u != e) Bruhat
+ *  intervals entirely -- every interval drawn here is a principal order
+ *  ideal [e,w], the easy case the classical 2007 theorem already settles,
+ *  not the harder general case the 2026 paper's own record lives in; (c)
+ *  the cluster-algebra / Kazhdan-Lusztig consequences the paper derives
+ *  from its hypercubes were not touched at all.
+ */
+
+const TWO_PI = Math.PI * 2;
+
+/* ================= combinatorial core ================= */
+function permutationsOf(n) {
+  const arr = Array.from({ length: n }, (_, i) => i + 1);
+  const out = [];
+  function rec(k) {
+    if (k === n) { out.push(arr.slice()); return; }
+    for (let i = k; i < n; i++) {
+      [arr[k], arr[i]] = [arr[i], arr[k]];
+      rec(k + 1);
+      [arr[k], arr[i]] = [arr[i], arr[k]];
+    }
+  }
+  rec(0);
+  return out;
+}
+const permCache = {};
+function allPerms(n) { return permCache[n] || (permCache[n] = permutationsOf(n)); }
+
+function inversions(w) {
+  let c = 0;
+  for (let i = 0; i < w.length; i++)
+    for (let j = i + 1; j < w.length; j++)
+      if (w[i] > w[j]) c++;
+  return c;
+}
+function rankMatrix(w) {
+  const n = w.length;
+  const R = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= n; i++)
+    for (let j = 1; j <= n; j++)
+      R[i][j] = R[i - 1][j] + (w[i - 1] <= j ? 1 : 0);
+  return R;
+}
+function leqBruhat(u, w) {
+  const n = u.length;
+  const Ru = rankMatrix(u), Rw = rankMatrix(w);
+  for (let i = 0; i <= n; i++)
+    for (let j = 0; j <= n; j++)
+      if (Ru[i][j] < Rw[i][j]) return false;
+  return true;
+}
+function lowerInterval(w) { return allPerms(w.length).filter(u => leqBruhat(u, w)); }
+
+function containsPatternAt(w, p) {
+  const n = w.length, k = p.length;
+  let result = null;
+  function rec(start, chosen) {
+    if (result) return;
+    if (chosen.length === k) {
+      const vals = chosen.map(i => w[i]);
+      const rankOf = arr => arr.map(v => arr.filter(x => x < v).length + 1);
+      const rv = rankOf(vals), rp = rankOf(p);
+      if (rv.every((x, i) => x === rp[i])) result = chosen.slice();
+      return;
+    }
+    if (n - start < k - chosen.length) return;
+    for (let i = start; i < n; i++) {
+      chosen.push(i);
+      rec(i + 1, chosen);
+      chosen.pop();
+      if (result) return;
+    }
+  }
+  rec(0, []);
+  return result;
+}
+function booleanCheck(w) {
+  const p321 = containsPatternAt(w, [3, 2, 1]);
+  const p3412 = containsPatternAt(w, [3, 4, 1, 2]);
+  return { boolean: !p321 && !p3412, witness321: p321, witness3412: p3412 };
+}
+function cycleWitness(n, k) {
+  if (k === 0) return Array.from({ length: n }, (_, i) => i + 1);
+  const w = Array.from({ length: n }, (_, i) => i + 1);
+  for (let i = 0; i < k; i++) w[i] = i + 2;
+  w[k] = 1;
+  return w;
+}
+function contrastPermutation(n) {
+  const w = [3, 4, 1, 2];
+  for (let i = 5; i <= n; i++) w.push(i);
+  return w;
+}
+function hasseEdges(interval) {
+  const withInv = interval.map(p => ({ p, inv: inversions(p) }));
+  const edges = [];
+  for (const a of withInv) for (const b of withInv) {
+    if (b.inv !== a.inv + 1 || !leqBruhat(a.p, b.p)) continue;
+    let isCover = true;
+    for (const z of withInv) if (z.inv > a.inv && z.inv < b.inv && leqBruhat(a.p, z.p) && leqBruhat(z.p, b.p)) { isCover = false; break; }
+    if (isCover) edges.push([a.p, b.p]);
+  }
+  return edges;
+}
+function bitLabels(interval, k) {
+  const rank1 = interval.filter(p => inversions(p) === 1);
+  const label = new Map();
+  const ok = rank1.length === k;
+  for (const v of interval) {
+    let L = 0;
+    if (ok) for (let i = 0; i < k; i++) if (leqBruhat(rank1[i], v)) L |= (1 << i);
+    label.set(v.join(','), L);
+  }
+  return { label, ok, rank1Count: rank1.length };
+}
+
+/* ================= state for current (n, stop) ================= */
+function buildState(n, j) {
+  const isContrast = j === n;
+  const w = isContrast ? contrastPermutation(n) : cycleWitness(n, j);
+  const len = inversions(w);
+  const bc = booleanCheck(w);
+  const interval = lowerInterval(w);
+  const edges = hasseEdges(interval);
+  const dim = isContrast ? null : j;
+  const bl = j > 0 ? bitLabels(interval, len) : null;
+  return { n, j, isContrast, w, len, bc, interval, edges, dim, bitInfo: bl };
+}
+const stateCache = {};
+function getState(n, j) {
+  const key = n + '_' + j;
+  return stateCache[key] || (stateCache[key] = buildState(n, j));
+}
+
+/* ================= drawing helpers ================= */
+let canvas, ctx, W, H;
+let modeNameEl, descEl, nLineEl, wLineEl, lenLineEl, boolValEl, boolSubEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+const MODES = [
+  { key: 'perms', name: 'PERMS', desc: 'a permutation, drawn as a wiring diagram; crossings count its Bruhat length' },
+  { key: 'interval', name: 'INTERVAL', desc: 'every permutation below it — the Hasse diagram of [e,w] · Ehresmann (1934), Tenner (2007)' },
+  { key: 'cube', name: 'CUBE', desc: 'when the interval is a literal hypercube · Ellenberg, Libedinsky, Plaza, Simental & Williamson (2026)' },
+];
+const MODE_HOLD_MS = 32000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.35, dragY = 0.55;
+let driftPhaseX = 0.9, driftPhaseY = 3.4;
+const DRIFT_PERIOD_X = 37000, DRIFT_PERIOD_Y = 21000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+}
+
+function computeParams(xy) {
+  const n = 4 + Math.round(xy.x * 4); // 4..8
+  const j = Math.round(xy.y * n); // 0..n  (n+1 stops)
+  return { n, j };
+}
+
+function updateStats(st) {
+  nLineEl.textContent = `n = ${st.n}  (S_${st.n}, ${st.n}! = ${factorial(st.n)})`;
+  wLineEl.textContent = `w = ${st.w.join('')}   length = ${st.len}`;
+  lenLineEl.textContent = `|[e,w]| = ${st.interval.length}   2^length = ${Math.pow(2, st.len)}`;
+  if (st.bc.boolean) {
+    boolValEl.className = 'link ok';
+    boolValEl.textContent = st.isContrast ? 'BOOLEAN (unexpected)' : `BOOLEAN — dimension ${st.dim} cube`;
+    boolSubEl.textContent = 'avoids 321 and 3412 · Tenner (2007)';
+  } else {
+    boolValEl.className = 'link flag';
+    boolValEl.textContent = 'NOT BOOLEAN';
+    boolSubEl.textContent = st.bc.witness321 ? 'contains a 321 pattern' : 'contains a 3412 pattern';
+  }
+}
+function factorial(n) { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; }
+
+/* ================= PERMS mode: wiring diagram ================= */
+function drawPerms(now, st) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const n = st.n, w = st.w;
+  const marginX = W * 0.16, topY = H * 0.24, botY = H * 0.68;
+  const spacing = (W - 2 * marginX) / (n - 1 || 1);
+  const r = Math.max(3, Math.min(W, H) * 0.008);
+
+  // flag any pattern instance
+  let flagIdx = new Set();
+  if (!st.bc.boolean) {
+    const wit = st.bc.witness321 || st.bc.witness3412;
+    if (wit) wit.forEach(i => flagIdx.add(i));
+  }
+
+  ctx.font = `${Math.max(9, r * 2.6)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.fillText('e (identity)', W * 0.5, topY - Math.min(W, H) * 0.06);
+  ctx.fillText(`w`, W * 0.5, botY + Math.min(W, H) * 0.09);
+
+  // lines
+  for (let i = 0; i < n; i++) {
+    const x0 = marginX + i * spacing, y0 = topY;
+    const x1 = marginX + (w[i] - 1) * spacing, y1 = botY;
+    const flagged = flagIdx.has(i);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    const midY = (y0 + y1) / 2;
+    ctx.bezierCurveTo(x0, midY, x1, midY, x1, y1);
+    ctx.strokeStyle = flagged ? 'rgba(255,120,110,.85)' : 'rgba(140,210,255,.5)';
+    ctx.lineWidth = flagged ? Math.max(1.6, r * 0.6) : Math.max(1, r * 0.4);
+    ctx.stroke();
+  }
+  // dots + labels
+  for (let i = 0; i < n; i++) {
+    const x0 = marginX + i * spacing;
+    ctx.beginPath(); ctx.arc(x0, topY, r, 0, TWO_PI);
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    ctx.fillText(String(i + 1), x0, topY - r * 2.6);
+
+    const x1 = marginX + (w[i] - 1) * spacing;
+    ctx.beginPath(); ctx.arc(x1, botY, r, 0, TWO_PI);
+    ctx.fillStyle = flagIdx.has(i) ? 'rgba(255,150,140,.9)' : 'rgba(180,230,255,.75)'; ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.25)';
+  ctx.fillText(`${st.len} crossing${st.len === 1 ? '' : 's'} = Bruhat length ${st.len}`, W * 0.5, botY + Math.min(W, H) * 0.15);
+  if (!st.bc.boolean) {
+    ctx.fillStyle = 'rgba(255,140,130,.6)';
+    ctx.fillText('red: an instance of the forbidden 321 / 3412 shape', W * 0.5, botY + Math.min(W, H) * 0.2);
+  }
+}
+
+/* ================= INTERVAL mode: Hasse diagram ================= */
+function layerLayout(st) {
+  const byRank = new Map();
+  for (const p of st.interval) {
+    const r = inversions(p);
+    if (!byRank.has(r)) byRank.set(r, []);
+    byRank.get(r).push(p);
+  }
+  const maxRank = st.len;
+  const hasBits = st.bitInfo && st.bitInfo.ok;
+  for (const [r, arr] of byRank) {
+    if (hasBits) {
+      arr.sort((a, b) => st.bitInfo.label.get(a.join(',')) - st.bitInfo.label.get(b.join(',')));
+    }
+  }
+  return { byRank, maxRank, hasBits };
+}
+function drawInterval(now, st) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const { byRank, maxRank } = layerLayout(st);
+  const topY = H * 0.16, botY = H * 0.82;
+  const usableW = W * 0.82, x0 = W * 0.09;
+
+  const posOf = new Map();
+  for (let r = 0; r <= maxRank; r++) {
+    const arr = byRank.get(r) || [];
+    const y = maxRank === 0 ? botY : botY - (botY - topY) * (r / maxRank);
+    const m = arr.length;
+    for (let i = 0; i < m; i++) {
+      const x = m === 1 ? x0 + usableW / 2 : x0 + usableW * (i / (m - 1));
+      posOf.set(arr[i].join(','), { x, y });
+    }
+  }
+  // edges
+  ctx.lineWidth = Math.max(0.7, Math.min(W, H) * 0.0018);
+  for (const [a, b] of st.edges) {
+    const pa = posOf.get(a.join(',')), pb = posOf.get(b.join(','));
+    if (!pa || !pb) continue;
+    ctx.strokeStyle = st.bc.boolean ? 'rgba(140,210,255,.28)' : 'rgba(255,150,140,.22)';
+    ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+  }
+  // nodes
+  const rNode = Math.max(2, Math.min(W, H) * 0.006);
+  const showLabels = st.interval.length <= 34;
+  ctx.font = `${Math.max(7, rNode * 1.6)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  for (const p of st.interval) {
+    const pos = posOf.get(p.join(','));
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, rNode, 0, TWO_PI);
+    ctx.fillStyle = st.bc.boolean ? 'rgba(170,225,255,.85)' : 'rgba(255,175,165,.8)';
+    ctx.fill();
+    if (showLabels) {
+      ctx.fillStyle = 'rgba(255,255,255,.28)';
+      ctx.fillText(p.join(''), pos.x, pos.y - rNode * 2.2);
+    }
+  }
+  // layer-size readout
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,.24)';
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.016)}px 'Courier New',monospace`;
+  const sizes = [];
+  for (let r = 0; r <= maxRank; r++) sizes.push((byRank.get(r) || []).length);
+  ctx.fillText(`layer sizes: ${sizes.join(', ')}`, W * 0.06, H * 0.09);
+  const expected = [];
+  for (let r = 0; r <= maxRank; r++) expected.push(binom(maxRank, r));
+  ctx.fillStyle = st.bc.boolean ? 'rgba(150,230,255,.4)' : 'rgba(255,150,140,.45)';
+  ctx.fillText(`hypercube would need: ${expected.join(', ')}`, W * 0.06, H * 0.12);
+}
+function wrapCentered(text, cx, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '', lines = [];
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx.fillText(l, cx, y + i * lineHeight));
+  return lines.length;
+}
+function binom(n, k) {
+  if (k < 0 || k > n) return 0;
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return Math.round(r);
+}
+
+/* ================= CUBE mode: literal d-cube projection ================= */
+function drawCube(now, st) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.5, cy = H * 0.46;
+  const scale = Math.min(W, H) * 0.3;
+
+  if (st.dim === null || st.dim === 0 || !st.bitInfo || !st.bitInfo.ok) {
+    drawNotCube(st, cx, cy, scale);
+  } else {
+    const k = st.dim;
+    const rot = now * 0.00007;
+    const axes = [];
+    for (let i = 0; i < k; i++) {
+      const ang = TWO_PI * i / k + rot;
+      axes.push({ x: Math.cos(ang), y: Math.sin(ang) });
+    }
+    const norm = 1 / Math.sqrt(k);
+    const pts = [];
+    for (const p of st.interval) {
+      const L = st.bitInfo.label.get(p.join(','));
+      let x = 0, y = 0;
+      for (let i = 0; i < k; i++) if (L & (1 << i)) { x += axes[i].x; y += axes[i].y; }
+      pts.push({ p, L, x: cx + x * scale * norm, y: cy + y * scale * norm, depth: x + y });
+    }
+    const byLabel = new Map(pts.map(pt => [pt.L, pt]));
+    ctx.lineWidth = Math.max(0.8, scale * 0.008);
+    for (const pt of pts) {
+      for (let i = 0; i < k; i++) {
+        const nb = pt.L ^ (1 << i);
+        if (nb < pt.L) continue; // draw each edge once
+        const other = byLabel.get(nb);
+        if (!other) continue;
+        const near = 0.4 + 0.5 * ((pt.depth + other.depth) / 2 / scale + 1) / 2;
+        ctx.strokeStyle = `rgba(150,220,255,${Math.max(0.08, Math.min(0.5, near * 0.5))})`;
+        ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(other.x, other.y); ctx.stroke();
+      }
+    }
+    const rNode = Math.max(1.6, scale * 0.018);
+    for (const pt of pts) {
+      const near = 0.5 + 0.5 * (pt.depth / scale);
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, rNode * (0.6 + 0.5 * near), 0, TWO_PI);
+      ctx.fillStyle = `rgba(180,230,255,${0.35 + 0.5 * near})`;
+      ctx.fill();
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,.32)';
+    ctx.font = `${Math.max(9, scale * 0.045)}px 'Courier New',monospace`;
+    wrapCentered(`a genuine ${k}-dimensional cube · ${pts.length} vertices, ${k * Math.pow(2, k - 1)} edges`, cx, cy + scale * 0.62, W * 0.86, scale * 0.06);
+  }
+
+  drawScaling(st, W * 0.5, H * 0.86, Math.min(W, H) * 0.42);
+}
+function drawNotCube(st, cx, cy, scale) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,150,140,.55)';
+  ctx.font = `${Math.max(11, scale * 0.07)}px 'Courier New',monospace`;
+  if (st.dim === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    wrapCentered('w = identity: a 0-dimensional cube (a single point)', cx, cy, W * 0.86, scale * 0.08);
+  } else {
+    ctx.fillText('NOT A HYPERCUBE', cx, cy - scale * 0.1);
+    ctx.font = `${Math.max(9, scale * 0.04)}px 'Courier New',monospace`;
+    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    const rc = st.bitInfo ? st.bitInfo.rank1Count : '?';
+    const n1 = wrapCentered(`a length-${st.len} cube needs ${st.len} independent directions from e — this interval only has ${rc}`, cx, cy + scale * 0.05, W * 0.86, scale * 0.06);
+    ctx.fillText(`|[e,w]| = ${st.interval.length}, not 2^${st.len} = ${Math.pow(2, st.len)}`, cx, cy + scale * 0.05 + n1 * scale * 0.06 + scale * 0.03);
+  }
+}
+function drawScaling(st, cx, baseY, plotW) {
+  const plotH = plotW * 0.26;
+  const x0 = cx - plotW / 2, x1 = cx + plotW / 2;
+  const y0 = baseY - plotH, nMax = 64;
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0, y0, plotW, plotH);
+
+  const scaleY = v => baseY - (v / (nMax * Math.log2(nMax) * 0.5)) * plotH;
+  const scaleX = n => x0 + (n / nMax) * plotW;
+
+  // this session's verified linear record: n-1
+  ctx.beginPath();
+  for (let n = 1; n <= nMax; n++) {
+    const x = scaleX(n), y = scaleY(n - 1);
+    if (n === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(150,220,255,.75)';
+  ctx.lineWidth = Math.max(1.2, plotH * 0.02);
+  ctx.stroke();
+
+  // paper's claimed order n*log2(n) — illustrative constant only, not extracted from the paper
+  ctx.beginPath();
+  for (let n = 1; n <= nMax; n++) {
+    const x = scaleX(n), y = scaleY(0.5 * n * Math.log2(Math.max(2, n)));
+    if (n === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = 'rgba(255,200,140,.7)';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // current n marker
+  const curX = scaleX(st.n);
+  ctx.strokeStyle = 'rgba(255,255,255,.15)';
+  ctx.beginPath(); ctx.moveTo(curX, y0); ctx.lineTo(curX, baseY); ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.font = `${Math.max(8, plotH * 0.16)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(150,220,255,.7)';
+  wrapCentered('this session, verified: dimension n−1', cx, y0 - plotH * 0.12, W * 0.86, plotH * 0.19);
+  ctx.fillStyle = 'rgba(255,200,140,.65)';
+  const l2 = wrapCentered('2026 paper, general intervals: order n·log₂n (illustrative)', cx, baseY + plotH * 0.28, W * 0.86, plotH * 0.19);
+  ctx.fillStyle = 'rgba(255,200,140,.45)';
+  wrapCentered('constant not extracted from the paper — not reproduced here', cx, baseY + plotH * 0.28 + l2 * plotH * 0.19, W * 0.86, plotH * 0.19);
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  const { n, j } = computeParams(xy);
+  const st = getState(n, j);
+  if (m.key === 'perms') drawPerms(now, st);
+  else if (m.key === 'interval') drawInterval(now, st);
+  else drawCube(now, st);
+  updateStats(st);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(x, y) { dragging = true; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+}
+
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  nLineEl = document.getElementById('nLine');
+  wLineEl = document.getElementById('wLine');
+  lenLineEl = document.getElementById('lenLine');
+  boolValEl = document.getElementById('boolVal');
+  boolSubEl = document.getElementById('boolSub');
+
+  window.addEventListener('resize', resize);
+  resize();
+  applyMode(0);
+
+  canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchend', onUp);
+
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>
