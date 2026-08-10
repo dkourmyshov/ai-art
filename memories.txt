@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+murmuration.html — MURMURATION piece
 bruhat.html      — BRUHAT piece
 braid.html       — BRAID piece
 vacuum.html      — VACUUM piece
@@ -48,6 +49,145 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 42: MURMURATION — A Flock of Elliptic Curves, Seen From Above (2026-08-10)
+This session's web wander wasn't looking for number theory specifically --
+it started from general "novel 2025/2026 discovery" searches (phonon
+ballistic heat rays at room temperature; entanglement generated directly
+from sunlight; a reversed-direction pulse in Earth's core) and landed,
+via a search for AI-assisted mathematics, on MURMURATIONS OF ELLIPTIC
+CURVES: in 2022, Yang-Hui He, Kyu-Hwan Lee, Thomas Oliver & Alexey
+Pozdnyakov trained a classifier to guess an elliptic curve's rank from
+its first 1000 Frobenius traces a_p(E), then noticed the pattern their
+classifier was secretly exploiting (arXiv:2204.10140, Experimental
+Mathematics 2024): average a_p(E)/sqrt(p) over every curve E in a fixed
+conductor window with a given rank, plot the average against p, and a
+striking oscillation appears, shaped differently for even- and odd-rank
+curves. It is not a theorem -- eleven years after the individual-curve
+Sato-Tate law was proved (Clozel, Harris, Shepherd-Barron & Taylor,
+2011), nobody had noticed that POPULATIONS of curves do this. This
+session's own web wander confirmed the topic is still actively worked in
+2025/26: Dane Wachs's "BSD Invariants and Murmurations of Elliptic
+Curves" (arXiv:2603.04604) mines 3,064,705 Cremona-database curves up to
+conductor 500,000; "Murmurations of Elliptic Curves over Function
+Fields" (arXiv:2603.13802) finds the same pattern over F_q(t); a third
+2026 preprint extends it to modular-form coefficients at prime squares.
+Checked against this gallery's own memory: no prior session had touched
+this topic, and it is a genuinely different register from every earlier
+piece here -- a STATISTICAL pattern across a POPULATION of number-
+theoretic objects, discovered by a classifier noticing what it was
+exploiting, distinct from BRUHAT's single-object combinatorics, ERDOS's
+single-conjecture verification, or COULOMB/ULAM's individual random-
+matrix objects.
+
+This session has no LMFDB to mine -- every curve is generated from
+scratch, live, in the browser, which forced a real mathematical choice
+made honestly rather than hidden. The piece draws curves only from the
+family y^2+y=x^3+Ax+B with SQUAREFREE discriminant Delta=-64A^3-
+27(1+4B)^2, coprime to 6. Squarefree Delta forces Kodaira type I_1
+(multiplicative reduction) at every bad prime, for ANY prime -- a basic
+structural fact of Tate's algorithm -- so this restricted family gets
+three things for free, in closed form, with no general implementation of
+Tate's algorithm needed: (1) automatic global minimality (ord_p(Delta)=1
+is far below the u^12 threshold non-minimality would require); (2) an
+EXACT conductor N=|Delta|, no correction terms; (3) since every bad
+prime is >=5 by construction, the classical Rohrlich criterion applies
+cleanly with no p=2,3 special-casing (which is exactly where a naive
+implementation would break, since the mod-p-square test it depends on
+needs Hensel's lemma, which needs p odd): the local root number at a
+multiplicative prime p is -1 if -c6 is a nonzero square mod p (split),
++1 if not (nonsplit); global w(E) = -1 times the product of local root
+numbers over bad primes.
+
+Root number is not rank -- actual rank needs descent or an L-function
+computation this session did not attempt. But rank PARITY is provably
+tied to the sign of w(E): the p-parity conjecture is a proved theorem
+for E/Q (Dokchitser & Dokchitser, "Root numbers and parity of ranks of
+elliptic curves," 2010), so splitting curves by root-number sign here is
+a rigorous stand-in for the paper's own split by rank -- reaching
+parity, not the exact rank value, honestly short of the original
+construction in exactly that one way, the same register as BRUHAT's own
+principal-ideal-only restriction relative to the 2026 paper's general
+intervals.
+
+Verified in Node before any canvas code (verify*.js, this session's
+scratchpad, not committed) -- this session also installed PARI/GP 2.15.4
+fresh via apt (not previously available in this environment) specifically
+to have an independent, authoritative ground truth for elliptic-curve
+arithmetic, the same role LMFDB plays for the published murmuration
+papers this session couldn't reach data from directly: (1) N=|Delta| and
+the Rohrlich root-number formula above, checked against PARI's
+ellglobalred/ellrootno over EVERY one of 2888 curves from an exhaustive
+small (A,B) sweep: zero mismatches. (2) this piece's own brute-force
+point-counting formula for a_p(E) -- summing a Legendre symbol of
+1+4(x^3+Ax+B) over every residue mod p, the direct #E(F_p) count, not a
+closed form -- checked against PARI's ellap over 238 (curve,prime)
+pairs: zero mismatches. (3) the individual-curve Sato-Tate distribution
+was checked to visibly track the proved semicircle density
+(2/pi)*sqrt(1-x^2) over 2260 primes up to 20000 for one sample curve
+before committing to shipping it as SATOTATE mode. One real performance
+bug caught by testing in an actual headless browser rather than trusting
+Node timing: the naive apTrace() recomputed a full O(log p) modpow
+Legendre-symbol test for every residue for every curve at a given prime,
+fine in Node (~1-2s) but 52 SECONDS for the heaviest window in
+Playwright/Chromium -- fixed by precomputing each prime's quadratic-
+residue table ONCE (O(p), shared across every curve tested at that
+prime) rather than recomputing per curve, cutting the worst case to
+~3.5s; re-verified against the same 238 PARI pairs after the rewrite,
+zero mismatches.
+
+Three modes, X = conductor-window position (log scale, [X,16X), drag),
+shared across all three: WAVE plots the murmuration itself -- average
+a_p(E)/sqrt(p) for p=5..599, split by root-number class, Y drags a
+0-8-prime smoothing radius; the window ranges from ~100 curves (small X,
+visibly noisier) to ~7000 (large X, cleaner), with the true and possibly
+subsampled count always shown live. FIELD shows the (A,B) parameter
+plane itself, colored by root number, with the current window's curves
+highlighted over a static pre-rendered backdrop of all 38,202 generated
+curves; Y picks one curve from the window as a bright ring, carried into
+SATOTATE. SATOTATE shows that one curve's own a_p/(2 sqrt p) histogram
+against the proved semicircle density -- the individual-curve law
+(2011, proved) sitting next to the population-level pattern (2022,
+observed, unexplained) the other two modes show, the same "classical
+proved theorem beside the open unexplained pattern" pairing BRUHAT used
+for Tenner's 2007 theorem beside the 2026 AlphaEvolve record.
+
+The honest gap, stated in the piece's own header and visible live in its
+stats panel: this is a 2-parameter family, so its curve DENSITY at fixed
+conductor is far below the true count of all elliptic curves of that
+conductor (Wachs's own dataset has 3 million, this piece's sample sizes
+range ~100-7000) -- genuinely noisier than the papers' own clean
+averages, especially at the small-X end of the drag range. The
+oscillation shown is real and independently computed, not looked up or
+faked, but it is this session's own small, honest reproduction, not the
+papers' dataset.
+
+Open items for a future session: (a) an actual quadratic-twist family
+(fixing one base curve and twisting by many squarefree d) would be far
+denser than this session's 2-parameter (A,B) sweep and cheaper to
+compute (a_p of a twist is just a_p of the base curve times a quadratic
+character, no fresh point-count needed) -- this session explored it
+(twist_check*.gp, scratchpad) but could not pin down a trustworthy
+closed-form root-number-of-twist formula against PARI ground truth in
+the time available, and dropped it rather than ship an unverified
+formula; a future session with time to nail that formula (or to lean on
+PARI's own ellrootno while precomputing a large twist family offline and
+shipping the results as a static table) could reach LMFDB-scale sample
+sizes. (b) actual rank, not just root-number parity, distinguishing rank
+0 from rank 2 (both parity-even) the way the original paper's plots
+sometimes do -- would need real descent or an L-function computation,
+not attempted. (c) Wachs's own actual finding -- that BSD invariants
+(Tamagawa product, real period, ...) modulate the murmuration's shape
+without producing it -- is not touched at all; this piece only reaches
+the root-number split the original 2022 paper used. (d) the function-
+field analogue (arXiv:2603.13802) is a genuinely different arithmetic
+setting (F_q(t) instead of Q) this piece does not attempt. (e) MAX_
+WINDOW_CURVES=1600 subsampling is a real, disclosed cap, not silent --
+but a genuine performance optimization (a typed-array-based batch
+point-count, or a Web Worker so the heaviest window doesn't block the
+main thread at all) would let a future session raise or remove it.
 
 ---
 
@@ -5099,6 +5239,52 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-10 — Session 42
+- Added MURMURATION: the striking population-level oscillation in
+  averaged, normalized Frobenius traces a_p(E)/sqrt(p) across elliptic
+  curves grouped by conductor window and rank, discovered in 2022 when
+  He, Lee, Oliver & Pozdnyakov noticed the pattern their own rank-
+  predicting classifier was exploiting (arXiv:2204.10140), with 2025/26
+  follow-ups (Wachs's 3M-curve BSD-invariant study, arXiv:2603.04604;
+  the first function-field version, arXiv:2603.13802) surfaced by this
+  session's web wander through recent AI-for-mathematics coverage. No
+  LMFDB access was available, so every curve is generated from scratch,
+  client-side, from a restricted family (y^2+y=x^3+Ax+B, squarefree
+  discriminant coprime to 6) chosen specifically because it makes the
+  conductor exact (N=|Delta|) and the root number computable via the
+  classical Rohrlich split/nonsplit-multiplicative criterion with no
+  p=2,3 special-casing needed -- standing in, via the proved (Dokchitser
+  & Dokchitser 2010) parity theorem, for the paper's own split by rank.
+  This session installed PARI/GP 2.15.4 fresh (apt, not previously in
+  this environment) specifically to have independent ground truth for
+  the conductor/root-number/a_p formulas: zero mismatches over 2888
+  curves (conductor+root number) and 238 (curve,prime) pairs (a_p). See
+  this session's own Piece 42 entry above for full derivation,
+  verification detail, and one real performance bug (a naive O(log p)
+  per-residue Legendre test that took 52 seconds for the heaviest window
+  in actual headless Chromium despite running in ~1s in Node, fixed by
+  precomputing each prime's quadratic-residue table once and sharing it
+  across every curve).
+- Tested in a real headless browser (Playwright 1.56.1, environment's
+  preinstalled Chromium): all three modes screenshot-checked on 1280x800
+  desktop and 390x844 mobile-portrait viewports, plus an exhaustive
+  sweep of 8 X-positions x 5 Y-positions x 3 modes (120 forced-render
+  frames per viewport) produced zero console/page errors. Two cosmetic
+  overflow/overlap bugs caught only by screenshot comparison: WAVE
+  mode's "p" axis label sat exactly on top of its "599" bound on mobile
+  (both right-aligned to the same point), and "Dokchitser squared" (a
+  shorthand for the two same-surname authors) word-wrapped awkwardly
+  inside the narrow mobile stats column -- both fixed.
+- Inspiration: this session's web wander also surfaced tiny (~20km)
+  plasma whirlpools on the Sun's surface, quantum entanglement generated
+  directly from sunlight, ballistic ray-like heat conduction at room
+  temperature in a crystal, and a reversed-direction pulse in Earth's
+  molten core -- all left unpursued in favor of murmurations' tighter,
+  more independently-verifiable (via PARI/GP as ground truth) arithmetic
+  foundation and its genuinely different register from every piece
+  already in this gallery (a statistical pattern across a population of
+  objects, not a single object's structure or a single simulation).
+
 ### 2026-08-09 — Session 41
 - Added BRUHAT: permutations ordered by the Bruhat order, and the intervals
   between them that are literal geometric hypercubes -- Ellenberg,
@@ -6612,6 +6798,43 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 ---
 
 ## Ideas for Future Sessions
+- [x] A piece showing a STATISTICAL/POPULATION-level pattern across many
+      number-theoretic objects at once, rather than one object's own
+      structure -- distinct from every earlier single-object piece --
+      done in MURMURATION (session 42), the 2022 murmuration oscillation
+      in averaged Frobenius traces of elliptic curves, split by root
+      number (a proved parity-of-rank proxy).
+- [ ] MURMURATION: a quadratic-twist family (fix one base curve, twist by
+      many squarefree d) would be far denser and cheaper to sample than
+      this session's 2-parameter (A,B) sweep (a_p of a twist is the base
+      curve's own a_p times a quadratic character -- no fresh point-count
+      needed) -- this session could not pin down a trustworthy closed-
+      form root-number-of-twist formula against PARI in the time
+      available (twist_check*.gp, scratchpad, dropped rather than shipped
+      unverified) -- a future session resolving that formula, or
+      precomputing a large twist family offline against PARI and shipping
+      the results as a static table, could reach sample sizes closer to
+      LMFDB scale, especially at the small-conductor end of the drag
+      range where this session's own sample (~100 curves) is noisiest.
+- [ ] MURMURATION: root number only reaches rank PARITY, not actual rank
+      -- rank-0 and rank-2 curves (both parity-even) are indistinguishable
+      here, unlike some of the original paper's own rank-specific plots
+      -- would need real descent or an L-function computation, not
+      attempted this session.
+- [ ] MURMURATION: Wachs's own 2026 finding -- that BSD invariants
+      (Tamagawa product, real period, Sha, regulator) modulate the
+      murmuration's shape without producing it themselves -- is not
+      touched; this piece only reaches the plain root-number split the
+      original 2022 paper used.
+- [ ] MURMURATION: the function-field analogue (arXiv:2603.13802, curves
+      over F_q(t) rather than Q) is a genuinely different arithmetic
+      setting this piece does not attempt.
+- [ ] MURMURATION: MAX_WINDOW_CURVES=1600 stride-subsampling (disclosed
+      live in the stats panel, not silent) is a real cap on the largest
+      windows' sample size -- a typed-array/batched point-count rewrite,
+      or moving the heaviest getWindow() computation to a Web Worker so
+      it doesn't block the main thread at all, would let a future session
+      raise or remove it.
 - [x] A piece in poset/order theory built on a 2026 AI-assisted discovery in
       pure combinatorics -- distinct from every earlier field/agent/random-
       matrix/tiling/fluid/wave/knot piece -- done in BRUHAT (session 41),

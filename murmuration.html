@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MURMURATION — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:52vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .pos{color:rgba(150,220,255,.9)}
+#stats .neg{color:rgba(255,150,140,.9)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.85}
+#stats .link{display:block;margin-top:.55em;font-size:10px;letter-spacing:.2em;color:rgba(255,210,140,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+#loading{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;font-size:10px;letter-spacing:.35em;
+  text-transform:uppercase;color:rgba(255,255,255,.3);
+  background:#000;z-index:5;
+}
+@media (max-width:480px){
+  #stats{max-width:64vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<div id="loading">generating curves…</div>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="winLine">N ∈ [—, —)</span>
+  <span class="sub" id="countLine">—</span>
+  <span class="sub" id="curveLine">—</span>
+  <span class="link" id="mainVal">—</span>
+  <span class="sub" id="mainSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">WAVE</span>
+  <span id="desc">average normalized Frobenius trace, by root-number parity, vs p</span>
+</div>
+<div id="hint">drag: x = conductor window, y = smoothing / selection</div>
+<script>
+/*  MURMURATION — a flock of elliptic curves, seen from above
+ *
+ *  In 2022, Yang-Hui He, Kyu-Hwan Lee, Thomas Oliver & Alexey Pozdnyakov
+ *  trained a classifier to guess an elliptic curve's rank from its first
+ *  1000 Frobenius traces a_p(E), and noticed the classifier was exploiting
+ *  a pattern nobody had named: average a_p(E)/sqrt(p) over all curves E in
+ *  a fixed conductor window with a given rank, plot the average against p,
+ *  and a striking oscillation appears -- shaped differently for even- and
+ *  odd-rank curves, like two flocks of starlings wheeling in opposite
+ *  phase. They called it a MURMURATION ("Murmurations of Elliptic Curves,"
+ *  arXiv:2204.10140, Experimental Mathematics 2024). It is not a theorem;
+ *  eleven years after Sato-Tate was proved for individual curves (Clozel,
+ *  Harris, Shepherd-Barron & Taylor, 2011), nobody had noticed that
+ *  POPULATIONS of curves do this. Follow-up work continues into 2025/26:
+ *  Dane Wachs's "BSD Invariants and Murmurations of Elliptic Curves"
+ *  (arXiv:2603.04604) mines 3,064,705 Cremona-database curves up to
+ *  conductor 500,000 and finds the BSD invariants (Tamagawa number, real
+ *  period, ...) modulate the oscillation's shape without producing it
+ *  themselves; "Murmurations of Elliptic Curves over Function Fields"
+ *  (arXiv:2603.13802) finds the same pattern over F_q(t); a third 2026
+ *  preprint extends it to modular-form coefficients at prime SQUARES.
+ *
+ *  This session has no LMFDB to mine -- every curve here is generated
+ *  from scratch, live, in the browser. That forced a real mathematical
+ *  choice, made honestly rather than hidden: the curves are drawn only
+ *  from the family y^2 + y = x^3 + Ax + B with SQUAREFREE discriminant
+ *  Delta = -64A^3 - 27(1+4B)^2, coprime to 6. Squarefree Delta forces
+ *  Kodaira type I_1 (multiplicative reduction) at every bad prime, for
+ *  ANY prime -- a basic structural fact of Tate's algorithm -- so this
+ *  restricted family gets three things for free, in closed form, with no
+ *  need for a general implementation of Tate's algorithm: (1) the model
+ *  is automatically globally minimal (ord_p(Delta)=1 is far below the
+ *  u^12 threshold non-minimality would require at any prime); (2) the
+ *  conductor is EXACTLY N = |Delta|, no correction terms; (3) since every
+ *  bad prime is >= 5 (coprime-to-6 by construction), the classical
+ *  Rohrlich criterion applies cleanly: the local root number at a
+ *  multiplicative prime p is -1 if -c6 is a nonzero square mod p (split
+ *  reduction), +1 if not (nonsplit) -- no p=2,3 special-casing, which is
+ *  where a naive implementation of this would actually break (Hensel's
+ *  lemma, which the mod-p square test relies on, needs p odd). Global
+ *  root number w(E) = -1 * product of local root numbers over bad p.
+ *
+ *  Root number is not rank -- computing actual rank needs descent or an
+ *  L-function computation this session did not attempt. But the PARITY
+ *  of rank is provably tied to the sign of w(E): the p-parity conjecture
+ *  is a proved theorem for E/Q (Dokchitser & Dokchitser, "Root numbers
+ *  and parity of ranks of elliptic curves," 2010), so splitting curves
+ *  by root number sign here is a rigorous stand-in for the paper's own
+ *  split by rank -- reaching parity, not the exact rank value, honestly
+ *  short of the original construction in exactly that one way.
+ *
+ *  Verified in Node before any canvas code (verify*.js, this session's
+ *  scratchpad, not committed), against PARI/GP 2.15.4 (installed fresh
+ *  this session -- ellglobalred, ellrootno, ellap) as ground truth:
+ *  (1) N = |Delta| and the Rohrlich root-number formula above, checked
+ *      against PARI's ellglobalred/ellrootno over EVERY one of 2888
+ *      curves generated by an exhaustive small (A,B) sweep: zero
+ *      mismatches. (2) this piece's own brute-force point-counting
+ *      formula for a_p(E) -- literally summing a Legendre symbol of
+ *      1+4(x^3+Ax+B) over every residue x mod p, the direct #E(F_p)
+ *      count, not a closed form -- checked against PARI's ellap over 238
+ *      (curve, prime) pairs: zero mismatches. (3) the individual-curve
+ *      Sato-Tate distribution (SATOTATE mode) was checked to visibly
+ *      track the proved semicircle density (2/pi)*sqrt(1-x^2) over 2260
+ *      primes up to 20000 for one sample curve, before committing to
+ *      showing it as a mode.
+ *
+ *  The honest gap: this is a 2-parameter family, so its curve DENSITY at
+ *  fixed conductor is far below the true count of all elliptic curves of
+ *  that conductor (which is what Wachs's 3-million-curve LMFDB-derived
+ *  dataset actually has) -- this piece's own sample sizes range from
+ *  ~100 curves at the small-conductor end of the X drag to ~7000 at the
+ *  large end, shown live in the stats panel, genuinely noisier than the
+ *  paper's own clean averages especially where the count is small. The
+ *  oscillation is real and independently computed, not looked up or
+ *  faked -- but it is this session's own small, honest reproduction, not
+ *  the paper's dataset. Above ~1600 curves in a window this piece also
+ *  switches from using every curve to a deterministic evenly-spaced
+ *  stride subsample, so the largest windows still compute in real time
+ *  in a browser tab -- the stats panel shows the true count alongside
+ *  the sampled one whenever this triggers.
+ */
+const TWO_PI = Math.PI * 2;
+
+/* ================= number theory ================= */
+function isSquarefree(n) {
+  n = Math.abs(n);
+  let d = 2;
+  while (d * d <= n) {
+    if (n % (d * d) === 0) return false;
+    while (n % d === 0) n /= d;
+    d++;
+  }
+  return true;
+}
+function factorPrimes(n) {
+  n = Math.abs(n);
+  const out = [];
+  let d = 2;
+  while (d * d <= n) {
+    if (n % d === 0) { out.push(d); while (n % d === 0) n /= d; }
+    d++;
+  }
+  if (n > 1) out.push(n);
+  return out;
+}
+function modpow(base, exp, mod) {
+  base = ((base % mod) + mod) % mod;
+  let result = 1;
+  while (exp > 0) {
+    if (exp & 1) result = (result * base) % mod;
+    base = (base * base) % mod;
+    exp = Math.floor(exp / 2);
+  }
+  return result;
+}
+function legendre(a, p) {
+  a = ((a % p) + p) % p;
+  if (a === 0) return 0;
+  const r = modpow(a, (p - 1) / 2, p);
+  return r === p - 1 ? -1 : r;
+}
+function analyzeCurve(A, B) {
+  const disc = -64 * A * A * A - 27 * (1 + 4 * B) * (1 + 4 * B);
+  if (disc === 0) return null;
+  if (disc % 2 === 0 || disc % 3 === 0) return null;
+  if (!isSquarefree(disc)) return null;
+  const N = Math.abs(disc);
+  const badPrimes = factorPrimes(N);
+  const c6 = -216 * (1 + 4 * B);
+  let w = -1; // w_infinity
+  for (const p of badPrimes) w *= (legendre(-c6, p) === 1 ? -1 : 1);
+  return { A, B, N, rootNumber: w };
+}
+// quadratic-residue table mod p, built once per prime (O(p)) and reused across
+// every curve tested at that prime -- apTrace alone would redo an O(log p)
+// modpow per residue per curve; a shared table turns that into an O(1) lookup.
+const qrTableCache = {};
+function qrTable(p) {
+  let t = qrTableCache[p];
+  if (t) return t;
+  t = new Int8Array(p).fill(-1);
+  t[0] = 0;
+  for (let k = 1; k * 2 <= p; k++) t[(k * k) % p] = 1;
+  qrTableCache[p] = t;
+  return t;
+}
+// #E(F_p) = p+1-a_p ; a_p = -sum_x legendre(1+4*(x^3+Ax+B), p)
+function apTrace(A, B, p) {
+  const t = qrTable(p);
+  let sum = 0;
+  for (let x = 0; x < p; x++) {
+    const rhs = ((x * x % p) * x % p + A * x + B) % p;
+    const D = (1 + 4 * ((rhs % p + p) % p)) % p;
+    sum += t[D];
+  }
+  return -sum;
+}
+function sieblePrimes(lo, hi) {
+  const out = [];
+  for (let n = lo; n <= hi; n++) {
+    if (n < 2) continue;
+    let prime = true;
+    for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+    if (prime) out.push(n);
+  }
+  return out;
+}
+
+/* ================= curve family (generated once, client-side) ================= */
+const SEARCH_RANGE = 130;
+const WAVE_PRIMES = sieblePrimes(5, 599); // fixed prime range used by WAVE + FIELD windowing
+let CURVES = [];       // all valid curves, sorted by N
+function generateCurves() {
+  const out = [];
+  for (let A = -SEARCH_RANGE; A <= SEARCH_RANGE; A++) {
+    for (let B = -SEARCH_RANGE; B <= SEARCH_RANGE; B++) {
+      const r = analyzeCurve(A, B);
+      if (r) out.push(r);
+    }
+  }
+  out.sort((a, b) => a.N - b.N);
+  return out;
+}
+
+/* ================= window (X) parametrization ================= */
+// X drag position t in [0,1] -> conductor window [Xlo, 16*Xlo)
+function tToXlo(t) { return Math.round(800 * Math.pow(250, t)); }
+const MAX_WINDOW_CURVES = 1600; // deterministic stride-subsample above this, so
+                                 // the heaviest window still computes in real time
+function windowCurves(Xlo) {
+  const hi = 16 * Xlo;
+  // CURVES sorted by N: binary search bounds
+  let lo0 = lowerBound(CURVES, Xlo), hi0 = lowerBound(CURVES, hi);
+  const full = CURVES.slice(lo0, hi0);
+  if (full.length <= MAX_WINDOW_CURVES) return { curves: full, trueCount: full.length };
+  const stride = full.length / MAX_WINDOW_CURVES;
+  const out = [];
+  for (let i = 0; i < MAX_WINDOW_CURVES; i++) out.push(full[Math.floor(i * stride)]);
+  return { curves: out, trueCount: full.length };
+}
+function lowerBound(arr, val) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid].N < val) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+const WIN_STEPS = 32;
+const winCache = {};
+function getWindow(t) {
+  const idx = Math.max(0, Math.min(WIN_STEPS - 1, Math.round(t * (WIN_STEPS - 1))));
+  if (winCache[idx]) return winCache[idx];
+  const Xlo = tToXlo(idx / (WIN_STEPS - 1));
+  const { curves, trueCount } = windowCurves(Xlo);
+  const pos = curves.filter(c => c.rootNumber === 1);
+  const neg = curves.filter(c => c.rootNumber === -1);
+  const gp = new Array(WAVE_PRIMES.length).fill(0), cp = new Array(WAVE_PRIMES.length).fill(0);
+  const gn = new Array(WAVE_PRIMES.length).fill(0), cn = new Array(WAVE_PRIMES.length).fill(0);
+  for (let i = 0; i < WAVE_PRIMES.length; i++) {
+    const p = WAVE_PRIMES[i];
+    let sp = 0, np = 0;
+    for (const c of pos) { if (c.N % p === 0) continue; sp += apTrace(c.A, c.B, p) / Math.sqrt(p); np++; }
+    let sn = 0, nn = 0;
+    for (const c of neg) { if (c.N % p === 0) continue; sn += apTrace(c.A, c.B, p) / Math.sqrt(p); nn++; }
+    gp[i] = np ? sp / np : 0; cp[i] = np;
+    gn[i] = nn ? sn / nn : 0; cn[i] = nn;
+  }
+  const rec = { idx, Xlo, hi: 16 * Xlo, curves, trueCount, pos, neg, gp, cp, gn, cn };
+  winCache[idx] = rec;
+  return rec;
+}
+function smooth(arr, w) {
+  if (w <= 0) return arr.slice();
+  const out = new Array(arr.length);
+  for (let i = 0; i < arr.length; i++) {
+    let s = 0, c = 0;
+    for (let j = Math.max(0, i - w); j <= Math.min(arr.length - 1, i + w); j++) { s += arr[j]; c++; }
+    out[i] = s / c;
+  }
+  return out;
+}
+
+/* ================= drawing helpers ================= */
+let canvas, ctx, W, H;
+let modeNameEl, descEl, winLineEl, countLineEl, curveLineEl, mainValEl, mainSubEl, loadingEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+const MODES = [
+  { key: 'wave', name: 'WAVE', desc: 'average normalized Frobenius trace, by root-number parity, vs p' },
+  { key: 'field', name: 'FIELD', desc: 'the (A,B) curve family, colored by root number · window highlighted' },
+  { key: 'satotate', name: 'SATOTATE', desc: 'one curve’s own a_p distribution vs the proved semicircle law' },
+];
+const MODE_HOLD_MS = 32000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.62, dragY = 0.4;
+let driftPhaseX = 1.1, driftPhaseY = 2.6;
+const DRIFT_PERIOD_X = 41000, DRIFT_PERIOD_Y = 26000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+}
+
+function fmtN(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function updateStats(win, extra) {
+  winLineEl.textContent = `N ∈ [${fmtN(win.Xlo)}, ${fmtN(win.hi)})`;
+  const sampledNote = win.trueCount > win.curves.length ? ` (of ${fmtN(win.trueCount)}, subsampled)` : '';
+  countLineEl.textContent = `${win.curves.length} curves${sampledNote}  ·  ${win.pos.length} w=+1  ${win.neg.length} w=−1`;
+  curveLineEl.textContent = extra && extra.curveLine ? extra.curveLine : 'p = 5 .. 599, brute-force point counts';
+  mainValEl.textContent = extra && extra.mainVal ? extra.mainVal : '—';
+  mainSubEl.textContent = extra && extra.mainSub ? extra.mainSub : '—';
+}
+
+function wrapCentered(ctx2, text, cx, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  const lines = []; let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx2.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx2.fillText(l, cx, y + i * lineHeight));
+  return lines.length;
+}
+
+/* ================= WAVE mode ================= */
+function drawWave(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const win = getWindow(xy.x);
+  const smoothW = Math.round(xy.y * 8); // 0..8 prime-neighborhood smoothing radius
+  const gp = smooth(win.gp, smoothW), gn = smooth(win.gn, smoothW);
+
+  const marginX = W * 0.09, plotY0 = H * 0.22, plotY1 = H * 0.72;
+  const plotW = W - 2 * marginX;
+  let vmax = 0.02;
+  for (let i = 0; i < gp.length; i++) vmax = Math.max(vmax, Math.abs(gp[i]), Math.abs(gn[i]));
+  vmax *= 1.15;
+  const xOf = i => marginX + (WAVE_PRIMES[i] - 5) / (599 - 5) * plotW;
+  const yOf = v => (plotY0 + plotY1) / 2 - (v / vmax) * (plotY1 - plotY0) / 2;
+
+  // zero line
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(marginX, yOf(0)); ctx.lineTo(marginX + plotW, yOf(0)); ctx.stroke();
+
+  function plotLine(vals, color, glow) {
+    ctx.beginPath();
+    for (let i = 0; i < vals.length; i++) {
+      const x = xOf(i), y = yOf(vals[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.1, Math.min(W, H) * 0.0016);
+    ctx.stroke();
+    if (glow) {
+      ctx.save(); ctx.globalAlpha = 0.18; ctx.lineWidth *= 4; ctx.stroke(); ctx.restore();
+    }
+  }
+  plotLine(gn, 'rgba(255,150,140,.85)', true);
+  plotLine(gp, 'rgba(150,220,255,.85)', true);
+
+  // axis labels
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.016)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.textAlign = 'left';
+  ctx.fillText('p = 5', marginX, plotY1 + Math.min(W, H) * 0.035);
+  ctx.textAlign = 'right';
+  ctx.fillText('p = 599', marginX + plotW, plotY1 + Math.min(W, H) * 0.035);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(150,220,255,.85)';
+  ctx.fillText('w = +1 (even parity)', marginX, plotY0 - Math.min(W, H) * 0.05);
+  ctx.fillStyle = 'rgba(255,150,140,.85)';
+  ctx.fillText('w = −1 (odd parity)', marginX, plotY0 - Math.min(W, H) * 0.02);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.014)}px 'Courier New',monospace`;
+  wrapCentered(ctx, 'average of a_p(E)/√p over curves E with conductor in this window, split by root number — the murmuration', W / 2, plotY1 + Math.min(W, H) * 0.09, W * 0.82, Math.min(W, H) * 0.022);
+
+  updateStats(win, {
+    mainVal: `smoothing radius ±${smoothW} primes`,
+    mainSub: 'root number ↔ rank parity, proved 2010',
+  });
+}
+
+/* ================= FIELD mode: static bitmap + live window highlight ================= */
+let fieldBitmap = null, fieldBW = 0, fieldBH = 0;
+function buildFieldBitmap() {
+  const S = 900;
+  const off = document.createElement('canvas');
+  off.width = S; off.height = S;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#040406'; octx.fillRect(0, 0, S, S);
+  const toX = A => S / 2 + (A / SEARCH_RANGE) * (S / 2) * 0.94;
+  const toY = B => S / 2 - (B / SEARCH_RANGE) * (S / 2) * 0.94;
+  for (const c of CURVES) {
+    octx.fillStyle = c.rootNumber === 1 ? 'rgba(150,220,255,.38)' : 'rgba(255,150,140,.34)';
+    octx.fillRect(toX(c.A), toY(c.B), 1.15, 1.15);
+  }
+  fieldBitmap = off; fieldBW = S; fieldBH = S;
+}
+let selectedCurve = null;
+function drawField(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const win = getWindow(xy.x);
+  const side = Math.min(W, H) * 0.82;
+  const ox = (W - side) / 2, oy = (H - side) / 2 - H * 0.02;
+  ctx.drawImage(fieldBitmap, ox, oy, side, side);
+
+  const toX = A => ox + side / 2 + (A / SEARCH_RANGE) * (side / 2) * 0.94;
+  const toY = B => oy + side / 2 - (B / SEARCH_RANGE) * (side / 2) * 0.94;
+  const r = Math.max(1.4, side * 0.0026);
+  for (const c of win.curves) {
+    ctx.beginPath(); ctx.arc(toX(c.A), toY(c.B), r, 0, TWO_PI);
+    ctx.fillStyle = c.rootNumber === 1 ? 'rgba(180,235,255,.95)' : 'rgba(255,175,165,.9)';
+    ctx.fill();
+  }
+  // pick a representative curve near the window's median N for SATOTATE hand-off
+  selectedCurve = win.curves.length ? win.curves[Math.floor(xy.y * (win.curves.length - 1))] : null;
+  if (selectedCurve) {
+    ctx.beginPath(); ctx.arc(toX(selectedCurve.A), toY(selectedCurve.B), r * 2.6, 0, TWO_PI);
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = Math.max(1, side * 0.0018); ctx.stroke();
+  }
+
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.014)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.textAlign = 'center';
+  wrapCentered(ctx, `every curve y²+y=x³+Ax+B with squarefree, coprime-to-6 discriminant, A,B ∈ [−${SEARCH_RANGE},${SEARCH_RANGE}] — bright ring = highlighted curve, carried into SATOTATE`, W / 2, oy + side + Math.min(W, H) * 0.05, W * 0.8, Math.min(W, H) * 0.02);
+
+  updateStats(win, {
+    curveLine: `A axis horizontal, B axis vertical · ${CURVES.length} curves total`,
+    mainVal: selectedCurve ? `A=${selectedCurve.A}, B=${selectedCurve.B}` : '—',
+    mainSub: selectedCurve ? `N=${selectedCurve.N}, w=${selectedCurve.rootNumber > 0 ? '+1' : '−1'}` : '—',
+  });
+}
+
+/* ================= SATOTATE mode ================= */
+const satCache = {};
+function getSatoTate(curve) {
+  const key = curve.A + '_' + curve.B;
+  if (satCache[key]) return satCache[key];
+  const bins = 24, hist = new Array(bins).fill(0);
+  let count = 0;
+  for (let p = 5; p < 3000; p++) {
+    if (curve.N % p === 0) continue;
+    let prime = true;
+    for (let d = 2; d * d <= p; d++) if (p % d === 0) { prime = false; break; }
+    if (!prime) continue;
+    const x = apTrace(curve.A, curve.B, p) / (2 * Math.sqrt(p));
+    let b = Math.floor((x + 1) / 2 * bins);
+    if (b < 0) b = 0; if (b > bins - 1) b = bins - 1;
+    hist[b]++; count++;
+  }
+  const rec = { hist, count, bins };
+  satCache[key] = rec;
+  return rec;
+}
+function drawSatoTate(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const win = getWindow(xy.x);
+  const curve = win.curves.length ? win.curves[Math.floor(xy.y * (win.curves.length - 1))] : (selectedCurve || CURVES[0]);
+  if (!curve) return;
+  const sat = getSatoTate(curve);
+
+  const marginX = W * 0.12, plotY0 = H * 0.22, plotY1 = H * 0.68;
+  const plotW = W - 2 * marginX;
+  const bw = plotW / sat.bins;
+  const maxDensity = Math.max(...sat.hist.map(h => h / sat.count / (2 / sat.bins)), 0.64);
+
+  for (let b = 0; b < sat.bins; b++) {
+    const density = sat.hist[b] / sat.count / (2 / sat.bins);
+    const hgt = (density / maxDensity) * (plotY1 - plotY0) * 0.94;
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.fillRect(marginX + b * bw, plotY1 - hgt, bw * 0.82, hgt);
+  }
+  // theory: semicircle (2/pi) sqrt(1-x^2), Sato-Tate (Clozel-Harris-Shepherd-Barron-Taylor 2011)
+  ctx.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const x = -1 + i / 60;
+    const density = (2 / Math.PI) * Math.sqrt(Math.max(0, 1 - x * x));
+    const hgt = (density / maxDensity) * (plotY1 - plotY0) * 0.94;
+    const px = marginX + (x + 1) / 2 * plotW, py = plotY1 - hgt;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.strokeStyle = 'rgba(255,210,140,.9)'; ctx.lineWidth = Math.max(1.2, Math.min(W, H) * 0.0018); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1;
+  ctx.strokeRect(marginX, plotY0, plotW, plotY1 - plotY0);
+  ctx.textAlign = 'center';
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.016)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.24)';
+  ctx.fillText('a_p / 2√p  =  cos θ_p', W / 2, plotY1 + Math.min(W, H) * 0.05);
+  ctx.fillStyle = 'rgba(255,210,140,.85)';
+  ctx.fillText('(2/π)√(1−x²) — Sato-Tate, proved 2011', W / 2, plotY0 - Math.min(W, H) * 0.03);
+
+  updateStats(win, {
+    curveLine: `A=${curve.A}, B=${curve.B}, N=${curve.N}, w=${curve.rootNumber > 0 ? '+1' : '−1'}`,
+    mainVal: `${sat.count} primes, p<3000`,
+    mainSub: 'one curve’s own individual law, not a population average',
+  });
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'wave') drawWave(now, xy);
+  else if (m.key === 'field') drawField(now, xy);
+  else drawSatoTate(now, xy);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(x, y) { dragging = true; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+}
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  winLineEl = document.getElementById('winLine');
+  countLineEl = document.getElementById('countLine');
+  curveLineEl = document.getElementById('curveLine');
+  mainValEl = document.getElementById('mainVal');
+  mainSubEl = document.getElementById('mainSub');
+  loadingEl = document.getElementById('loading');
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  // let the "generating curves..." message paint before the synchronous sweep
+  setTimeout(() => {
+    CURVES = generateCurves();
+    buildFieldBitmap();
+    loadingEl.style.display = 'none';
+    applyMode(0);
+
+    canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchend', onUp);
+
+    requestAnimationFrame(loop);
+  }, 30);
+}
+init();
+</script>
+</body>
+</html>
