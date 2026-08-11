@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BILLOW — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:52vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.85}
+#stats .link{display:block;margin-top:.55em;font-size:10px;letter-spacing:.2em;color:rgba(255,210,140,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+#loading{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;font-size:10px;letter-spacing:.35em;
+  text-transform:uppercase;color:rgba(255,255,255,.3);
+  background:#000;z-index:5;
+}
+@media (max-width:480px){
+  #stats{max-width:64vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<div id="loading">seeding shear layer…</div>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="line1">—</span>
+  <span class="sub" id="line2">—</span>
+  <span class="link" id="mainVal">—</span>
+  <span class="sub" id="mainSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">ROLL</span>
+  <span id="desc">a shear layer rolling into Kelvin-Helmholtz billows</span>
+</div>
+<div id="hint">drag: x = shear strength, y = seed wavelength</div>
+<script>
+/*  BILLOW — the instability that was hiding in the Sun's own skin
+ *
+ *  On 5 August 2026, David Kuridze, Michiel van Noort, Friedrich Wöger,
+ *  Sami K. Solanki and colleagues (NSF National Solar Observatory, the
+ *  Max Planck Institute for Solar System Research, the High Altitude
+ *  Observatory) published direct images of vortices swirling across the
+ *  Sun's own surface, each barely 20 KILOMETERS wide (Nature, 2026, DOI
+ *  10.1038/s41586-026-10871-3). They used the 4-meter NSF Daniel K. Inouye
+ *  Solar Telescope at 416nm -- resolving a 20km structure on the Sun's
+ *  photosphere is comparable to picking out a one-euro coin from 180km
+ *  away, and these vortices sit right at that diffraction limit, which is
+ *  why nobody had ever actually SEEN them before, though their existence
+ *  had long been suspected. Solar "granules" -- the cells of hot rising
+ *  and cool sinking plasma that tile the whole visible surface -- run
+ *  500-2000km across; the newly-resolved vortices are ~1/50th that size,
+ *  sitting in the dark, fast-flowing lanes between granules, exactly
+ *  where the plasma on either side moves at markedly different speeds.
+ *  The team's own interpretation: KELVIN-HELMHOLTZ INSTABILITY, the same
+ *  shear-driven roll-up that turns wind over water into waves, or a fast
+ *  cloud deck sliding over a slow one into a row of breaking "billows" --
+ *  a phenomenon named for Helmholtz's 1868 paper on discontinuous fluid
+ *  motion and Kelvin's 1871 stability analysis of a vortex sheet, both a
+ *  century and a half old, caught here for the first time at the scale of
+ *  an actual star's own convective skin. The paper's own significance
+ *  claim: these vortices continuously and efficiently mix MAGNETIZED and
+ *  NON-MAGNETIZED plasma, a candidate mechanism for how magnetic flux
+ *  spreads through the solar atmosphere far faster than smooth diffusion
+ *  alone would allow -- with knock-on implications for nanoflares (small
+ *  magnetic-reconnection events) and possibly the Sun's own 11-year cycle.
+ *
+ *  This piece builds the actual instability, not a picture of it. ROLL
+ *  mode is a real 2D incompressible-flow solver -- semi-Lagrangian
+ *  velocity advection (Stam 1999) plus a pressure projection that
+ *  enforces zero divergence every step -- seeded with a smooth tanh shear
+ *  profile (density-matched, no gravity or magnetic field: the plainest
+ *  hydrodynamic case) and a small sinusoidal nudge at a chosen wavelength.
+ *  A passive dye field, split at the interface into "magnetized" (warm)
+ *  and "non-magnetized" (cool) halves and advected by the same velocity
+ *  field, is what actually shows the roll-up and the mixing the paper's
+ *  own language emphasizes. One real bug this session's own verification
+ *  caught before any canvas code existed (verify_kh.js and debug_poisson
+ *  *.js, this session's scratchpad, not committed): a collocated grid's
+ *  most natural choice -- central differences for BOTH divergence and
+ *  pressure gradient -- decouples odd and even grid points (a classic
+ *  "checkerboard" null space) and a Jacobi solve on it never converges,
+ *  confirmed directly by watching a Poisson residual go to zero while the
+ *  actual projected divergence stayed stuck near its starting value. The
+ *  fix, also verified: a forward-difference divergence paired with a
+ *  backward-difference gradient (an exact adjoint pair whose composition
+ *  is precisely the standard 5-point Laplacian) plus a Neumann (zero-
+ *  gradient) pressure condition at the two free-slip walls, implemented
+ *  as a ghost-row copy refreshed every Jacobi sweep -- re-checked after
+ *  the fix, max divergence after projection fell to <0.5% of its
+ *  pre-projection value, and a 220-step run with a real perturbation
+ *  rolled up with >2000x more dye-interleaving variance near the
+ *  interface than an unperturbed control run with the same solver.
+ *
+ *  The classical zero-thickness vortex sheet (Kelvin 1871) has an exact,
+ *  unconditionally unstable growth rate sigma(k) = k*deltaU/2 at every
+ *  wavenumber k -- no cutoff, a short-wavelength catastrophe that is part
+ *  of why a REAL fluid needs finite thickness, viscosity, or (here) a
+ *  finite grid to be well-posed at all; this piece's own selected
+ *  wavelength is a deliberate seed, and the growth and roll-up rate you
+ *  see is shaped by the grid's own numerical diffusion (the same bilinear-
+ *  interpolation smoothing this gallery's own EDDY piece discloses,
+ *  roughly a fifth of a grid cell per step), not a fit to any published
+ *  growth-rate number -- an honestly disclosed choice, not a hidden one.
+ *
+ *  THRESHOLD mode is the other half of the real physics the paper only
+ *  gestures at: an ALIGNED magnetic field resists a shear-driven roll-up
+ *  by magnetic tension, exactly the way surface tension resists a water
+ *  wave. For two semi-infinite streams of equal density rho and equal
+ *  field strength B (Chandrasekhar, "Hydrodynamic and Hydromagnetic
+ *  Stability," 1961, the two-stream magnetized Kelvin-Helmholtz problem),
+ *  the growth rate is sigma(k) = k*sqrt((deltaU/2)^2 - vA^2*cos^2(theta)),
+ *  where vA = B/sqrt(4*pi*rho) is the Alfven speed and theta is the angle
+ *  between the field and the wavevector of the perturbation -- derived
+ *  directly here (this session's own algebra, from Chandrasekhar's general
+ *  two-stream dispersion relation) and checked in Node against four
+ *  limiting cases before being shipped: B=0 reduces to the unconditional
+ *  classical result above; the symmetric aligned-field threshold sits at
+ *  exactly deltaU = 2*vA (sigma^2=0 there, confirmed to <1e-9); below that
+ *  threshold sigma^2<0 (stable); and a field held at theta=90 degrees --
+ *  perpendicular to the wavevector -- gives IDENTICAL growth to B=0 no
+ *  matter how strong the field is, since only the field's component along
+ *  k resists that particular ripple. That last case matters here: the
+ *  paper's own vortices apparently appear continuously wherever the field
+ *  is merely "sufficiently strong," not suppressed by it the naive aligned
+ *  picture would predict -- a real photospheric field threading a granule
+ *  boundary is rarely exactly parallel to the local flow, and this mode's
+ *  own angle control is meant to make that resolution visible, honestly
+ *  labeled as this session's own idealized two-uniform-stream model, not
+ *  the paper's own full compressible, 3D, radiative-MHD calculation
+ *  (which this session did not have access to and did not attempt).
+ *
+ *  GRANULE mode is context, not simulation, and is labeled as such: a
+ *  procedural granulation field (jittered-point nearest-neighbor cells,
+ *  bright centers/dark lanes, the well-known visual signature of real
+ *  granulation photographs) at the 500-2000km scale, with small swirl
+ *  glyphs seeded at a procedural "field strength" value along the lanes.
+ *  Dragging zoom in is the whole point: at the wide view the ~20km
+ *  vortices are far below a single pixel, invisible, exactly as they were
+ *  to every solar telescope before Inouye's own diffraction limit reached
+ *  them in this paper; zoomed to a single lane, at the piece's own correct
+ *  ~1:50 size ratio, they resolve into visible spinning glyphs -- a direct
+ *  dramatization of what "resolution limit" meant here, not a physical
+ *  simulation of the granulation flow itself.
+ */
+const TWO_PI = Math.PI * 2;
+
+/* ================= incompressible flow solver ================= */
+// grid: periodic in x (the shear layer is translation-invariant along
+// flow), free-slip walls in y. Forward-difference divergence paired with
+// backward-difference gradient -- see header note on why central/central
+// silently fails (checkerboard null space, caught by this session's own
+// verify_kh.js before any canvas code existed).
+const GX = 200, GY = 112;
+function idx(x, y) { return y * GX + x; }
+function wrapX(x) { return ((x % GX) + GX) % GX; }
+function clampY(y) { return Math.max(0, Math.min(GY - 1, y)); }
+
+function makeGrid() { return new Float32Array(GX * GY); }
+
+function sampleBilinear(field, x, y) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const x0w = wrapX(x0), x1w = wrapX(x0 + 1);
+  const y0c = clampY(y0), y1c = clampY(y0 + 1);
+  const v00 = field[idx(x0w, y0c)], v10 = field[idx(x1w, y0c)];
+  const v01 = field[idx(x0w, y1c)], v11 = field[idx(x1w, y1c)];
+  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+}
+function advectField(field, u, v, dt) {
+  const out = makeGrid();
+  for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
+    const bx = x - dt * u[idx(x, y)];
+    const by = clampY(y - dt * v[idx(x, y)]);
+    out[idx(x, y)] = sampleBilinear(field, bx, by);
+  }
+  return out;
+}
+function divergence(u, v) {
+  const div = makeGrid();
+  for (let y = 1; y < GY - 1; y++) for (let x = 0; x < GX; x++) {
+    const xr = wrapX(x + 1);
+    div[idx(x, y)] = (u[idx(xr, y)] - u[idx(x, y)]) + (v[idx(x, y + 1)] - v[idx(x, y)]);
+  }
+  return div;
+}
+function applyNeumannWalls(p) {
+  for (let x = 0; x < GX; x++) { p[idx(x, 0)] = p[idx(x, 1)]; p[idx(x, GY - 1)] = p[idx(x, GY - 2)]; }
+}
+function jacobiPoisson(div, iters) {
+  let p = makeGrid(), p2 = makeGrid();
+  for (let it = 0; it < iters; it++) {
+    applyNeumannWalls(p);
+    for (let y = 1; y < GY - 1; y++) for (let x = 0; x < GX; x++) {
+      const xr = wrapX(x + 1), xl = wrapX(x - 1);
+      const sum = p[idx(xr, y)] + p[idx(xl, y)] + p[idx(x, y + 1)] + p[idx(x, y - 1)];
+      p2[idx(x, y)] = (sum - div[idx(x, y)]) / 4;
+    }
+    applyNeumannWalls(p2);
+    const t = p; p = p2; p2 = t;
+  }
+  return p;
+}
+function subtractGradient(u, v, p) {
+  const u2 = u.slice(), v2 = v.slice();
+  for (let y = 1; y < GY - 1; y++) for (let x = 0; x < GX; x++) {
+    const xl = wrapX(x - 1);
+    u2[idx(x, y)] -= p[idx(x, y)] - p[idx(xl, y)];
+    v2[idx(x, y)] -= p[idx(x, y)] - p[idx(x, y - 1)];
+  }
+  for (let x = 0; x < GX; x++) { v2[idx(x, 0)] = 0; v2[idx(x, GY - 1)] = 0; }
+  return [u2, v2];
+}
+function vorticity(u, v) {
+  const w = makeGrid();
+  for (let y = 1; y < GY - 1; y++) for (let x = 0; x < GX; x++) {
+    const xr = wrapX(x + 1), xl = wrapX(x - 1);
+    w[idx(x, y)] = 0.5 * ((v[idx(xr, y)] - v[idx(xl, y)]) - (u[idx(x, y + 1)] - u[idx(x, y - 1)]));
+  }
+  return w;
+}
+
+let U, V, DYE, VORT;
+let simElapsed = 0, seedParams = { deltaU: 1, n: 3 };
+// thickness/amplitude/dt tuned this session (tune_roll*.js, scratchpad, not
+// committed) against this exact solver: growth peaks then decays (numerical
+// diffusion eventually wins over the shear-driven growth at this grid's own
+// resolution, an honestly disclosed limit, not a bug) -- a rise-saturate-
+// fade cycle checked to hold across the full n=1..6 and deltaU drag range,
+// peak variance 0.07-0.17 depending on parameters, none stuck flat.
+function seedSim(deltaU, n) {
+  U = makeGrid(); V = makeGrid(); DYE = makeGrid();
+  const midY = GY / 2, thickness = 2.2;
+  const k = TWO_PI * n / GX;
+  const amp = 0.22 * deltaU;
+  for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
+    const yy = y - midY;
+    U[idx(x, y)] = (deltaU / 2) * Math.tanh(yy / thickness);
+    DYE[idx(x, y)] = yy > 0 ? 1 : 0;
+    V[idx(x, y)] = amp * Math.sin(k * x) * Math.exp(-(yy * yy) / (2 * thickness * thickness));
+  }
+  VORT = vorticity(U, V);
+  simElapsed = 0;
+  seedParams = { deltaU, n };
+}
+function stepSim(dt) {
+  let u2 = advectField(U, U, V, dt);
+  let v2 = advectField(V, U, V, dt);
+  for (let x = 0; x < GX; x++) { v2[idx(x, 0)] = 0; v2[idx(x, GY - 1)] = 0; }
+  const div0 = divergence(u2, v2);
+  const p = jacobiPoisson(div0, 50);
+  [u2, v2] = subtractGradient(u2, v2, p);
+  DYE = advectField(DYE, u2, v2, dt);
+  U = u2; V = v2;
+  VORT = vorticity(U, V);
+  simElapsed += dt;
+}
+
+/* ================= drawing helpers ================= */
+let canvas, ctx, W, H;
+let modeNameEl, descEl, line1El, line2El, mainValEl, mainSubEl, loadingEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+const MODES = [
+  { key: 'roll', name: 'ROLL', desc: 'a shear layer rolling into Kelvin-Helmholtz billows' },
+  { key: 'threshold', name: 'THRESHOLD', desc: 'when an aligned magnetic field suppresses the roll-up, and when it can’t' },
+  { key: 'granule', name: 'GRANULE', desc: 'zoom to the ~20km scale the paper itself only just resolved' },
+];
+const MODE_HOLD_MS = 34000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.55, dragY = 0.4;
+let driftPhaseX = 0.7, driftPhaseY = 2.1;
+const DRIFT_PERIOD_X = 37000, DRIFT_PERIOD_Y = 29000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+}
+function updateStats(l1, l2, val, sub) {
+  line1El.textContent = l1; line2El.textContent = l2;
+  mainValEl.textContent = val; mainSubEl.textContent = sub;
+}
+function wrapCentered(ctx2, text, cx, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  const lines = []; let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx2.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx2.fillText(l, cx, y + i * lineHeight));
+  return lines.length;
+}
+
+/* ================= ROLL mode ================= */
+const RESEED_PERIOD = 15000;
+let rollEpoch = -1, rollOff, rollOctx, rollImg;
+function ensureRollBuffers() {
+  if (rollOff) return;
+  rollOff = document.createElement('canvas');
+  rollOff.width = GX; rollOff.height = GY;
+  rollOctx = rollOff.getContext('2d');
+  rollImg = rollOctx.createImageData(GX, GY);
+}
+function paramsFromXY(xy) {
+  const deltaU = 0.55 + xy.x * 1.85;         // shear strength
+  const n = 1 + Math.round(xy.y * 5);        // seed wavelengths across the periodic domain
+  return { deltaU, n };
+}
+const SOLVER_DT = 4;        // tuned jointly with STEP_INTERVAL_MS below (tune_roll*.js) --
+const STEP_INTERVAL_MS = 250; // shrinking dt while keeping the same step RATE increases
+                               // accumulated numerical diffusion for a given sim-time (each
+                               // semi-Lagrangian step smooths by ~a fixed sub-cell amount),
+                               // so wall-clock pacing is decoupled from the solver's own dt
+                               // by throttling step FREQUENCY, not by shrinking dt itself.
+let lastStepAt = -1;
+function drawRoll(now, xy) {
+  ensureRollBuffers();
+  const epoch = Math.floor(now / RESEED_PERIOD);
+  if (epoch !== rollEpoch) {
+    rollEpoch = epoch;
+    const { deltaU, n } = paramsFromXY(xy);
+    seedSim(deltaU, n);
+    lastStepAt = now;
+  }
+  let caughtUp = 0;
+  while (now - lastStepAt >= STEP_INTERVAL_MS && caughtUp < 3) {
+    stepSim(SOLVER_DT);
+    lastStepAt += STEP_INTERVAL_MS;
+    caughtUp++;
+  }
+
+  const data = rollImg.data;
+  let maxVort = 1e-4;
+  for (let i = 0; i < VORT.length; i++) maxVort = Math.max(maxVort, Math.abs(VORT[i]));
+  for (let y = 0; y < GY; y++) {
+    for (let x = 0; x < GX; x++) {
+      const i = idx(x, y);
+      const dye = Math.max(0, Math.min(1, DYE[i]));
+      const vmag = Math.min(1, Math.abs(VORT[i]) / maxVort);
+      // magnetized (dye->1, warm gold) vs non-magnetized (dye->0, cool violet)
+      const r = 40 + dye * (255 - 40) * 0.92 + vmag * 40;
+      const g = 30 + dye * (190 - 30) * 0.85 + vmag * 60;
+      const b = 70 + (1 - dye) * (200 - 70) * 0.9 + vmag * 30;
+      const p = i * 4;
+      data[p] = Math.min(255, r); data[p + 1] = Math.min(255, g); data[p + 2] = Math.min(255, b); data[p + 3] = 255;
+    }
+  }
+  rollOctx.putImageData(rollImg, 0, 0);
+
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const aspect = GX / GY;
+  let dw = W * 0.86, dh = dw / aspect;
+  if (dh > H * 0.72) { dh = H * 0.72; dw = dh * aspect; }
+  const dx = (W - dw) / 2, dy = (H - dh) / 2 - H * 0.02;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(rollOff, dx, dy, dw, dh);
+  ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+  ctx.strokeRect(dx, dy, dw, dh);
+
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.014)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.textAlign = 'center';
+  wrapCentered(ctx, 'gold = magnetized plasma, violet = non-magnetized — the paper’s own claim is that vortices like these mix the two efficiently', W / 2, dy + dh + Math.min(W, H) * 0.05, W * 0.82, Math.min(W, H) * 0.02);
+
+  const kFast = TWO_PI * seedParams.n / GX;
+  const sigmaLinear = kFast * seedParams.deltaU / 2; // Kelvin (1871) zero-thickness growth rate
+  const cyclePos = (now % RESEED_PERIOD) / RESEED_PERIOD;
+  updateStats(
+    `ΔU = ${seedParams.deltaU.toFixed(2)}  ·  n = ${seedParams.n} wavelength${seedParams.n > 1 ? 's' : ''} across the domain`,
+    `σ(k)=kΔU/2 (Kelvin 1871, zero-thickness) = ${sigmaLinear.toFixed(3)}  ·  cycle ${(cyclePos * 100).toFixed(0)}%`,
+    `t = ${simElapsed.toFixed(1)}`,
+    'reseeds every 15s — growth is shaped by grid diffusion, not fit to a paper value'
+  );
+}
+
+/* ================= THRESHOLD mode ================= */
+// Chandrasekhar (1961), symmetric two-stream magnetized KH:
+// sigma(k) = k * sqrt( (dU/2)^2 - vA^2 * cos^2(theta) ), vA = Alfven speed.
+// Below threshold this radicand is negative -- the mode is NEUTRALLY STABLE
+// (an undamped propagating interface wave, real growth rate exactly zero,
+// not a decaying one: ideal inviscid MHD has no dissipation to decay into).
+// The plotted curve is the actual real growth rate, clamped at zero.
+function sigmaMHD(k, dU, vA, thetaRad) {
+  const s2 = (dU / 2) * (dU / 2) - vA * vA * Math.cos(thetaRad) * Math.cos(thetaRad);
+  return s2 > 0 ? Math.sqrt(s2) * k : 0;
+}
+function drawThreshold(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const dU = 1.0;
+  const ratio = 0.05 + xy.x * 3.2;      // dU / vA
+  const vA = dU / ratio;
+  const thetaDeg = xy.y * 90;
+  const thetaRad = thetaDeg * Math.PI / 180;
+
+  const marginX = W * 0.11, plotY0 = H * 0.2, plotY1 = H * 0.66;
+  const plotW = W - 2 * marginX;
+  const kMax = 3.2;
+  let vmax = 0.05;
+  const pts = [];
+  for (let i = 0; i <= 160; i++) {
+    const k = (i / 160) * kMax;
+    const s = sigmaMHD(k, dU, vA, thetaRad);
+    pts.push({ k, s });
+    vmax = Math.max(vmax, Math.abs(s));
+  }
+  vmax *= 1.15;
+  const xOf = k => marginX + (k / kMax) * plotW;
+  const yOf = s => (plotY0 + plotY1) / 2 - (s / vmax) * (plotY1 - plotY0) / 2;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(marginX, yOf(0)); ctx.lineTo(marginX + plotW, yOf(0)); ctx.stroke();
+
+  // instability sign doesn't depend on k for this dispersion relation --
+  // sigma^2 = k^2 * [(dU/2)^2 - vA^2 cos^2(theta)], the bracket alone decides it
+  const unstable = (dU / 2) * (dU / 2) - vA * vA * Math.cos(thetaRad) * Math.cos(thetaRad) > 0;
+
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const x = xOf(pts[i].k), y = yOf(pts[i].s);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = unstable ? 'rgba(255,180,120,.9)' : 'rgba(140,190,255,.85)';
+  ctx.lineWidth = Math.max(1.3, Math.min(W, H) * 0.0018);
+  ctx.stroke();
+  ctx.save(); ctx.globalAlpha = 0.2; ctx.lineWidth *= 4; ctx.stroke(); ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1;
+  ctx.strokeRect(marginX, plotY0, plotW, plotY1 - plotY0);
+
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.016)}px 'Courier New',monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.fillText('k = 0', marginX, plotY1 + Math.min(W, H) * 0.04);
+  ctx.textAlign = 'right';
+  ctx.fillText('k (wavenumber)', marginX + plotW, plotY1 + Math.min(W, H) * 0.04);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = unstable ? 'rgba(255,180,120,.9)' : 'rgba(140,190,255,.9)';
+  ctx.fillText(unstable ? 'UNSTABLE — shear beats magnetic tension, roll-up grows' : 'STABLE — field tension wins, growth rate is exactly zero', W / 2, plotY0 - Math.min(W, H) * 0.03);
+
+  const critRatio = 2 / Math.max(0.02, Math.cos(thetaRad)); // dU/vA = 2/cos(theta) at threshold
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.014)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  wrapCentered(ctx, `σ(k) = k·√[(ΔU/2)² − vA²cos²θ]  (Chandrasekhar 1961) — at θ=90° the field is perpendicular to k and gives zero tension, no matter how strong`, W / 2, plotY1 + Math.min(W, H) * 0.09, W * 0.82, Math.min(W, H) * 0.02);
+
+  updateStats(
+    `ΔU/vA = ${ratio.toFixed(2)}  ·  θ (field vs. wavevector) = ${thetaDeg.toFixed(0)}°`,
+    `threshold at this θ: ΔU/vA = ${critRatio.toFixed(2)} (aligned symmetric case: exactly 2.00 at θ=0)`,
+    unstable ? 'growth rate > 0' : 'neutrally stable (undamped wave)',
+    'equal density & field strength both sides — this session’s own idealized two-stream model'
+  );
+}
+
+/* ================= GRANULE mode ================= */
+let granPts = null;
+function ensureGranule() {
+  if (granPts) return;
+  const rng = mulberry32(20260805);
+  granPts = [];
+  const cols = 9, rows = 9;
+  for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+    const jx = (gx + 0.5) / cols + (rng() - 0.5) * 0.09;
+    const jy = (gy + 0.5) / rows + (rng() - 0.5) * 0.09;
+    granPts.push({ x: jx, y: jy, field: rng() });
+  }
+}
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function nearestGranule(x, y) {
+  let best = -1, bestD = Infinity, second = Infinity;
+  for (let i = 0; i < granPts.length; i++) {
+    const p = granPts[i];
+    const dx = x - p.x, dy = y - p.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { second = bestD; bestD = d; best = i; }
+    else if (d < second) second = d;
+  }
+  return { best, bestD: Math.sqrt(bestD), second: Math.sqrt(second) };
+}
+function drawGranule(now, xy) {
+  ensureGranule();
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+
+  // zoom: view spans `span` granule-units (granule pitch ~ 1/9 of the seed
+  // grid, taken to represent ~1000km) shrinking from ~4 granules wide to
+  // well under one as xy.y increases
+  const focus = granPts.reduce((a, b) => b.field > a.field ? b : a, granPts[0]);
+  const span = Math.pow(10, -(0.15 + xy.y * 1.55)); // 0.7 .. ~0.02 (fraction of full field)
+  const cx0 = focus.x - span / 2, cy0 = focus.y - span / 2;
+  const side = Math.min(W, H) * 0.82;
+  const ox = (W - side) / 2, oy = (H - side) / 2 - H * 0.02;
+
+  const revealThresh = 1 - xy.x; // x=1 -> reveal almost all lanes, x=0 -> only the strongest
+
+  const N = 220;
+  const img = ctx.createImageData(N, N);
+  for (let py = 0; py < N; py++) {
+    for (let px = 0; px < N; px++) {
+      const fx = cx0 + (px / N) * span, fy = cy0 + (py / N) * span;
+      const { bestD, second, best } = nearestGranule(fx, fy);
+      const edge = second - bestD; // small near boundary, large at cell center
+      const t = Math.max(0, Math.min(1, edge / (0.05)));
+      const g = granPts[best];
+      const core = 60 + 130 * Math.pow(t, 0.7) + g.field * 25;
+      const p = (py * N + px) * 4;
+      img.data[p] = Math.min(255, core * 1.05);
+      img.data[p + 1] = Math.min(255, core * 0.86);
+      img.data[p + 2] = Math.min(255, core * 0.55);
+      img.data[p + 3] = 255;
+    }
+  }
+  const off = document.createElement('canvas'); off.width = N; off.height = N;
+  off.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, ox, oy, side, side);
+  ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.strokeRect(ox, oy, side, side);
+
+  // swirl glyphs at lane points whose field value exceeds the reveal threshold,
+  // drawn at the true ~1:50 vortex:granule size ratio for the current zoom
+  const vortexFrac = (1 / 50) * (1 / 9); // vortex size relative to the full field, in granule-pitch units
+  const vortexPx = (vortexFrac / span) * side;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(ox, oy, side, side); ctx.clip();
+  let shown = 0;
+  for (const g of granPts) {
+    if (g.field < revealThresh) continue;
+    const gx0 = ox + ((g.x - cx0) / span) * side;
+    const gy0 = oy + ((g.y - cy0) / span) * side;
+    if (gx0 < ox - vortexPx || gx0 > ox + side + vortexPx || gy0 < oy - vortexPx || gy0 > oy + side + vortexPx) continue;
+    shown++;
+    const spin = now * 0.002 + g.field * 20;
+    ctx.strokeStyle = `rgba(255,220,160,${Math.min(1, 0.35 + vortexPx / 30)})`;
+    ctx.lineWidth = Math.max(0.6, vortexPx * 0.08);
+    ctx.beginPath();
+    const turns = 2.2, steps = 28;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const r = t * vortexPx * 0.9;
+      const a = spin + t * turns * TWO_PI;
+      const px = gx0 + Math.cos(a) * r, py = gy0 + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // scale bar: span * 1000km * 9 (span already in "full-field" units; each
+  // granule pitch ~ 1/9 of field ~ 1000km, so field width ~ 9000km)
+  const fieldKm = 9000;
+  const viewKm = span * fieldKm;
+  const barKm = viewKm > 2000 ? 1000 : (viewKm > 200 ? 100 : (viewKm > 20 ? 20 : 5));
+  const barPx = (barKm / viewKm) * side;
+  const by = oy + side + Math.min(W, H) * 0.045;
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ox, by); ctx.lineTo(ox + barPx, by); ctx.stroke();
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.013)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.textAlign = 'left';
+  ctx.fillText(`${barKm} km`, ox, by + Math.min(W, H) * 0.025);
+
+  ctx.font = `${Math.max(9, Math.min(W, H) * 0.014)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.textAlign = 'center';
+  wrapCentered(ctx, 'illustrative scale context, not a simulation — real granules 500–2000km, real vortices ~20km, correctly ratioed here', W / 2, by + Math.min(W, H) * 0.055, W * 0.8, Math.min(W, H) * 0.02);
+
+  updateStats(
+    `view width ≈ ${viewKm >= 1000 ? (viewKm / 1000).toFixed(1) + 'k' : viewKm.toFixed(0)} km · ${shown} vortex site${shown === 1 ? '' : 's'} revealed`,
+    `reveal threshold: field strength > ${(revealThresh * 100).toFixed(0)}th percentile`,
+    'Inouye 4m · 416nm',
+    '20km ≈ a 1€ coin seen from 180km away — Kuridze et al., Nature 2026'
+  );
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'roll') drawRoll(now, xy);
+  else if (m.key === 'threshold') drawThreshold(now, xy);
+  else drawGranule(now, xy);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(x, y) { dragging = true; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+}
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  line1El = document.getElementById('line1');
+  line2El = document.getElementById('line2');
+  mainValEl = document.getElementById('mainVal');
+  mainSubEl = document.getElementById('mainSub');
+  loadingEl = document.getElementById('loading');
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  setTimeout(() => {
+    seedSim(1.4, 3);
+    ensureGranule();
+    loadingEl.style.display = 'none';
+    applyMode(0);
+
+    canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchend', onUp);
+
+    requestAnimationFrame(loop);
+  }, 30);
+}
+init();
+</script>
+</body>
+</html>

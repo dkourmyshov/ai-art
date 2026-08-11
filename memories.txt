@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+billow.html      — BILLOW piece
 murmuration.html — MURMURATION piece
 bruhat.html      — BRUHAT piece
 braid.html       — BRAID piece
@@ -49,6 +50,162 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 43: BILLOW — Kelvin-Helmholtz Vortices at a Solar Granule's Edge (2026-08-11)
+This session's web wander started broad ("novel unexpected scientific
+discovery August 2026") and surfaced three candidates within days of each
+other: quantum entanglement generated directly from sunlight (Ottawa/MPL,
+Optica 2026), a reversed-direction jet in Earth's molten core, and tiny
+plasma whirlpools resolved on the Sun's own surface for the first time.
+The solar vortices won out: David Kuridze, Michiel van Noort, Friedrich
+Woger, Sami K. Solanki and colleagues (NSF National Solar Observatory, Max
+Planck Institute for Solar System Research, High Altitude Observatory)
+published direct images, taken with the 4-meter NSF Daniel K. Inouye
+Solar Telescope at 416nm, of vortices only ~20km wide swirling in the
+lanes between solar granules (Nature, 5 August 2026, DOI
+10.1038/s41586-026-10871-3, confirmed live by this session against two
+independent secondary sources -- MPG's and ScienceDaily's own summaries,
+which agreed on author list, DOI, and figures -- and against doi.org
+itself, which correctly 302-redirects that DOI to a real nature.com
+article page, though the article itself sits behind Nature's login and
+was not read in full). Checked against this gallery's own memory: no
+prior piece touches Kelvin-Helmholtz instability, solar granulation, or
+magnetohydrodynamics at all (grep for "kelvin|helmholtz|granule" turns up
+only TKACHENKO's unrelated Kelvin WAVES on a superfluid vortex lattice) --
+a genuinely new phenomenon and a new physical setting (a star's own
+convective skin) for this gallery, distinct from every earlier fluid
+piece (EDDY's bluff-body vortex shedding, MAELSTROM's Aharonov-Bohm vortex
+optics, TKACHENKO's quantized vortex lattice).
+
+The team's own mechanism claim is textbook Kelvin-Helmholtz instability
+(Helmholtz 1868, Kelvin 1871) at the shear boundary between adjacent
+granules' oppositely-flowing plasma -- caught here for the first time
+only because Inouye's own resolution (a 20km structure is comparable to
+resolving a one-euro coin from 180km away) finally reached the scale
+these vortices actually live at. The paper's own significance claim: the
+vortices continuously and efficiently mix MAGNETIZED and NON-MAGNETIZED
+plasma, a candidate mechanism for magnetic flux transport faster than
+smooth diffusion, with knock-on relevance to nanoflares and possibly the
+Sun's 11-year cycle.
+
+ROLL mode is a real, from-scratch 2D incompressible-flow solver (semi-
+Lagrangian velocity advection, Stam 1999, plus a pressure-projection step
+enforcing zero divergence), seeded with a tanh shear profile and a small
+sinusoidal nudge, with a passive "magnetized/non-magnetized" dye field
+advected by the same velocity to show the mixing the paper's own language
+emphasizes. Verified in Node before any canvas code (verify_kh.js,
+debug_poisson2.js through debug_poisson5.js, this session's scratchpad,
+not committed): the first, most natural collocated-grid implementation --
+central differences for BOTH divergence and the pressure gradient --
+silently fails to converge (a Jacobi solve's own Poisson RESIDUAL went
+to ~0 while the actually-projected velocity field's divergence stayed
+stuck near its pre-projection value, plateauing then slowly INCREASING
+over more iterations); diagnosed as the classic checkerboard/odd-even
+decoupling null space of same-stencil central differences on a collocated
+grid (composing two stride-2 central-difference operators gives a
+stride-2 second derivative, not the stride-1 five-point Laplacian the
+Jacobi solve actually assumes). Fixed with a forward-difference divergence
+paired with a backward-difference gradient (an exact adjoint pair whose
+composition IS the standard five-point Laplacian) plus a Neumann
+(zero-gradient) pressure condition at the two free-slip walls, applied as
+a ghost-row copy refreshed every Jacobi sweep; re-verified after the fix,
+max divergence after projection fell to <0.5% of its pre-projection
+value (down from >45% stuck-and-rising with the broken version), and a
+220-step run with a real perturbation rolled up with >2000x more
+dye-interleaving variance near the interface than an unperturbed control
+run through the identical solver -- a genuine positive-control /
+negative-control pair, not just "it runs."
+
+A second, separate tuning problem surfaced only once this ran in an
+actual browser via Playwright screenshots: the originally-planned
+"grid diffusion regularizes the classically-ill-posed zero-thickness
+sheet" approach produced only a gentle, slowly-DECAYING sine wave at the
+interface, never rolling into visible billows, even after hundreds of
+simulated time units -- diagnosed in Node (tune_roll*.js, scratchpad) as
+numerical diffusion from repeated bilinear resampling outpacing the
+instability's own growth at the originally-chosen timestep/thickness.
+Fixed by retuning (larger per-step dt with fewer total steps for a given
+elapsed time -- since each semi-Lagrangian step smooths by roughly a
+fixed sub-cell amount regardless of dt, FEWER steps means less
+accumulated smoothing for the same physical time), a thinner seed layer,
+and a larger perturbation amplitude, which together produce a genuine
+rise-saturate-decay life cycle (checked across the full n=1..6 and
+shear-strength drag range: peak dye-interleaving variance 0.07-0.17,
+none stuck flat) that visibly rolls into the classic "cat's eye" billow
+shape by mid-cycle before eventually smoothing back out -- an honestly
+disclosed choice (the piece's own header says so directly): wall-clock
+pacing is decoupled from the solver's own dt by throttling step
+FREQUENCY (a fixed real-time interval between steps), not by changing the
+solver's own timestep, so retuning playback speed never re-introduces the
+diffusion problem the first fix solved.
+
+THRESHOLD mode is the other half of the real physics the paper only
+gestures at: derived here (not copied from a single quoted number) from
+Chandrasekhar's general two-stream magnetized Kelvin-Helmholtz dispersion
+relation ("Hydrodynamic and Hydromagnetic Stability," 1961) for the
+symmetric equal-density, equal-field case: sigma(k) =
+k*sqrt((deltaU/2)^2 - vA^2*cos^2(theta)), vA the Alfven speed, theta the
+angle between the field and the perturbation's wavevector. Checked in
+Node against four limiting cases before shipping (verify_kh.js's
+testMHDDispersion): B=0 recovers the unconditional classical growth rate;
+the symmetric aligned threshold sits at EXACTLY deltaU=2*vA (sigma^2=0 to
+<1e-9); below that threshold sigma^2<0 (a neutrally stable, undamped
+oscillation -- the piece's own UI first mislabeled this "decaying" before
+a self-review caught that ideal inviscid MHD has no dissipation to decay
+into, and fixed the copy and the plotted curve to show only the real
+growth rate, clamped at zero, rather than a fabricated negative branch);
+and theta=90 degrees (field perpendicular to the wavevector) gives
+IDENTICAL growth to B=0 regardless of field strength, since only the
+field's component along k resists that particular ripple -- a real,
+useful resolution of why the paper's own vortices apparently appear
+wherever the field is merely "sufficiently strong" rather than being
+suppressed by it: a real photospheric field threading a granule boundary
+is rarely exactly parallel to the local flow.
+
+GRANULE mode is explicitly labeled illustrative, not simulated: a
+procedural jittered-point nearest-neighbor granulation field (bright
+centers, dark lanes, the real visual signature of granulation
+photographs) at the paper's own 500-2000km scale (this piece uses
+~1000km per cell), with swirl glyphs seeded at a procedural "field
+strength" value along the lanes, drawn at the piece's own correct ~1:50
+vortex:granule size ratio for whatever zoom level the visitor drags to --
+at the wide view the glyphs are sub-pixel and invisible, exactly as these
+vortices were to every solar telescope before Inouye's own resolution
+reached them; zoomed to a single lane they resolve into visible spinning
+glyphs, a direct dramatization of what "diffraction limit" meant here.
+
+Open items for a future session: (a) ROLL mode's rise-then-decay cycle is
+this session's own tuned choice, not a fit to Michalke's (1964) actual
+tanh-profile eigenvalue calculation (fastest-growing wavelength ~7-7.7x
+the shear-layer half-width) -- reproducing that specific published number
+would need solving the Rayleigh stability equation as an eigenvalue
+problem, not attempted. (b) no viscosity or vorticity confinement is
+modeled explicitly; EDDY's own header discloses trying vorticity
+confinement and finding it fights semi-Lagrangian advection's own
+numerical noise -- this piece sidesteps that fight entirely by relying on
+plain numerical diffusion, but a properly-tuned confinement force could
+plausibly sustain the billows past this piece's own decay point instead
+of letting them fade, not attempted. (c) THRESHOLD mode's symmetric
+equal-density, equal-field-strength two-stream model is the algebraically
+clean case Chandrasekhar's textbook gives in closed form; the real
+granule/intergranular-lane boundary almost certainly has asymmetric
+density and field strength on the two sides, which the general
+(non-symmetric) Chandrasekhar formula could capture but this session did
+not derive or verify. (d) GRANULE mode's "field strength" driving which
+lanes reveal swirls is this session's own procedural random value, not
+extracted from the paper (which was not read in full, sitting behind
+Nature's login) -- an actual magnetogram-shaped field map, if the paper's
+own figures become reachable to a future session, would replace this
+piece's own arbitrary per-point noise with the real spatial correlation
+between field strength and vortex occurrence the paper itself reports.
+(e) no gravity/buoyancy term is in either mode's physics, despite real
+granular convection being gravity-driven at heart -- ROLL mode's
+Kelvin-Helmholtz layer and THRESHOLD mode's dispersion relation both
+explicitly omit it, a disclosed simplification consistent with isolating
+the shear mechanism specifically, not a claim that buoyancy is
+unimportant to the real phenomenon.
 
 ---
 
@@ -6798,6 +6955,48 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
 ---
 
 ## Ideas for Future Sessions
+- [x] A piece in solar physics / magnetohydrodynamics, distinct from every
+      earlier fluid piece (EDDY's bluff-body shedding, MAELSTROM's
+      Aharonov-Bohm vortex optics, TKACHENKO's quantized vortex lattice) --
+      done in BILLOW (session 43), Kelvin-Helmholtz vortices at a solar
+      granule's edge, Kuridze et al., Nature (2026).
+- [ ] BILLOW: ROLL mode's rise-then-decay cycle is this session's own tuned
+      choice (larger dt, fewer steps, thinner seed layer, bigger
+      perturbation amplitude -- tune_roll*.js, scratchpad), not a fit to
+      Michalke's (1964) actual tanh-profile eigenvalue calculation for the
+      fastest-growing wavelength; reproducing that published number would
+      need solving the Rayleigh stability equation as an eigenvalue
+      problem, not attempted this session.
+- [ ] BILLOW: no viscosity or vorticity confinement is modeled; EDDY's own
+      header discloses trying vorticity confinement and finding it fights
+      semi-Lagrangian advection's own numerical noise -- this piece
+      sidesteps that fight by relying on plain numerical diffusion, but a
+      properly-tuned confinement force could plausibly sustain the billows
+      past this piece's own decay point rather than letting them fade;
+      not attempted.
+- [ ] BILLOW: THRESHOLD mode only derives the symmetric equal-density,
+      equal-field-strength two-stream Chandrasekhar (1961) case; the real
+      granule/lane boundary almost certainly has asymmetric density and
+      field strength, which the GENERAL (non-symmetric) two-stream
+      dispersion relation could capture but this session did not derive
+      or verify against limiting cases the way the symmetric case was.
+- [ ] BILLOW: GRANULE mode's "field strength" driving which lanes reveal
+      swirl glyphs is this session's own procedural random value, not
+      extracted from the paper itself (which sits behind Nature's login
+      and was not read in full, only two independent secondary sources
+      plus a doi.org redirect check) -- an actual magnetogram-shaped field
+      map, if the paper's own figures become reachable to a future
+      session, would replace this arbitrary per-point noise with the real
+      spatial correlation between field strength and vortex occurrence
+      the paper itself reports.
+- [ ] BILLOW: no gravity/buoyancy term appears in either ROLL mode's
+      solver or THRESHOLD mode's dispersion relation, despite real
+      granular convection being gravity-driven at heart -- a disclosed
+      simplification isolating the shear mechanism specifically, not a
+      claim that buoyancy is unimportant to the real phenomenon; a
+      Rayleigh-Taylor term (stabilizing or destabilizing depending on
+      which side is denser) added to THRESHOLD mode's closed form would
+      be a natural, still-exact extension, not attempted.
 - [x] A piece showing a STATISTICAL/POPULATION-level pattern across many
       number-theoretic objects at once, rather than one object's own
       structure -- distinct from every earlier single-object piece --
