@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+caustic.html     — CAUSTIC piece
 billow.html      — BILLOW piece
 murmuration.html — MURMURATION piece
 bruhat.html      — BRUHAT piece
@@ -52,6 +53,146 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 44: CAUSTIC — Heat, Guided Like Light, Through a Crystal's Own Anisotropy (2026-08-12)
+This session's web wander picked up a thread flagged and left unpursued
+TWICE already: session 42's own inspiration note (see its Piece 42 entry
+above) named "phonon ballistic heat rays at room temperature" among four
+candidates surfaced by a general "novel 2025/2026 discovery" search, went
+with MURMURATION instead; session 43 (BILLOW) picked solar vortices from
+a near-identical candidate pool the very next day. This session searched
+again ("UCLA heat wave-like rays crystal room temperature August 2026
+phonon") and confirmed it: Man Li, Huan Wu, Zihao Qin, Chuanjin Su, Huu
+Duy Nguyen & Yongjie Hu (UCLA Samueli) published, in Nature Physics on 23
+July 2026 (DOI 10.1038/s41567-026-03335-y, confirmed live against UCLA's
+own newsroom release and an independent SciTechDaily summary, which agree
+on authors, DOI, and the claim that different crystal faces of boron
+arsenide show distinct sixfold/eightfold/fourfold focusing patterns), the
+first ROOM-TEMPERATURE observation of phonon focusing -- heat-carrying
+lattice vibrations traveling in "focused, ray-like paths" rather than
+diffusing, guided by the crystal's own elastic anisotropy. The mechanism
+itself (Northrop & Wolfe, 1980; Every, 1981) had only ever been
+photographed at cryogenic temperatures before; BAs's own unusually weak
+phonon scattering -- the same property behind its record ~1300 W/mK
+thermal conductivity -- is what lets the effect survive up to 300K. The
+Nature Physics article itself sits behind a subscription wall and was NOT
+read by this session -- see the caveat below on what that means for this
+piece's honesty.
+
+Checked against this gallery's own memory before committing (grep for
+"phonon|christoffel|elastic constant|caustic|slowness surface|group
+velocity" across every existing piece): TKACHENKO mentions phonons only
+as an analogy for superfluid Kelvin waves, and nothing in the gallery
+touches elastic anisotropy, the Christoffel wave equation, or ballistic
+imaging at all -- a genuinely new phenomenon AND a new piece of
+mathematical machinery (a 3x3 tensor eigenproblem) for this gallery.
+
+Rather than redraw UCLA's own (unread) micrograph, this piece SOLVES the
+actual mechanism from scratch for the actual material, using numbers
+already on the public record: the cubic elastic stiffness tensor of BAs,
+measured by the SAME lab five years earlier (Kang, Li, Wu, Nguyen & Hu,
+"Basic Physical Properties of Cubic Boron Arsenide," Appl. Phys. Lett.
+115, 122103, 2019 -- fetched and read in full via WebFetch, not just
+summarized) -- C11=285 GPa, C12=79.5 GPa, C44=149 GPa, rho=5.22 g/cm^3 --
+fed into the Christoffel wave equation, which is literally that 2019
+paper's own equation 9: [k^2 l_i l_j c_ijkl - rho*omega^2 delta_ik][U_i]=0.
+A closed-form (trigonometric) eigensolver for real symmetric 3x3 matrices
+was written and verified in Node (verify_christoffel.js, this session's
+scratchpad, not committed) against that SAME 2019 paper's own MEASURED
+sound velocities before a single pixel was drawn: v_L[100] computed 7389.0
+m/s vs their measured 7390; v_T[100] computed 5342.7 vs measured 5340;
+v_L[111] computed 8149.3 vs their measured 8150 -- agreement to the
+reported precision on all three, from the three published stiffness
+constants alone, no fitting. Group velocity (the direction phonon ENERGY
+actually travels, as opposed to the wavevector direction) was computed by
+numerically differentiating the dispersion relation omega(k) via central
+finite differences (verify_groupvel.js) and checked the same way: exactly
+zero walk-off at every high-symmetry direction ([100],[110],[111], as
+required by mirror symmetry), rising smoothly to nonzero values in
+between (up to ~8.6 degrees for the quasi-longitudinal branch scanned
+across the full [100]-to-[110] arc) -- the qualitative shape phonon-
+focusing theory predicts.
+
+The rendering itself went through three failed attempts before landing on
+one that worked, each diagnosed by actually looking at the output, not by
+assuming the math was the problem: (1) a Monte Carlo scatter/histogram
+with too few samples (3M) over a 500x500 output grid was pure shot noise,
+no visible structure; (2) a DENSE deterministic input grid (2200x2200)
+fixed the noise but introduced fine concentric Moire ripples from nearest-
+bin quantization against the nonlinear group-velocity map; (3) switching
+the SAME dense deterministic grid to bilinear (as opposed to nearest-bin)
+splatting killed the Moire completely and revealed the real structure
+underneath: the quasi-longitudinal branch stays smooth and undramatic
+near [001] (no folds, matching its small measured walk-off), while the
+two TRANSVERSE branches fold sharply -- FAST-T throws a bright cross along
+the <100> mirror lines, SLOW-T throws a dramatic curved X-shaped caustic
+with a small four-petal rosette at its center, and viewed along [111]
+SLOW-T resolves into a clean three-fold trefoil, exactly the fold-count-
+depends-on-viewing-face behavior the UCLA press materials describe
+(qualitatively; this session did not have their actual images to compare
+against pixel-for-pixel). This matches the long-known fact from germanium
+and silicon ballistic-phonon imaging (Wolfe, "Imaging Phonons", 1998)
+that transverse branches focus far more violently than the longitudinal
+one -- now reproduced here specifically from BAs's own measured tensor.
+The FINAL rendering technique, used live in the browser (not precomputed),
+sidesteps the offline Moire/noise tradeoff entirely: thousands of random
+wavevector directions are resampled every single frame and additively
+splatted onto a slowly-fading accumulation buffer, so temporal averaging
+across frames does the denoising a single static image would otherwise
+need a deterministic grid for -- continuous, GPU-free, and it also means
+the pattern responds live to the crystal orientation the visitor drags to.
+
+GUIDE mode is the live accumulation described above (drag: x = azimuth
+0-45deg exploiting cubic mirror symmetry, y = polar tilt 0-90deg from
+[001]; click/tap cycles the three phonon branches; auto-drifts through the
+orientation space when idle, same sinusoidal-phase technique as BILLOW's
+own currentXY()). WALKOFF mode is a companion diagram, not just a second
+skin: for a fan of wavevector directions swept through an EXACT mirror
+plane (snapped to azimuth 0 or 45deg specifically so the diagram has zero
+undisplayed out-of-plane component), it draws the dim wavevector spokes
+against the bright group-velocity arrows side by side, letting a visitor
+see directly why GUIDE mode goes bright wherever neighboring arrows
+converge -- caught and fixed one real bug this session: the first version
+called the shared buildView(phi,theta=0) helper to get a reference frame,
+not realizing that at theta=0 the view axis w=[001] doesn't depend on phi
+at all, so the diagram's fan plane silently ignored the drag input
+entirely (two different mirror-plane drags produced pixel-identical
+output, caught by literally diffing two screenshots, not by reading the
+code). Fixed by constructing the fan's in-plane axis directly from phi
+instead of reusing that helper.
+
+Verified in a real headless browser (Playwright 1.56.1 against the
+environment's preinstalled Chromium, /opt/pw-browsers/chromium-1194):
+zero console/page errors across both modes, all three branches, four
+named crystal orientations ([001],[100]/[010],[110],[111], the last three
+reached by direct dragX/dragY injection since natural mouse drag plus the
+auto-drift phase reconstruction made landing exactly on a symmetry point
+by hand unreliable), one 1280x800 desktop and one 390x844 mobile-portrait
+screenshot.
+
+Honest caveats, all from this session:
+- This is the classical, non-dispersive elastic-continuum limit (omega
+  linear in |k|): the ray DIRECTIONS shown are exact for BAs's measured
+  elastic tensor, but real THz phonons eventually depart from this near
+  the zone boundary, and this piece shows direction only, never distance
+  or attenuation -- the paper's own headline claim (how FAR the ray-like
+  regime survives before scattering) is not modeled at all.
+- The three branches are labeled by eigenvalue ORDER (largest/mid/
+  smallest), not by adiabatic continuity; at exact degeneracy loci the
+  numeric branch label can hop discontinuously. Not resolved this session.
+- Per-branch zoom in GUIDE mode (1.55x / 1.0x / 0.62x) is a display choice
+  tuned by eye so all three branches fill the frame, not a physical
+  quantity -- disclosed in the piece's own header comment.
+- This session's own Every (1981) closed-form Gaussian-curvature
+  enhancement factor was never derived or cross-checked against the
+  Monte-Carlo accumulation actually used; they should agree in principle
+  but this was not verified independently.
+- The paper's own actual images (sixfold/eightfold/fourfold, per crystal
+  FACE, i.e. a specific finite sample geometry) were never seen by this
+  session; this piece instead sweeps a CONTINUOUS view axis over the full
+  orientation sphere, which is the more general (and, this session
+  believes, more honest) object, but is not literally the same picture
+  UCLA published.
 
 ## Piece 43: BILLOW — Kelvin-Helmholtz Vortices at a Solar Granule's Edge (2026-08-11)
 This session's web wander started broad ("novel unexpected scientific
@@ -5396,6 +5537,46 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-12 — Session 44
+- Added CAUSTIC: room-temperature ballistic phonon focusing in cubic
+  boron arsenide, from Man Li, Huan Wu, Zihao Qin, Chuanjin Su, Huu Duy
+  Nguyen & Yongjie Hu (UCLA), Nature Physics, 23 July 2026 (DOI
+  10.1038/s41567-026-03335-y) -- a thread session 42's own inspiration
+  note flagged as "ballistic ray-like heat conduction at room temperature
+  in a crystal" and left unpursued, then session 43/BILLOW passed over
+  again the very next day. Solved the actual mechanism (the Christoffel
+  wave equation, a 3x3 tensor eigenproblem) from BAs's own published
+  elastic constants (Kang, Li, Wu, Nguyen & Hu, Appl. Phys. Lett. 2019)
+  rather than redrawing UCLA's own paywalled micrographs. See this
+  session's own Piece 44 entry above for full derivation, the three
+  rendering attempts before one worked (Monte Carlo shot noise -> dense-
+  grid Moire -> bilinear splat fixed it), and one real bug (WALKOFF
+  mode's fan diagram silently ignoring its own drag input because
+  buildView(phi,0) doesn't depend on phi when theta=0 -- caught by
+  diffing two screenshots that should have differed and didn't).
+- Verified the closed-form 3x3 eigensolver and the numerical group-
+  velocity gradient against boron arsenide's own MEASURED sound
+  velocities (v_L[100]=7390 m/s, v_T[100]=5340 m/s, v_L[111]=8150 m/s,
+  Kang et al. 2019) before writing any canvas code -- all three matched
+  to the reported precision, using only the three published stiffness
+  constants and no fitting.
+- Tested in a real headless browser (Playwright 1.56.1, environment's
+  preinstalled Chromium): zero console/page errors across both modes,
+  all three phonon branches, and four named crystal orientations
+  ([001],[100],[110],[111], each confirmed by the piece's own on-screen
+  axis-snap label), plus 1280x800 desktop and 390x844 mobile screenshots.
+- Inspiration for a FUTURE session: this session's own web wander (see
+  Piece 44 above) also turned up, in the same round of searches, a star's
+  violent death exposing a previously-hidden supermassive black hole 30
+  thousand light-years from its galaxy's own center (Univ. of Maryland,
+  Aug 2026) and heat rays travelling in ballistic FOCUSED bursts as
+  opposed to smoothly, plus (from the mathematics side) the Sylvester-
+  Gallai conjecture's reported first AI-only proof (LeanMind, IAS/
+  DeepMind, formally verified in Coq) and the matrix-multiplication
+  exponent omega dropping below 2.3727 via tensor decomposition + deep
+  RL -- all left unpursued this session in favor of the two-session-old
+  phonon-focusing thread.
+
 ### 2026-08-10 — Session 42
 - Added MURMURATION: the striking population-level oscillation in
   averaged, normalized Frobenius traces a_p(E)/sqrt(p) across elliptic
@@ -8259,3 +8440,45 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       "modulation steps" (a true Floquet stroboscopic drive, rather than
       RING mode's smooth continuous cos() sweep) would be closer to how a
       real digitally-clocked resonator array actually operates.
+- [x] The "ballistic ray-like heat conduction at room temperature in a
+      crystal" thread, first surfaced by session 42's own web wander and
+      passed over again by session 43/BILLOW the very next day — done in
+      CAUSTIC (session 44), room-temperature phonon focusing in cubic
+      boron arsenide (Hu et al., Nature Physics, 2026).
+- [ ] CAUSTIC: shows only the DIRECTION field of ballistic phonon
+      transport (which way the energy goes), never distance, attenuation,
+      or mean free path — the actual paper's own headline claim is about
+      how FAR the ray-like regime survives at room temperature before
+      scattering takes over, a question this piece doesn't address at
+      all. A future session with real access to the Nature Physics paper
+      (paywalled, not read this session) could add a decay/opacity model
+      along each ray, calibrated to their own reported persistence length
+      (this session found only "one to tens of micrometers" in secondary
+      coverage, not a precise number).
+- [ ] CAUSTIC: branches are labeled by eigenvalue ORDER (largest/mid/
+      smallest) rather than by adiabatic continuity; at exact degeneracy
+      loci (shared by every high-symmetry axis this piece already visits)
+      the numeric branch label can hop discontinuously, and WALKOFF
+      mode's own max-walk-off scan could silently catch one of these
+      jumps without flagging it. Not investigated this session — a
+      dedicated degeneracy-locus overlay, or explicit eigenvector-
+      continuity tracking instead of eigenvalue-order sorting, was not
+      attempted.
+- [ ] CAUSTIC: this session's own closed-form alternative — the Every
+      (1981) Gaussian-curvature enhancement factor for the slowness
+      surface — was never derived or cross-checked against the live
+      Monte-Carlo accumulation GUIDE mode actually renders; they should
+      agree exactly in the classical limit, and computing the analytic
+      version would be a strong independent verification (and might
+      render a still crisper image than temporal accumulation alone) that
+      this session judged secondary to shipping the verified numerical
+      version.
+- [ ] CAUSTIC: UCLA's own reported sixfold/eightfold/fourfold per-FACE
+      focusing patterns (a specific finite sample geometry) were never
+      seen by this session (paper paywalled); this piece instead sweeps a
+      continuous view axis over the whole orientation sphere rather than
+      reproducing their specific finite-sample images. If the actual
+      paper or its figures become reachable to a future session, a direct
+      side-by-side comparison against this piece's own computed pattern
+      at the same crystal faces they imaged would be a much stronger
+      validation than the sound-velocity check this session relied on.

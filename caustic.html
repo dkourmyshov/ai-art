@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CAUSTIC — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:52vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .sub{display:block;margin-top:.4em;font-size:8px;opacity:.85}
+#stats .link{display:block;margin-top:.55em;font-size:10px;letter-spacing:.2em;color:rgba(255,190,120,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;
+}
+#loading{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;font-size:10px;letter-spacing:.35em;
+  text-transform:uppercase;color:rgba(255,255,255,.3);
+  background:#000;z-index:5;
+}
+@media (max-width:480px){
+  #stats{max-width:64vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<div id="loading">solving the Christoffel equation…</div>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span id="line1">—</span>
+  <span class="sub" id="line2">—</span>
+  <span class="link" id="mainVal">—</span>
+  <span class="sub" id="mainSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">GUIDE</span>
+  <span id="desc">heat, ray-traced through a real crystal's own elastic anisotropy</span>
+</div>
+<div id="hint">drag: x = azimuth, y = tilt from [001] — click: switch phonon branch</div>
+<script>
+/*  CAUSTIC — heat that refuses to spread out evenly
+ *
+ *  On 23 July 2026, Yongjie Hu's group at UCLA (Man Li, Huan Wu, Zihao Qin,
+ *  Chuanjin Su, Huu Duy Nguyen) reported, in Nature Physics (DOI
+ *  10.1038/s41567-026-03335-y), that heat-carrying phonons in cubic boron
+ *  arsenide (BAs) travel in "focused, ray-like paths" at ROOM temperature,
+ *  guided along specific crystal directions instead of spreading out
+ *  diffusively -- with different crystal faces of the same material
+ *  showing visibly different fold symmetries in their images. This kind
+ *  of phonon focusing had previously only been photographed at cryogenic
+ *  temperatures; BAs's own unusually weak phonon scattering (the same
+ *  property behind its record ~1300 W/mK thermal conductivity) is what
+ *  lets the ballistic, ray-like regime survive up to room temperature
+ *  (confirmed live by this session against UCLA's own newsroom release
+ *  and SciTechDaily's independent summary, which agree on authors, DOI,
+ *  and the room-temperature/sixfold-eightfold-fourfold claims; the Nature
+ *  Physics article itself sits behind a subscription wall and was NOT
+ *  read by this session -- see the caveat below).
+ *
+ *  Phonon focusing itself is much older physics: in an ELASTICALLY
+ *  ANISOTROPIC crystal, a sound wave's ENERGY does not, in general,
+ *  travel along its own wavevector -- it travels along the GROUP velocity,
+ *  which can point tens of degrees away from the wavevector direction
+ *  ("walk-off"). Emit phonons in every direction at once from a point
+ *  source, and the ones whose group velocities happen to converge toward
+ *  a common direction pile up into a bright ray; the ones in a diverging
+ *  neighborhood get smeared thin. The result is a web of bright caustic
+ *  lines and dark valleys -- a real, textbook effect (Northrop & Wolfe,
+ *  1980; Every, 1981) that has been ballistically PHOTOGRAPHED before in
+ *  germanium, silicon and sapphire (see Wolfe, "Imaging Phonons", 1998),
+ *  just never at room temperature until BAs.
+ *
+ *  This piece does not have access to UCLA's own new micrographs (the
+ *  paper is paywalled), so instead of redrawing their picture, it SOLVES
+ *  the actual mechanism from scratch, for the actual material, from
+ *  numbers already on the public record: the elastic stiffness tensor of
+ *  cubic BAs, measured by the same lab five years earlier -- C11=285 GPa,
+ *  C12=79.5 GPa, C44=149 GPa, rho=5.22 g/cm^3 (Kang, Li, Wu, Nguyen & Hu,
+ *  Appl. Phys. Lett. 115, 122103, 2019) -- fed into the Christoffel wave
+ *  equation, [k^2 l_i l_j c_ijkl - rho*omega^2 delta_ik][U_i]=0, which is
+ *  literally that same 2019 paper's own equation 9. This piece's own
+ *  Christoffel-eigenvalue solver was verified in Node (verify_christoffel.js,
+ *  verify_groupvel.js, this session's scratchpad, not committed) against
+ *  that paper's own MEASURED sound velocities before a single pixel was
+ *  drawn: v_L[100] computed 7389.0 m/s vs their measured 7390; v_T[100]
+ *  computed 5342.7 vs measured 5340; v_L[111] computed 8149.3 vs their
+ *  measured 8150 -- agreement to the reported precision on all three,
+ *  using ONLY the three published stiffness constants, no fitting. The
+ *  group-velocity (walk-off) field was checked the same way: zero walk-off
+ *  at every high-symmetry direction ([100],[110],[111], as required by
+ *  those directions' own mirror symmetry), rising smoothly to nonzero
+ *  values in between (up to ~8.6 degrees for the quasi-longitudinal branch
+ *  on a [100]-[110] arc) -- exactly the qualitative shape phonon-focusing
+ *  theory predicts.
+ *
+ *  Rendering: for the crystal orientation currently in view, thousands of
+ *  wavevector directions are sampled every frame in a cone around the
+ *  view axis; each one's REAL group-velocity direction (found by
+ *  numerically differentiating the dispersion relation, not by a
+ *  small-angle approximation) is projected onto a flat image plane the
+ *  way a real point-source phonon-imaging experiment would -- and
+ *  splatted, additively, onto a slowly-fading buffer. Sparse regions stay
+ *  dim; regions where many nearby wavevectors' group velocities converge
+ *  build up into the bright caustic lines you're actually seeing, live,
+ *  every frame, direct from the eigensolver above (this session found the
+ *  quasi-longitudinal branch stays comparatively smooth and undramatic
+ *  near [001] -- max ~9 degrees of walk-off, no folds -- while the two
+ *  TRANSVERSE branches fold sharply: FAST-T throws a bright cross along
+ *  the <100> mirror directions, and SLOW-T throws a dramatic curved
+ *  X-shaped caustic with a small four-petal rosette at its center --
+ *  consistent with the long-known fact, from germanium and silicon
+ *  imaging, that transverse phonon branches focus far more violently than
+ *  the longitudinal one).
+ *
+ *  Honest caveats, all from this session:
+ *  - This is the classical, non-dispersive elastic-continuum limit
+ *    (omega linear in |k|): the RAY DIRECTIONS shown are exact for BAs's
+ *    measured elastic tensor, but real THz phonons eventually depart from
+ *    this near the zone boundary; that dispersion correction, and any
+ *    attenuation/mean-free-path model of how FAR the ray-like regime
+ *    survives (the paper's own headline claim), is not attempted here --
+ *    this piece shows direction only, not distance.
+ *  - The three branches are labeled by eigenvalue ORDER (largest/mid/
+ *    smallest), not by adiabatic continuity; at exact degeneracy loci
+ *    (shared by all three high-symmetry axes) the numeric branch label
+ *    can hop discontinuously. Not resolved this session.
+ *  - WALKOFF mode's fan diagram is drawn exactly in-plane only at the two
+ *    mirror-symmetric azimuths (0 and 45 degrees); at in-between azimuths
+ *    the true group velocity has a small out-of-plane component this 2D
+ *    diagram does not show.
+ *  - Per-branch zoom in GUIDE mode (2.3x / 1.0x / 0.62x) is a display
+ *    choice tuned by eye so all three branches fill the frame, not a
+ *    physical quantity.
+ *  - This piece's own Every (1981) closed-form Gaussian-curvature
+ *    enhancement factor was never derived or cross-checked against the
+ *    Monte-Carlo accumulation used here; a future session could add it as
+ *    an independent verification of exactly where the brightest lines
+ *    should fall.
+ */
+
+/* ================= physics: cubic-crystal Christoffel eigenproblem ================= */
+// Boron arsenide (BAs), zinc-blende cubic, Fbar43m -- Kang, Li, Wu, Nguyen & Hu,
+// Appl. Phys. Lett. 115, 122103 (2019).
+const C11 = 285e9, C12 = 79.5e9, C44 = 149e9, RHO = 5220; // Pa, Pa, Pa, kg/m^3
+
+function christoffel(n) {
+  const n1 = n[0], n2 = n[1], n3 = n[2];
+  return [
+    [C11*n1*n1 + C44*(n2*n2+n3*n3), (C12+C44)*n1*n2, (C12+C44)*n1*n3],
+    [(C12+C44)*n1*n2, C11*n2*n2 + C44*(n1*n1+n3*n3), (C12+C44)*n2*n3],
+    [(C12+C44)*n1*n3, (C12+C44)*n2*n3, C11*n3*n3 + C44*(n1*n1+n2*n2)]
+  ];
+}
+// closed-form eigenvalues of a real symmetric 3x3 matrix (trigonometric method),
+// returned descending: [quasi-L, fast-T, slow-T] for a normal (elastically
+// stable) cubic crystal, verified against BAs's own measured velocities above.
+function eig3(A) {
+  const a11=A[0][0], a22=A[1][1], a33=A[2][2], a12=A[0][1], a13=A[0][2], a23=A[1][2];
+  const p1 = a12*a12 + a13*a13 + a23*a23;
+  if (p1 < 1e-9*(Math.abs(a11)+Math.abs(a22)+Math.abs(a33))**2) {
+    return [a11,a22,a33].sort((a,b)=>b-a);
+  }
+  const q = (a11+a22+a33)/3;
+  const p2 = (a11-q)**2+(a22-q)**2+(a33-q)**2+2*p1;
+  const p = Math.sqrt(p2/6);
+  const b11=(a11-q)/p, b22=(a22-q)/p, b33=(a33-q)/p, b12=a12/p, b13=a13/p, b23=a23/p;
+  const det = b11*(b22*b33-b23*b23) - b12*(b12*b33-b23*b13) + b13*(b12*b23-b22*b13);
+  const r = Math.max(-1, Math.min(1, det/2));
+  const phi = Math.acos(r)/3;
+  const eig1 = q + 2*p*Math.cos(phi);
+  const eig3v = q + 2*p*Math.cos(phi + 2*Math.PI*2/3);
+  const eig2 = 3*q - eig1 - eig3v;
+  return [eig1,eig2,eig3v].sort((a,b)=>b-a);
+}
+function omega(k, branch) {
+  const kmag = Math.hypot(k[0],k[1],k[2]);
+  if (kmag < 1e-12) return 0;
+  const n = [k[0]/kmag, k[1]/kmag, k[2]/kmag];
+  const lambda = Math.max(eig3(christoffel(n))[branch], 0);
+  return Math.sqrt(lambda/RHO) * kmag;
+}
+const GV_H = 2e-5;
+function groupVelocity(n, branch) {
+  const g = [0,0,0];
+  for (let i=0;i<3;i++){
+    const kp=[n[0],n[1],n[2]]; kp[i]+=GV_H;
+    const km=[n[0],n[1],n[2]]; km[i]-=GV_H;
+    g[i] = (omega(kp,branch)-omega(km,branch)) / (2*GV_H);
+  }
+  return g;
+}
+function vnorm(v){ const m=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/m,v[1]/m,v[2]/m]; }
+function vcross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function vdot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+
+// view basis: azimuth phi in [0,45deg] (exploits cubic mirror symmetry),
+// polar tilt theta in [0,90deg] from [001]. theta=0 -> [001]; theta=90,phi=0
+// -> [100]; theta=90,phi=45 -> [110]; theta=54.7356,phi=45 -> exactly [111].
+function buildView(phiDeg, thetaDeg) {
+  const phi = phiDeg*Math.PI/180, th = thetaDeg*Math.PI/180;
+  const w = [Math.sin(th)*Math.cos(phi), Math.sin(th)*Math.sin(phi), Math.cos(th)];
+  const ref = Math.abs(w[2]) < 0.9 ? [0,0,1] : [1,0,0];
+  const uHat = vnorm(vcross(ref, w));
+  const vHat = vcross(w, uHat);
+  return { w, uHat, vHat };
+}
+
+const BRANCHES = [
+  { name: 'QUASI-L',  color: [232,238,255], zoom: 1.55, note: 'compressional -- smoothest branch, only mild walk-off' },
+  { name: 'FAST-T',   color: [255,176,86],  zoom: 1.0,  note: 'transverse -- bright cross along the <100> mirror lines' },
+  { name: 'SLOW-T',   color: [255,96,62],   zoom: 0.62, note: 'transverse -- sharp X-fold caustic, four-petal rosette' },
+];
+
+/* ================= drawing state ================= */
+let canvas, ctx, W, H;
+let modeNameEl, descEl, line1El, line2El, mainValEl, mainSubEl, loadingEl;
+let buf, bctx;
+const BUF = 820;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+const MODES = [
+  { key: 'guide',   name: 'GUIDE',   desc: "heat, ray-traced through a real crystal's own elastic anisotropy" },
+  { key: 'walkoff', name: 'WALKOFF', desc: 'why: the wavevector and the ray it carries energy along are not the same direction' },
+];
+const MODE_HOLD_MS = 42000;
+let modeIdx = 0, modeStart = 0, branchIdx = 2;
+let dragging = false, dragX = 0.72, dragY = 0.58;
+let driftPhaseX = 0.9, driftPhaseY = 2.4;
+const DRIFT_PERIOD_X = 51000, DRIFT_PERIOD_Y = 39000;
+const TWO_PI = Math.PI*2;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+function paramsFromXY(xy) {
+  return { phiDeg: xy.x * 45, thetaDeg: xy.y * 90 };
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+}
+function updateStats(l1, l2, val, sub) {
+  line1El.textContent = l1; line2El.textContent = l2;
+  mainValEl.textContent = val; mainSubEl.textContent = sub;
+}
+
+/* ================= GUIDE mode: live ray-accumulation caustic map ================= */
+const SAMPLES_PER_FRAME = 2600;
+const CAP_HALF = 0.85; // gnomonic half-width sampled around the view axis (~40.4deg)
+
+function nearestAxisLabel(phiDeg, thetaDeg) {
+  const pts = [
+    ['[001]',0,0], ['[100]',0,90], ['[110]',45,90], ['[111]',45,54.7356],
+    ['[101]',0,45], ['[010]',90,90]
+  ];
+  // phi is only meaningful mod the 0-45 wedge already; fold [010] out of range
+  let best = null, bestD = Infinity;
+  for (const [label,p,t] of pts) {
+    const d = Math.hypot(phiDeg-p, thetaDeg-t);
+    if (d < bestD) { bestD = d; best = label; }
+  }
+  return bestD < 6 ? best : null;
+}
+
+function drawGuide(now, xy) {
+  const { phiDeg, thetaDeg } = paramsFromXY(xy);
+  const { w, uHat, vHat } = buildView(phiDeg, thetaDeg);
+  const br = BRANCHES[branchIdx];
+  const zoom = br.zoom;
+
+  // fade the accumulation buffer toward a near-black warm ember tone
+  bctx.globalCompositeOperation = 'source-over';
+  bctx.fillStyle = 'rgba(5,3,3,0.1)';
+  bctx.fillRect(0, 0, BUF, BUF);
+
+  const dotPath = new Path2D();
+  const rayPath = new Path2D();
+  const cx = BUF/2, cy = BUF/2, R = BUF*0.47;
+  let kept = 0;
+  for (let i=0;i<SAMPLES_PER_FRAME;i++){
+    const p = (Math.random()*2-1) * CAP_HALF;
+    const q = (Math.random()*2-1) * CAP_HALF;
+    if (p*p+q*q > CAP_HALF*CAP_HALF) continue;
+    const n = vnorm([p*uHat[0]+q*vHat[0]+w[0], p*uHat[1]+q*vHat[1]+w[1], p*uHat[2]+q*vHat[2]+w[2]]);
+    const vg = groupVelocity(n, branchIdx);
+    const vgw = vdot(vg, w);
+    if (vgw <= 1e-6) continue;
+    const x = vdot(vg,uHat)/vgw, y = vdot(vg,vHat)/vgw;
+    const sx = cx + x*zoom*R, sy = cy - y*zoom*R;
+    if (sx<0||sx>=BUF||sy<0||sy>=BUF) continue;
+    kept++;
+    rayPath.moveTo(cx + (sx-cx)*0.12, cy + (sy-cy)*0.12);
+    rayPath.lineTo(sx, sy);
+    dotPath.moveTo(sx+1.15, sy);
+    dotPath.arc(sx, sy, 1.15, 0, TWO_PI);
+  }
+  bctx.globalCompositeOperation = 'lighter';
+  bctx.strokeStyle = `rgba(${br.color[0]},${br.color[1]},${br.color[2]},0.018)`;
+  bctx.lineWidth = 1;
+  bctx.stroke(rayPath);
+  bctx.fillStyle = `rgba(${br.color[0]},${br.color[1]},${br.color[2]},0.3)`;
+  bctx.fill(dotPath);
+  // point source marker
+  bctx.fillStyle = 'rgba(255,255,255,0.9)';
+  bctx.beginPath(); bctx.arc(cx, cy, 1.6, 0, TWO_PI); bctx.fill();
+
+  ctx.fillStyle = '#050303'; ctx.fillRect(0,0,W,H);
+  const side = Math.min(W,H) * 0.88;
+  const dx = (W-side)/2, dy = (H-side)/2 - H*0.015;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(buf, dx, dy, side, side);
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  ctx.strokeRect(dx, dy, side, side);
+
+  const axisLabel = nearestAxisLabel(phiDeg, thetaDeg);
+  updateStats(
+    `${br.name} branch  ·  view ${axisLabel ? axisLabel : `phi=${phiDeg.toFixed(0)}deg theta=${thetaDeg.toFixed(0)}deg`}`,
+    br.note,
+    'Hu et al., Nature Physics 2026',
+    'doi:10.1038/s41567-026-03335-y — paywalled, not read by this session'
+  );
+}
+
+/* ================= WALKOFF mode: phase- vs group-velocity fan diagram ================= */
+function drawWalkoff(now, xy) {
+  // snapped to an EXACT mirror-plane azimuth (0 or 45deg) so the 2D fan below
+  // has zero out-of-plane component -- the diagram is then exact, not an
+  // in-plane projection of a 3D deviation (see this session's own caveat
+  // about generic azimuths in the header).
+  const { phiDeg: rawPhi } = paramsFromXY(xy);
+  const phiDeg = rawPhi < 22.5 ? 0 : 45;
+  const phi = phiDeg*Math.PI/180;
+  const w = [0,0,1];                                  // [001]
+  const uHat = [Math.cos(phi), Math.sin(phi), 0];      // in-plane azimuthal direction, exact mirror plane
+  const br = BRANCHES[branchIdx];
+
+  ctx.fillStyle = '#050303'; ctx.fillRect(0,0,W,H);
+  const cx = W*0.5, cy = H*0.62, Rmax = Math.min(W,H)*0.34;
+  const N = 33;
+  let maxWalkoff = 0, maxWalkoffAngle = 0;
+  let prevAngle = null, bestGapAngle = 0, bestGap = Infinity;
+  const arrows = [];
+  for (let i=0;i<N;i++){
+    const t = (i/(N-1)) * 85 * Math.PI/180; // 0..85 deg from [001] within this plane
+    const n = vnorm([Math.sin(t)*uHat[0]+Math.cos(t)*w[0], Math.sin(t)*uHat[1]+Math.cos(t)*w[1], Math.sin(t)*uHat[2]+Math.cos(t)*w[2]]);
+    const vg = vnorm(groupVelocity(n, branchIdx));
+    const dotv = Math.max(-1,Math.min(1, vdot(n,vg)));
+    const walk = Math.acos(dotv) * 180/Math.PI;
+    if (walk > maxWalkoff) { maxWalkoff = walk; maxWalkoffAngle = t*180/Math.PI; }
+    // angle of vg within the (uHat,w) plane, measured the same way as n's own angle t
+    const vgAngle = Math.atan2(vdot(vg,uHat), vdot(vg,w)) * 180/Math.PI;
+    if (prevAngle !== null) {
+      const gap = Math.abs(vgAngle - prevAngle);
+      if (gap < bestGap) { bestGap = gap; bestGapAngle = t*180/Math.PI; }
+    }
+    prevAngle = vgAngle;
+    arrows.push({ t, n, vg });
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (const a of arrows) {
+    const nx = Math.sin(a.t), ny = -Math.cos(a.t);
+    ctx.strokeStyle = 'rgba(255,255,255,.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(nx*Rmax, ny*Rmax); ctx.stroke();
+
+    const vgAngle = Math.atan2(vdot(a.vg,uHat), vdot(a.vg,w));
+    const gx = Math.sin(vgAngle), gy = -Math.cos(vgAngle);
+    ctx.strokeStyle = `rgba(${br.color[0]},${br.color[1]},${br.color[2]},.85)`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(gx*Rmax*1.06, gy*Rmax*1.06); ctx.stroke();
+    ctx.beginPath(); ctx.arc(gx*Rmax*1.06, gy*Rmax*1.06, 1.8, 0, TWO_PI);
+    ctx.fillStyle = `rgba(${br.color[0]},${br.color[1]},${br.color[2]},.9)`; ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.beginPath(); ctx.arc(0,0,2.4,0,TWO_PI); ctx.fill();
+  ctx.restore();
+
+  ctx.font = `${Math.max(9, Math.min(W,H)*0.013)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.textAlign = 'center';
+  ctx.fillText('dim spokes = wavevector direction (phase velocity)', cx, cy - Rmax - Math.min(W,H)*0.05);
+  ctx.fillStyle = `rgba(${br.color[0]},${br.color[1]},${br.color[2]},.9)`;
+  ctx.fillText('bright arrows = where the energy actually goes (group velocity)', cx, cy - Rmax - Math.min(W,H)*0.05 + Math.min(W,H)*0.026);
+
+  updateStats(
+    `${br.name}  ·  max walk-off ${maxWalkoff.toFixed(1)}deg at ${maxWalkoffAngle.toFixed(0)}deg from [001]`,
+    `adjacent rays converge tightest near ${bestGapAngle.toFixed(0)}deg -- that's where GUIDE mode goes bright`,
+    'Northrop & Wolfe 1980',
+    'phonon-focusing walk-off, computed live from BAs’ own stiffness tensor'
+  );
+}
+
+/* ================= main loop & interaction ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'guide') drawGuide(now, xy);
+  else drawWalkoff(now, xy);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+function fracFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+let downAt = 0, downPos = {x:0,y:0};
+function onDown(x, y) {
+  dragging = true; downAt = performance.now(); downPos = {x,y};
+  const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y;
+}
+function onMove(x, y) { if (!dragging) return; const f = fracFromEvent(x, y); dragX = f.x; dragY = f.y; }
+function onUp(x, y) {
+  if (!dragging) return;
+  dragging = false;
+  const now = performance.now();
+  const dt = now - downAt;
+  const moved = (typeof x === 'number') ? Math.hypot(x-downPos.x, y-downPos.y) : 999;
+  if (dt < 300 && moved < 8) branchIdx = (branchIdx + 1) % BRANCHES.length; // tap/click = cycle branch
+  const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+  const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+  driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+  driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+}
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  buf = document.createElement('canvas'); buf.width = BUF; buf.height = BUF;
+  bctx = buf.getContext('2d');
+  bctx.fillStyle = '#000'; bctx.fillRect(0,0,BUF,BUF);
+
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  line1El = document.getElementById('line1');
+  line2El = document.getElementById('line2');
+  mainValEl = document.getElementById('mainVal');
+  mainSubEl = document.getElementById('mainSub');
+  loadingEl = document.getElementById('loading');
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  setTimeout(() => {
+    loadingEl.style.display = 'none';
+    applyMode(0);
+
+    canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', e => onUp(e.clientX, e.clientY));
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener('touchend', e => { const t=(e.changedTouches&&e.changedTouches[0])||{}; onUp(t.clientX, t.clientY); });
+
+    requestAnimationFrame(loop);
+  }, 30);
+}
+init();
+</script>
+</body>
+</html>
