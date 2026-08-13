@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOOM — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:52vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.14em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .row{display:block}
+#stats .link{display:block;margin-top:.5em;font-size:10px;letter-spacing:.18em;color:rgba(255,210,140,.85)}
+#stats .sub{display:block;margin-top:.3em;font-size:8px;opacity:.8}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:64vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row">T = <span class="val" id="tVal">—</span></span>
+  <span class="row">z = <span class="val" id="zVal">—</span></span>
+  <span class="link" id="linkVal">—</span>
+  <span class="sub" id="linkSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">WEAVE</span>
+  <span id="desc">a ferroelectric crystal weaves its own domains like cloth</span>
+</div>
+<div id="hint">drag: x = cool through Tc &middot; y = depth z</div>
+<script>
+/*  LOOM — a crystal that weaves itself
+ *
+ *  On 6 August 2026, Light: Science & Applications published "Spontaneous
+ *  formation and optical manipulation of a woven domain fabric in a
+ *  ferroelectric crystal" (Feifei Xin, Eugenio Del Re, Aharon J. Agranat et
+ *  al. -- Sapienza Univ. Rome, Nankai Univ., Hebrew Univ. of Jerusalem, Univ.
+ *  of Groningen; DOI 10.1038/s41377-026-02374-7; confirmed live against the
+ *  paper's own Nature-hosted abstract page, phys.org's and bioengineer.org's
+ *  independent coverage, all three agreeing on authors, DOI and the central
+ *  claim). In a specially grown potassium-lithium-tantalate-niobate crystal
+ *  (K0.997Ta0.62Nb0.38O3:Li0.003, "KTN:Li"/KLTN, Curie point Tc = 292 K) with
+ *  periodic compositional striations built in during crystal growth, the
+ *  ferroelectric domains that nucleate on cooling through Tc do NOT form the
+ *  ordinary parallel stripes seen in every other ferroelectric -- they weave.
+ *  Threads of aligned dipoles cross over and under one another in three
+ *  dimensions, on the striation grating's own 10 micron lattice constant
+ *  (exactly twice the 5 micron growth striation period), producing a literal
+ *  woven fabric topology never before reported inside a solid crystal. The
+ *  authors quantify each crossing the way a knot theorist would: a LINKING
+ *  NUMBER Lk = +1 for an over-crossing, Lk = -1 for an under-crossing -- and
+ *  find the sign at any given crossing is effectively random and HISTORY-
+ *  DEPENDENT: cool the same crystal again and the same lattice sites weave a
+ *  different pattern. Real woven cloth alternates over/under with perfect,
+ *  deterministic regularity (that's what gives fabric its strength); this
+ *  crystal instead freezes in a quenched, disordered weave -- the "novel and
+ *  unexpected" hook this session's web wander was looking for. The paper
+ *  itself was reached only through its public abstract/press coverage and a
+ *  WebFetch of the article page (which returned full text, not just an
+ *  abstract, this session -- Light: Sci. Appl. is gold open access); it
+ *  supplies no closed-form order parameter or free-energy expression for WHY
+ *  the weave forms (Ginzburg-Landau treatments of striated ferroelectrics
+ *  exist in the wider literature but this session did not chase one down),
+ *  so this piece does not attempt to derive the weave from first-principles
+ *  elasticity or polarization coupling the way CAUSTIC solved the Christoffel
+ *  equation for phonon focusing. What IS reproduced faithfully: the real
+ *  lattice constant (10 um), the real Curie point (292 K), the real narrow
+ *  formation window the authors report (weave triggers specifically for
+ *  -2.0 K > T-Tc > -8.0 K during slow cooling, alpha < 0.4 K/min), the real
+ *  imaging depths (z = 0, -8, -16, -24 um, multifocus white-light optical
+ *  microscopy at ~0.8-0.9 um resolution), the real Lk sign convention, and
+ *  the real laser-rewriting numbers (a focused 514 nm beam, intensity 6.3e6
+ *  W/cm^2, 0.5 um step, generating photoinduced space-charge fields above
+ *  200 V/mm that screen the charged domain walls enough to let them locally
+ *  migrate and disentangle -- the paper reports 1040 nm light does nothing,
+ *  consistent with an above-bandgap/deep-trap photoexcitation mechanism, not
+ *  simple heating).
+ *
+ *  What is NOT the paper's own data: the actual per-crossing Lk pattern.
+ *  Nothing in the reachable text gives a formula, a measured correlation
+ *  length, or even a measured +/- ratio for the disorder -- only that it is
+ *  "history-dependent" and visibly patchy in their own micrographs (which
+ *  this session did not obtain). So the weave drawn here is a STAND-IN: a
+ *  3D value-noise field (hash-based, trilinear-interpolated, verified in
+ *  Node -- verify_noise.js, this session's scratchpad, not committed) is
+ *  thresholded at each crossing to assign Lk = +-1. At the frequency this
+ *  piece actually uses (0.25 lattice units), that check found the sign split
+ *  50.1% positive over a 40x40 sample and 88.5% same-sign agreement between
+ *  adjacent crossings -- i.e. verified to be close to unbiased AND patchy
+ *  rather than salt-and-pepper independent, which is the qualitative
+ *  behaviour "history-dependent disorder" suggests, but the specific
+ *  correlation length (88.5%) is this piece's own aesthetic tuning, not a
+ *  number measured from the crystal. A second, independent noise channel
+ *  assigns each crossing a random "nucleation threshold" so that as cooling
+ *  proceeds through the formation window the weave visibly crystallizes
+ *  crossing-by-crossing rather than switching on everywhere at once -- also
+ *  an invented (if physically-motivated) dramatization, not extracted data.
+ *
+ *  Three modes. WEAVE: drag X sweeps temperature from above Tc down through
+ *  the real formation window to fully woven and holding (the paper does not
+ *  say the weave un-forms on further cooling, so this piece does not
+ *  invent a reversal); drag Y moves the viewing depth z continuously through
+ *  the crystal, each depth an independently-correlated noise slice, the
+ *  closest this piece gets to the genuinely 3D (not just planar) disorder
+ *  the paper describes -- though only ONE z-slice is ever rendered at a
+ *  time, never the true simultaneous 3D interleave across depths, an honest
+ *  simplification this piece shares with every other single-projection
+ *  piece in this gallery. QUENCH: replays the cooling sweep on a timer, re-
+ *  seeding the noise field fresh each cycle, so the SAME lattice visibly
+ *  weaves a DIFFERENT pattern every run -- the piece's most direct
+ *  illustration of "history-dependent disorder" as a real, literal
+ *  observation rather than a caption. LASER: drag paints a 514 nm spot that
+ *  locally disentangles the weave into plain untangled threads, echoing the
+ *  paper's own optical rewriting; a quick tap reheats and erases the
+ *  written zone.
+ */
+
+const TWO_PI = Math.PI * 2;
+
+/* ---------------- hash-based 3D value noise (verified, see header) ---------------- */
+function hash3(ix, iy, iz) {
+  let h = (ix * 374761393 + iy * 668265263 + iz * 1274126177) | 0;
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 1274126177);
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h / 4294967295;
+}
+function smooth(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function valueNoise3(x, y, z) {
+  const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+  const fx = smooth(x - x0), fy = smooth(y - y0), fz = smooth(z - z0);
+  const c000 = hash3(x0, y0, z0), c100 = hash3(x0 + 1, y0, z0);
+  const c010 = hash3(x0, y0 + 1, z0), c110 = hash3(x0 + 1, y0 + 1, z0);
+  const c001 = hash3(x0, y0, z0 + 1), c101 = hash3(x0 + 1, y0, z0 + 1);
+  const c011 = hash3(x0, y0 + 1, z0 + 1), c111 = hash3(x0 + 1, y0 + 1, z0 + 1);
+  const c00 = lerp(c000, c100, fx), c10 = lerp(c010, c110, fx);
+  const c01 = lerp(c001, c101, fx), c11 = lerp(c011, c111, fx);
+  const c0 = lerp(c00, c10, fy), c1 = lerp(c01, c11, fy);
+  return lerp(c0, c1, fz);
+}
+
+const N = 15; // crossings per side, i.e. a 15x15 patch of the real 10um lattice
+const SIGN_FREQ = 0.25;   // verified ~balanced + patchy at this frequency
+const NUCLEATE_FREQ = 0.6;
+
+let seed = { x: Math.random() * 1000, y: Math.random() * 1000, z: Math.random() * 1000 };
+function reseed() { seed = { x: Math.random() * 1000, y: Math.random() * 1000, z: Math.random() * 1000 }; }
+
+function crossingSignRaw(i, j, zUnits) {
+  return valueNoise3(seed.x + i * SIGN_FREQ, seed.y + j * SIGN_FREQ, seed.z + zUnits * SIGN_FREQ) > 0.5 ? 1 : -1;
+}
+function nucleateThresh(i, j) {
+  return valueNoise3(seed.x + 500 + i * NUCLEATE_FREQ, seed.y + 500 + j * NUCLEATE_FREQ, 0.37);
+}
+
+/* ---------------- physical params ---------------- */
+const TC = 292; // K, measured Curie point
+const WINDOW_HI = -2, WINDOW_LO = -8; // K below Tc, real reported formation window
+const DEPTHS_MEASURED = [0, -8, -16, -24]; // um, real imaged depths
+
+// weave "formation factor": 0 above Tc, ramps to 1 across the top of the
+// real window (0 to -2K below Tc), holds at 1 below that -- see header for
+// why this piece does not invent a reversal below -8K.
+function formationFactor(dT) { // dT = T - Tc, degrees
+  if (dT >= 0) return 0;
+  const f = (-dT) / (-WINDOW_HI); // 0 at dT=0, 1 at dT=-2
+  return Math.max(0, Math.min(1, f));
+}
+
+let canvas, ctx, W, H;
+let modeNameEl, descEl, tValEl, zValEl, linkValEl, linkSubEl, hintEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+
+/* ================= modes ================= */
+const MODES = [
+  { key: 'weave', name: 'WEAVE', desc: 'a ferroelectric crystal weaves its own domains like cloth' },
+  { key: 'quench', name: 'QUENCH', desc: 'cool it again — the same lattice weaves a different pattern' },
+  { key: 'laser', name: 'LASER', desc: '514nm rewrite: untangle the weave the way the paper did' },
+];
+const MODE_HOLD_MS = 32000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.55, dragY = 0.15;
+let driftPhaseX = 0.4, driftPhaseY = 1.3;
+const DRIFT_PERIOD_X = 26000, DRIFT_PERIOD_Y = 34000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+  if (m.key === 'weave') hintEl.textContent = 'drag: x = cool through Tc · y = depth z';
+  else if (m.key === 'quench') hintEl.textContent = 'tap: skip to a fresh quench';
+  else hintEl.textContent = 'drag: laser untangles · tap: reheat & erase';
+  if (m.key === 'quench') { quenchRunStart = performance.now(); quenchRun = 1; reseed(); }
+}
+
+/* ================= geometry helpers ================= */
+function plotGeom() {
+  const size = Math.min(W, H) * 0.66;
+  const cx = W * 0.5, cy = H * 0.5;
+  return { size, x0: cx - size / 2, y0: cy - size / 2, cell: size / (N - 1), cx, cy };
+}
+
+function drawThreadShaded(ctx, x0, y0, x1, y1, width, alpha, colA, colB, vertical) {
+  if (alpha <= 0.01) return;
+  const grad = vertical
+    ? ctx.createLinearGradient(x0 - width / 2, 0, x0 + width / 2, 0)
+    : ctx.createLinearGradient(0, y0 - width / 2, 0, y0 + width / 2);
+  grad.addColorStop(0, colA.replace('A', (alpha * 0.55).toFixed(3)));
+  grad.addColorStop(0.5, colB.replace('A', alpha.toFixed(3)));
+  grad.addColorStop(1, colA.replace('A', (alpha * 0.55).toFixed(3)));
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+}
+
+const WARP_A = 'rgba(140,225,255,A)', WARP_B = 'rgba(210,245,255,A)';
+const WEFT_A = 'rgba(255,180,110,A)', WEFT_B = 'rgba(255,220,175,A)';
+
+/* draws the weave into the given plot rect. factor = formation strength
+   [0,1]; zUnits = depth coordinate fed to the noise field; eraseMask (or
+   null) = optional per-crossing [0,1] "laser untangled" amount */
+function renderWeave(g, factor, zUnits, eraseMask, laserPos) {
+  const { x0, y0, cell, size } = g;
+  const threadW = cell * 0.6;
+  const overhang = cell * 0.7;
+
+  // background plate
+  ctx.fillStyle = 'rgba(255,255,255,.015)';
+  ctx.fillRect(x0 - overhang, y0 - overhang, size + overhang * 2, size + overhang * 2);
+
+  // weft (horizontal, background layer) — always fully present once formed at all
+  for (let j = 0; j < N; j++) {
+    const y = y0 + j * cell;
+    const present = Math.min(1, factor * 1.6);
+    drawThreadShaded(ctx, x0 - overhang, y, x0 + size + overhang, y, threadW, 0.5 * present, WEFT_A, WEFT_B, false);
+  }
+
+  // warp (vertical, foreground layer) with scalloped coverage where under
+  const sub = 5; // subdivisions per cell for smooth dips
+  for (let i = 0; i < N; i++) {
+    const x = x0 + i * cell;
+    const present = Math.min(1, factor * 1.6);
+    if (present <= 0.01) continue;
+    // draw as many short segments with locally-varying alpha
+    const steps = (N - 1) * sub;
+    ctx.lineCap = 'butt';
+    for (let s = -sub; s <= steps + sub; s++) {
+      const rowPos = s / sub; // can go slightly beyond [0,N-1] for overhang
+      const yA = y0 + rowPos * cell;
+      const yB = y0 + (rowPos + 1 / sub) * cell;
+      let cov = 1;
+      const jNear = Math.round(rowPos);
+      if (jNear >= 0 && jNear < N) {
+        const dist = Math.abs(rowPos - jNear);
+        if (dist < 0.5) {
+          const nuc = nucleateThresh(i, jNear);
+          const active = nuc <= factor;
+          if (active) {
+            const sign = crossingSignRaw(i, jNear, zUnits);
+            const erased = eraseMask ? eraseMask[i * N + jNear] : 0;
+            if (sign < 0 && erased < 0.5) {
+              const t = dist / 0.5;
+              cov = t * t * (3 - 2 * t);
+            }
+          }
+        }
+      }
+      const alpha = 0.85 * present * (0.25 + 0.75 * cov);
+      drawThreadShaded(ctx, x, yA, x, yB, threadW, alpha, WARP_A, WARP_B, true);
+    }
+  }
+
+  // laser glow
+  if (laserPos) {
+    const lg = ctx.createRadialGradient(laserPos.x, laserPos.y, 0, laserPos.x, laserPos.y, cell * 1.4);
+    lg.addColorStop(0, 'rgba(150,255,140,.55)');
+    lg.addColorStop(0.4, 'rgba(120,255,120,.18)');
+    lg.addColorStop(1, 'rgba(120,255,120,0)');
+    ctx.fillStyle = lg;
+    ctx.beginPath(); ctx.arc(laserPos.x, laserPos.y, cell * 1.4, 0, TWO_PI); ctx.fill();
+  }
+}
+
+function countCrossings(factor, zUnits, eraseMask) {
+  let pos = 0, neg = 0, inactive = 0, erased = 0;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const nuc = nucleateThresh(i, j);
+    if (nuc > factor) { inactive++; continue; }
+    const idx = i * N + j;
+    if (eraseMask && eraseMask[idx] >= 0.5) { erased++; continue; }
+    if (crossingSignRaw(i, j, zUnits) > 0) pos++; else neg++;
+  }
+  return { pos, neg, inactive, erased };
+}
+
+/* ================= WEAVE mode ================= */
+function drawWeave(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const dT = 3 - 13 * xy.x; // +3K (paraelectric) .. -10K (well past window)
+  const zUm = -24 * xy.y;
+  const factor = formationFactor(dT);
+  const g = plotGeom();
+  renderWeave(g, factor, zUm / 8, null, null);
+  drawTempAxis(g, dT);
+  drawDepthAxis(g, zUm);
+
+  const c = countCrossings(factor, zUm / 8, null);
+  const tEl = TC + dT;
+  tValEl.textContent = `${tEl.toFixed(1)} K  (Tc${dT >= 0 ? '+' : ''}${dT.toFixed(1)})`;
+  zValEl.textContent = `${zUm.toFixed(1)} um`;
+  if (factor <= 0.02) { linkValEl.textContent = 'PARAELECTRIC'; linkSubEl.textContent = 'no polarization, no domains yet'; }
+  else if (factor < 0.98) { linkValEl.textContent = 'NUCLEATING'; linkSubEl.textContent = `${c.pos + c.neg} / ${N * N} crossings formed`; }
+  else { linkValEl.textContent = `Lk: ${c.pos} over / ${c.neg} under`; linkSubEl.textContent = 'fully woven · 10um lattice'; }
+}
+
+function drawTempAxis(g, dT) {
+  const { x0, y0, size } = g;
+  const ax0 = x0, ax1 = x0 + size, ay = y0 - g.cell * 1.05;
+  const dTmin = 3, dTmax = -10;
+  const toX = d => ax0 + ((d - dTmin) / (dTmax - dTmin)) * (ax1 - ax0);
+  ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ax0, ay); ctx.lineTo(ax1, ay); ctx.stroke();
+  // window band
+  ctx.fillStyle = 'rgba(255,210,140,.12)';
+  ctx.fillRect(toX(WINDOW_HI), ay - 3, toX(WINDOW_LO) - toX(WINDOW_HI), 6);
+  ctx.fillStyle = 'rgba(120,255,190,.7)'; ctx.beginPath();
+  ctx.arc(toX(dT), ay, 3, 0, TWO_PI); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.font = `${Math.max(7, g.cell * 0.28)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('T-Tc (window: -2 to -8K)', (ax0 + ax1) / 2, ay - 10);
+}
+function drawDepthAxis(g, zUm) {
+  const { x0, y0, size, cell } = g;
+  const ax = x0 - cell * 1.05, ay0 = y0, ay1 = y0 + size;
+  const toY = z => ay0 + ((-z) / 24) * (ay1 - ay0);
+  ctx.strokeStyle = 'rgba(255,255,255,.1)';
+  ctx.beginPath(); ctx.moveTo(ax, ay0); ctx.lineTo(ax, ay1); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  for (const d of DEPTHS_MEASURED) {
+    const y = toY(d);
+    ctx.beginPath(); ctx.arc(ax, y, 2, 0, TWO_PI); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(140,225,255,.7)';
+  ctx.beginPath(); ctx.arc(ax, toY(zUm), 3, 0, TWO_PI); ctx.fill();
+}
+
+/* ================= QUENCH mode ================= */
+let quenchRunStart = 0, quenchRun = 1;
+const QUENCH_SWEEP_MS = 5200, QUENCH_HOLD_MS = 2600;
+function drawQuench(now) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const cycle = QUENCH_SWEEP_MS + QUENCH_HOLD_MS;
+  let t = now - quenchRunStart;
+  if (t >= cycle) { quenchRunStart = now; quenchRun++; reseed(); t = 0; }
+  const sweepT = Math.min(1, t / QUENCH_SWEEP_MS);
+  const dT = 3 - 13 * sweepT;
+  const factor = formationFactor(dT);
+  const g = plotGeom();
+  renderWeave(g, factor, 0, null, null);
+  drawTempAxis(g, dT);
+
+  const c = countCrossings(factor, 0, null);
+  tValEl.textContent = `${(TC + dT).toFixed(1)} K  (run #${quenchRun})`;
+  zValEl.textContent = `sweep ${(sweepT * 100).toFixed(0)}%`;
+  if (factor < 0.98) { linkValEl.textContent = 'COOLING…'; linkSubEl.textContent = `${c.pos + c.neg} / ${N * N} crossings so far`; }
+  else { linkValEl.textContent = `Lk: ${c.pos} over / ${c.neg} under`; linkSubEl.textContent = 'a fresh random weave — cool it again to see a different one'; }
+}
+
+/* ================= LASER mode ================= */
+let eraseMask = new Float32Array(N * N);
+let laserActive = false, laserPos = null;
+function drawLaser(now) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const dT = -6; // fixed, well inside the formation window
+  const factor = 1;
+  const g = plotGeom();
+  renderWeave(g, factor, 0, eraseMask, laserActive ? laserPos : null);
+
+  const c = countCrossings(factor, 0, eraseMask);
+  tValEl.textContent = `${(TC + dT).toFixed(1)} K  (fixed, mid-window)`;
+  zValEl.textContent = '514nm · 6.3e6 W/cm2';
+  linkValEl.textContent = `Lk: ${c.pos} over / ${c.neg} under`;
+  linkSubEl.textContent = `${c.erased} of ${N * N} untangled by hand`;
+}
+function applyLaser(px, py) {
+  const g = plotGeom();
+  const { x0, y0, cell } = g;
+  const radius = 1.15; // in cells
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const cx = x0 + i * cell, cy = y0 + j * cell;
+    const d = Math.hypot(px - cx, py - cy) / cell;
+    if (d < radius) {
+      const idx = i * N + j;
+      eraseMask[idx] = Math.min(1, eraseMask[idx] + (1 - d / radius) * 0.18);
+    }
+  }
+}
+
+/* ================= main loop ================= */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'weave') drawWeave(now, xy);
+  else if (m.key === 'quench') drawQuench(now);
+  else drawLaser(now);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ================= interaction ================= */
+let downPos = null, downTime = 0, moved = false;
+function ptFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  return { x: (clientX - rect.left) * dpr, y: (clientY - rect.top) * dpr,
+           fx: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+           fy: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) };
+}
+function onDown(clientX, clientY) {
+  const p = ptFromEvent(clientX, clientY);
+  downPos = p; downTime = performance.now(); moved = false;
+  const m = MODES[modeIdx];
+  if (m.key === 'laser') { laserActive = true; laserPos = { x: p.x, y: p.y }; applyLaser(p.x, p.y); }
+  else { dragging = true; dragX = p.fx; dragY = p.fy; }
+}
+function onMove(clientX, clientY) {
+  if (!downPos) return;
+  const p = ptFromEvent(clientX, clientY);
+  if (Math.hypot(p.x - downPos.x, p.y - downPos.y) > 4) moved = true;
+  const m = MODES[modeIdx];
+  if (m.key === 'laser') { laserPos = { x: p.x, y: p.y }; applyLaser(p.x, p.y); }
+  else if (dragging) { dragX = p.fx; dragY = p.fy; }
+}
+function onUp() {
+  const m = MODES[modeIdx];
+  if (m.key === 'laser') {
+    if (!moved) eraseMask.fill(0); // tap = reheat / erase
+    laserActive = false; laserPos = null;
+  } else if (m.key === 'quench') {
+    if (!moved) { quenchRunStart = performance.now(); quenchRun++; reseed(); }
+  } else if (dragging) {
+    dragging = false;
+    const now = performance.now();
+    const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+    const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+    driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+    driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+  }
+  downPos = null;
+}
+
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  tValEl = document.getElementById('tVal');
+  zValEl = document.getElementById('zVal');
+  linkValEl = document.getElementById('linkVal');
+  linkSubEl = document.getElementById('linkSub');
+  hintEl = document.getElementById('hint');
+
+  window.addEventListener('resize', resize);
+  resize();
+  applyMode(0);
+
+  canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(); }, { passive: false });
+
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>

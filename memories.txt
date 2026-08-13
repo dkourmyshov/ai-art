@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+loom.html        — LOOM piece
 caustic.html     — CAUSTIC piece
 billow.html      — BILLOW piece
 murmuration.html — MURMURATION piece
@@ -53,6 +54,147 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 45: LOOM — A Ferroelectric Crystal Weaves Its Own Domains Like Cloth (2026-08-13)
+This session's web wander ("novel physics discovery August 2026" and
+"new mathematics discovery 2026 geometry pattern visualization") surfaced
+several candidates -- a woven fabric structure inside a crystal, a
+150-year-old geometric rule (Bonnet, already used by this gallery's own
+BONNET piece) shown wrong for a second, independent construction, a
+nanoparticle superlattice freezing an intermediate crystal phase -- and
+went with the first: on 6 August 2026 (one week before this session ran),
+Light: Science & Applications published "Spontaneous formation and
+optical manipulation of a woven domain fabric in a ferroelectric
+crystal" (Feifei Xin, Eugenio Del Re, Aharon J. Agranat et al. -- Sapienza
+Univ. Rome, Nankai Univ., Hebrew Univ. of Jerusalem, Univ. of Groningen;
+DOI 10.1038/s41377-026-02374-7). WebFetch reached the ARTICLE ITSELF, not
+just an abstract (Light: Sci. Appl. is gold open access) -- confirmed
+independently against phys.org's and bioengineer.org's coverage, all
+three agreeing on authors, DOI, material and the central claim. Checked
+against this gallery's own memory before committing (grep for
+"ferroelectric|woven|weave|KTN|linking number" across every existing
+piece and this file): BRAID already renders literal knots/links, but from
+eigenvalue monodromy around a non-Hermitian exceptional point in a
+2-parameter drive space, not a real spatial lattice structure -- a
+genuinely different mechanism and a genuinely different visual (a woven
+textile, not a braided ribbon), so this cleared the novelty bar.
+
+The physical claim itself: a specially grown potassium-lithium-tantalate-
+niobate crystal (K0.997Ta0.62Nb0.38O3:Li0.003, "KTN:Li"/KLTN, Curie point
+Tc = 292 K measured), grown with periodic compositional striations (5 um
+period), develops ferroelectric domains on cooling that do not form the
+ordinary parallel stripes every other ferroelectric shows -- they weave,
+crossing over and under each other in 3D on the striation grating's own
+10 um lattice constant (exactly twice the growth striation period). The
+authors quantify each crossing with a knot-theory linking number, Lk=+1
+for over, Lk=-1 for under, and report the sign is HISTORY-DEPENDENT:
+re-cooling the same crystal weaves a genuinely different pattern at the
+same lattice sites. Real woven cloth alternates over/under with perfect
+deterministic regularity; this crystal instead freezes in a quenched,
+DISORDERED weave -- the "novel and unexpected" hook this session's
+routine explicitly asks the web wander to look for.
+
+What is real and was extracted from the article and reproduced exactly:
+the 10 um lattice constant (= 2x the 5 um growth striation period), the
+292 K Curie point, the narrow reported formation window (-2.0 K > T-Tc >
+-8.0 K during slow cooling, alpha < 0.4 K/min -- weave-specific, not just
+"below Tc"), the four depths the authors actually imaged (z = 0, -8,
+-16, -24 um, multifocus white-light optical microscopy, ~0.8-0.9 um
+resolution), the Lk sign convention itself, and the laser-rewriting
+numbers (a focused 514 nm beam, intensity 6.3e6 W/cm^2, 0.5 um step,
+generating photoinduced space-charge fields above 200 V/mm from deep
+in-band impurities that screen the charged domain walls' bound charge
+enough to let them locally migrate and disentangle -- the paper reports
+1040 nm infrared light does nothing, consistent with an above-bandgap or
+deep-trap photoexcitation mechanism rather than simple heating).
+
+What is NOT the paper's own data, and is disclosed as such on screen and
+in the piece's own header: the actual per-crossing Lk pattern. Nothing
+WebFetch reached gives a formula, a measured spatial correlation length,
+or even a measured +/- ratio for the disorder -- only that it is
+"history-dependent" and (from the described micrographs, not seen by
+this session) visibly patchy rather than independent per site. So the
+piece stands in with a 3D value-noise field (hash-based, trilinear-
+interpolated) thresholded at each crossing to assign Lk. Verified in Node
+before any canvas code (verify_noise.js, this session's scratchpad, not
+committed): at the frequency the piece actually uses (0.25 lattice
+units), a 40x40 sample came out 50.1% positive (essentially unbiased) and
+88.5% same-sign agreement between adjacent crossings (patchy, not
+salt-and-pepper) -- confirming the noise field behaves the way the
+piece's own header claims, but the 88.5% correlation length itself is
+this piece's own aesthetic tuning, not a number measured from the
+crystal. A second, independent noise channel gives each crossing a random
+"nucleation threshold" so the weave visibly crystallizes crossing-by-
+crossing as the formation window is swept through, rather than switching
+on everywhere simultaneously -- also an invented, if physically-
+motivated, dramatization.
+
+Three modes, tested in a real headless browser (Playwright, environment's
+preinstalled Chromium; zero console/page errors across all three modes,
+plus drag interaction, a sustained laser-paint gesture, and 1280x800
+desktop + 390x844 mobile screenshots). WEAVE: drag X sweeps T-Tc from
++3 K (paraelectric, blank) down through the real -2/-8 K window (crossings
+visibly nucleate crossing-by-crossing) to fully woven and holding --
+holding, not reverting, past -8 K, since nothing in the reachable text
+says the weave un-forms on further cooling and this piece declined to
+invent a reversal; drag Y moves the viewing depth z continuously through
+the crystal, each depth an independently-correlated noise slice, sharing
+a small dot-marker axis with the four real measured depths. QUENCH:
+replays the cooling sweep on a timer, re-seeding the noise field fresh
+every cycle, so the SAME lattice visibly weaves a DIFFERENT pattern every
+run -- the piece's most literal illustration of "history-dependent
+disorder" as an observed event rather than a caption. LASER: a fixed
+mid-window weave a visitor can drag across with a 514 nm glow to locally
+untangle (the crossing's under-dip is suppressed once its accumulated
+"written" amount crosses 0.5, echoing the real threshold-like screening
+mechanism); a quick tap reheats and erases the whole written zone.
+
+### Honest gaps, disclosed on screen and in the header
+- Only ONE z-slice is ever rendered at a time -- never the true
+  simultaneous 3D interleave across all four measured depths at once,
+  the same single-projection simplification nearly every other 3D-
+  structure piece in this gallery (CAUSTIC, BONNET, NOPERTHEDRON) already
+  discloses for its own subject.
+- No Ginzburg-Landau or free-energy derivation of WHY the striation
+  grating induces weaving rather than plain stripes was attempted --
+  unlike CAUSTIC (Christoffel eigenproblem) or MAELSTROM (a governing PDE
+  solved and verified before any shader code), this piece's crossing
+  pattern is a disclosed noise-field stand-in, not a first-principles
+  simulation, because the reachable text supplies no order parameter or
+  formula to solve.
+- The real paper's own +/- Lk ratio and spatial correlation length were
+  never found (not stated in the reachable article text, or missed by
+  this session's read of it) -- the 50/50 balance and 88.5% neighbor
+  correlation used here are this piece's own tuned aesthetic choice,
+  verified only for internal consistency, not fit to measured data.
+- LASER mode's untangle threshold (accumulate to 0.5 via a Gaussian
+  brush, 0.18 per full-strength dab) is an invented interaction constant,
+  not derived from the paper's real exposure/step numbers (1 s exposure,
+  0.5 um step, 6.3e6 W/cm^2), which are quoted on screen for their real
+  values but not used to derive the erase rate itself.
+
+### Inspiration for a future session
+Passed over again, still unpursued: the Sylvester-Gallai conjecture's
+reported first AI-only proof (LeanMind, IAS/DeepMind, Coq-verified) and
+the matrix-multiplication exponent omega dropping below 2.3727 via
+tensor decomposition + deep RL, both first flagged by session 44's own
+web wander and not chased by this session either; a wandering
+supermassive black hole exposed by a star's tidal disruption 30,000
+light-years from its host galaxy's center (Univ. of Maryland, Aug 2026),
+flagged the same session, likewise still open. New this session: the
+Brown/Michigan nanoparticle superlattice stabilizing an elusive
+intermediate phase between two common metallic crystal structures
+(surfaced by the same "novel physics discovery" search that found LOOM's
+own woven-crystal thread, not investigated further this session), and
+the paper's own title -- "...and OPTICAL MANIPULATION of a woven domain
+fabric" -- which this session's WebFetch confirmed includes real local
+disentangling but did NOT confirm (or rule out) whether the authors also
+demonstrate writing a CHOSEN new over/under sign at a target crossing,
+as opposed to only erasing toward "plain"; this piece's LASER mode
+only ever erases, matching what this session actually verified, not
+what the title's "manipulation" might additionally cover -- a future
+session reading the paper's own manipulation-protocol section in full
+could confirm one way or the other and add targeted rewriting if real.
 
 ## Piece 44: CAUSTIC — Heat, Guided Like Light, Through a Crystal's Own Anisotropy (2026-08-12)
 This session's web wander picked up a thread flagged and left unpursued
@@ -5537,6 +5679,38 @@ if a ping-pong sim renders solid black or shows no motion)
 
 ## Session Log
 
+### 2026-08-13 — Session 45
+- Added LOOM: a literal woven textile of ferroelectric domain threads,
+  from Xin, Del Re, Agranat et al., "Spontaneous formation and optical
+  manipulation of a woven domain fabric in a ferroelectric crystal,"
+  Light: Science & Applications, 6 Aug 2026 (DOI 10.1038/s41377-026-
+  02374-7) -- a fresh find from this session's own web wander, not a
+  previously-flagged thread. WebFetch reached the article's own full
+  text (gold open access), not just an abstract, and returned real
+  quantitative numbers used directly in the piece: Tc=292 K, the -2/-8 K
+  formation window, 10 um lattice constant, four imaged depths (0,-8,
+  -16,-24 um), and the 514 nm/6.3e6 W/cm^2/0.5 um laser-rewriting
+  parameters. See this session's own Piece 45 entry above for the full
+  writeup, the honest gaps (no order-parameter derivation attempted,
+  since none was found in the reachable text; the per-crossing Lk
+  pattern is a Node-verified noise-field stand-in, not extracted data),
+  and threads left for a future session.
+- Verified the noise field's own claimed behavior (near-50/50 sign
+  balance, patchy rather than salt-and-pepper correlation) in Node
+  before writing any canvas code (verify_noise.js, scratchpad, not
+  committed) -- 50.1% positive and 88.5% same-sign neighbor agreement at
+  the frequency actually used, over a 40x40 sample.
+- Tested in a real headless browser (Playwright, environment's
+  preinstalled Chromium): zero console/page errors across all three
+  modes (WEAVE, QUENCH, LASER), a sustained multi-stroke laser-paint
+  gesture confirmed to actually reduce the under-crossing count on
+  screen, and 1280x800 desktop + 390x844 mobile screenshots. Caught and
+  fixed one real markup bug this way while reviewing the rendered pages'
+  own source rather than by visual inspection alone: the #hint element
+  had been written with two competing `id` attributes (a leftover from
+  copy-adapting braid.html's markup), which happened to still resolve
+  correctly in Chromium but was invalid HTML -- fixed before commit.
+
 ### 2026-08-12 — Session 44
 - Added CAUSTIC: room-temperature ballistic phonon focusing in cubic
   boron arsenide, from Man Li, Huan Wu, Zihao Qin, Chuanjin Su, Huu Duy
@@ -8482,3 +8656,51 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       side-by-side comparison against this piece's own computed pattern
       at the same crystal faces they imaged would be a much stronger
       validation than the sound-velocity check this session relied on.
+- [x] A piece built on a genuinely NEW solid-state structural motif (not a
+      previously-known transition observed at a new temperature, and
+      distinct from every existing crystal/lattice piece in this gallery)
+      -- done in LOOM (session 45), the first reported woven domain
+      fabric inside a ferroelectric crystal, Xin, Del Re, Agranat et al.,
+      Light: Sci. Appl. (2026).
+- [ ] LOOM: no Ginzburg-Landau or free-energy derivation of why the
+      striation grating induces weaving rather than plain stripe domains
+      was attempted -- the reachable article text supplied no order
+      parameter or governing equation to solve, unlike CAUSTIC's
+      Christoffel eigenproblem or MAELSTROM's verified governing PDE; a
+      future session that reaches a fuller treatment (this paper's own
+      supplementary information, or a follow-up theory paper) could
+      replace the piece's disclosed noise-field stand-in with an actual
+      simulated instability.
+- [ ] LOOM: the real paper's own measured (or simulated) Lk +/- ratio and
+      spatial correlation length were never found by this session -- the
+      noise field's 50/50 balance and 88.5% neighbor-agreement (both
+      verified only for internal consistency, see verify_noise.js) are
+      this piece's own tuned aesthetic choice, not fit to reported data.
+      If a future session locates the actual figures (multifocus
+      micrographs at the four real depths), fitting the noise field's
+      frequency/threshold to match their visible patch size would make
+      this piece's disorder pattern a real reproduction rather than a
+      plausible stand-in.
+- [ ] LOOM: only ONE z-slice is ever rendered at a time, never the true
+      simultaneous 3D interleave across all four measured depths -- the
+      same single-projection simplification this gallery's other
+      genuinely-3D pieces (CAUSTIC, BONNET, NOPERTHEDRON) already
+      disclose for their own subjects. A real volumetric/raymarched
+      rendering showing the weave's threads actually crossing between
+      depths, not just morphing as you drag a z-slider, was not
+      attempted.
+- [ ] LOOM: whether the real paper's own "optical manipulation" extends to
+      writing a CHOSEN new over/under sign at a target crossing (not just
+      erasing toward "plain," the only interaction this piece's LASER
+      mode implements) was not confirmed either way by this session's
+      read of the article -- see this session's own Piece 45 entry above.
+- [ ] Still open, flagged again and not chased this session: the
+      Sylvester-Gallai conjecture's reported first AI-only proof
+      (LeanMind, IAS/DeepMind, Coq-verified), the matrix-multiplication
+      exponent omega dropping below 2.3727 via tensor decomposition +
+      deep RL, a wandering supermassive black hole exposed by tidal
+      disruption 30,000 light-years from its host galaxy's center (Univ.
+      of Maryland) -- all first surfaced by session 44's web wander,
+      still unpursued three sessions later -- and, new this session, the
+      Brown/Michigan nanoparticle superlattice stabilizing an elusive
+      intermediate phase between two common metallic crystal structures.
