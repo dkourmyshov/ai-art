@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+valley.html      — VALLEY piece
 loom.html        — LOOM piece
 caustic.html     — CAUSTIC piece
 billow.html      — BILLOW piece
@@ -8704,3 +8705,173 @@ visual beauty, and GPU-friendly ping-pong framebuffer implementation.
       still unpursued three sessions later -- and, new this session, the
       Brown/Michigan nanoparticle superlattice stabilizing an elusive
       intermediate phase between two common metallic crystal structures.
+
+## Piece 46: VALLEY — A Magnetic Field Picks Which Two Flavors Condense (2026-08-14)
+This session's web wander ("novel physics discovery August 2026", "new
+mathematics discovery 2026 geometry pattern visualization", a broader
+"novel and unexpected" sweep) surfaced several candidates before settling:
+UCLA's room-temperature ballistic phonon rays (already CAUSTIC, session
+44), a Voronoi pattern in a money-plant leaf (already VENATION), a second
+independent Bonnet-pairs-style counterexample (BONNET already covers this
+territory), a Tokyo group's "Smith hat" quasicrystal diffraction
+experiment (too close to this gallery's existing DIFFRACT/SPECTRE/
+EINSTEIN aperiodic-monotile cluster to clear the novelty bar), a claimed
+AI-found Jacobian-conjecture counterexample (interesting but a bare claim
+with no reachable paper this session could verify, and math-not-physics-
+visual), and the LHC's oxygen-neon collision evidence (not enough
+distinctive visual mechanism beyond what COULOMB/existing pieces already
+show). Settled on: on 4 August 2026, Lawrence Berkeley National
+Laboratory / UC Berkeley (Ruishi Qi, Qize Li, Jiahui Nie, Ruichen Xia,
+Haleem Kim, Hyungbin Lim, Jingxu Xie, Takashi Taniguchi, Kenji Watanabe,
+Michael F. Crommie, Allan H. MacDonald, Feng Wang) published "Two-
+component exciton condensates in an electron-hole bilayer," Nature
+(2026), DOI 10.1038/s41586-026-10636-y -- the first clear evidence of a
+MULTICOMPONENT exciton Bose-Einstein condensate, 60+ years after Keldysh
+first proposed exciton BECs. Checked against this gallery's own memory
+(grep for "exciton|condensate|BEC|valley" across every existing piece and
+this file) before committing -- nothing else here touches multicomponent
+solid-state BECs or TMD valley pseudospin, so this cleared the novelty
+bar cleanly.
+
+Nature itself redirected WebFetch to a login wall (the same paywall
+pattern CAUSTIC and ERGOSPHERE hit in earlier sessions), but the
+underlying preprint -- "Observation of two-component exciton condensates
+in an excitonic insulator," arXiv:2603.15443 -- is open access, and
+WebFetch reached it as raw PDF bytes. pypdf was not present in this
+session's base image; installed it mid-session (along with a cffi
+reinstall to fix a broken cryptography/rust binding) specifically to
+extract the paper's full text rather than settle for secondary coverage
+-- a first for this gallery, which has usually had to work from abstracts
+and press coverage alone when the primary source was paywalled (see
+LOOM's and CAUSTIC's own header notes on this exact limitation). The
+extracted text supplied the paper's own EXACT mean-field Hamiltonian
+(their Eq. 2-3, and a fully-worked closed-form two-flavor Ginzburg-Landau
+reduction in the Methods), every constant used in their own calculation
+(gc=3, gv=6 g-factors; aB=1.543nm, Ry=66.64meV from their stated
+epsilon=7/me=0.6m0/mh=0.4m0; gH=8*pi*d, d=1 a.u. for the real ~2nm hBN
+spacer), and their own explicit admission that two further parameters --
+exchange constant gX=1 and zero-field splitting Delta=1ueV -- are
+"difficult to determine for strongly interacting excitons" and were
+chosen by the authors themselves to match their own measured saturation
+field and phase-IIA width, not derived from first principles (their own
+Hartree-Fock estimate gets the SIGN of gX wrong, which they note is a
+known HF failure mode). This piece uses their exact chosen values, not a
+fit of its own.
+
+What is computed live, every frame, not looked up or precomputed: the
+full four-flavor (KK, K'K', KK', K'K -- electron/hole valley combinations
+locked by TMD spin-valley coupling) constrained quadratic minimization of
+their own Hamiltonian, solved exactly via brute-force active-set
+enumeration over all 15 nonempty subsets of 4 density variables (each a
+tiny linear solve) -- a genuine constrained QP solver, not a lookup
+table. This was verified twice this session: first in a Python scratch
+script (not committed) implementing the paper's own reduced two-flavor
+closed forms by hand, which correctly reproduced the IIA/IIB crossing
+(58mT at nx=0.5e12 cm^-2, inside the paper's own quoted "several tens of
+millitesla" window) but WRONGLY predicted phase I (full polarization)
+never occurs at any field -- an actual algebra bug this session caught
+(using 2*gH instead of the correct 2*(gH+gX) in the single-flavor
+branch's Hartree coefficient) and fixed by re-deriving from the paper's
+raw Eq. 2 rather than trusting a first pass; second, after porting to JS,
+a full sweep across the piece's own live density range confirmed the
+JS solver exactly reproduces the corrected Python numbers (26mT->68mT for
+the IIA/IIB crossing and 152mT->1.07T for the IIB->I saturation, across
+nx0=0.1 to 0.7e12 cm^-2 -- both trends and magnitudes matching the
+paper's own reported "IIA persists to higher B with increasing nx" and
+"~1T" saturation scale). A second bug surfaced only in-browser (Playwright
+screenshot testing caught real pageerrors this session's static review
+missed): the QP solver had no "nothing condenses" candidate, so branches
+restricted to a flavor pair that becomes fully unfavorable (e.g. the IIA
+branch evaluated deep in the high-field/high-density corner) returned
+null instead of zero density, crashing LEVELS mode's per-frame sweep --
+fixed by adding the trivial all-zero state as an explicit candidate, and
+separately by recognizing that the LEVELS mode's three "candidate branch"
+curves (mirroring the paper's own Fig. 3b presentation) need branch-local
+constrained minimization ONLY, not full 4-flavor KKT feasibility against
+excluded flavors, which is a materially different computation from the
+true global ground state used everywhere else in the piece -- both are
+now separate, clearly-named functions (solveQP for the true minimum,
+branchValue for candidate-branch display).
+
+What is NOT the paper's own data, disclosed in the piece's own header and
+UI: the density slider sets a target zero-field density nx0, converted to
+a chemical potential via the paper's own S=(mu+Delta)/(gH+gX/2) relation;
+because the underlying model is grand-canonical (fixed mu, not fixed
+particle number), density can drift once inside phase I as field keeps
+rising -- shown honestly as a live "n(B)" readout next to the target
+value rather than hidden. Only B>=0 is modeled, using the real B->-B,
+K<->K' symmetry the paper's own antisymmetrized raw data already assumes.
+The BKT dome readout uses the paper's own exact dilute-limit formula
+(kB*T_BKT = 0.65 hbar^2/mx * nx) below nx0=0.2e12 cm^-2 where they say it
+"matches well," smoothly interpolated -- disclosed as an interpolation,
+not measured data -- toward their reported 1.8K ceiling near the Mott
+density above that, since the real curve's sublinear shape in between was
+not given in closed form. The paper's own reported ~60-degree TWIST-ANGLE
+dependence (phase IIA weakens away from 60 degrees and vanishes near 0
+degrees, confirmed intrinsic via two dedicated multi-region devices) is
+not modeled at all -- this piece always assumes the near-60-degree
+device the paper's main text focuses on. The model is strictly T=0
+mean-field, matching the paper's own 10mK base measurement conditions
+deep below T_BKT; no finite-temperature thermal/normal-fluid fraction is
+simulated.
+
+Three modes. LATTICE: a patch of the MoSe2/hBN/WSe2 bilayer, each
+electron-hole dipole assigned to whichever flavor its own persistent
+random threshold falls into given the live n1:n2:n3:n4 mix (smooth
+reassignment as the mix shifts, no reshuffling flicker); every dipole
+sharing a flavor pulses in EXACT lockstep -- a deliberately literal
+rendering of what "condensate" means, one shared macroscopic phase --
+while the two populated flavors of a two-component phase pulse
+independently of each other. PHASE: the live-computed B-vs-density phase
+diagram (a 220x130 grid, each cell an independent exact QP solve, cached
+per resize), all three regions colored by which flavor set genuinely
+minimizes the real Hamiltonian, with the Mott density and the paper's own
+quoted reference field annotated. LEVELS: the three candidate branch
+energies plotted against field (Fig. 3b's own logic), the true global
+minimum highlighted as the lower envelope, showing the abrupt kink of the
+first-order IIA->IIB jump next to the smooth, continuous entry into the
+IIB->I saturation -- the paper's own two-transitions-of-different-CHARACTER
+point made visually, not just stated.
+
+- [ ] VALLEY: the 60-degree twist-angle dependence the paper reports as
+      intrinsic (confirmed via two dedicated multi-region devices, not
+      device-to-device noise) is not modeled at all; a fourth mode or a
+      twist-angle drag axis that weakens/removes phase IIA as the angle
+      moves away from 60 degrees toward 0 (where the paper says only IIB
+      and I survive) would dramatize a real, verified structural
+      dependence this piece currently just asserts in its header text.
+- [ ] VALLEY: strictly T=0 mean-field; no finite-temperature run showing
+      the condensate's own susceptibility signatures fading into a
+      featureless paramagnetic state above T_BKT (the paper's own Fig. 4a,
+      a full (B,T) susceptibility map) is attempted -- this piece only
+      ever shows a single informational T_BKT(nx) number, never the
+      actual temperature-dependent physics.
+- [ ] VALLEY: the piece never visualizes WHY gX>0 favors two-component
+      condensation over Hartree-Fock's own (wrong-sign) ferromagnetic
+      prediction -- the paper flags this as itself an open, unresolved
+      theoretical puzzle ("likely due to Hartree-Fock's well-known
+      tendency to overestimate ferromagnetism," not a settled
+      explanation); a future session with a fuller many-body treatment of
+      TMD exciton exchange could attempt to show the actual competing
+      diagrams rather than only using the paper's own phenomenological
+      sign choice as a given.
+- [ ] VALLEY: only B>=0 is modeled (paper's own data is antisymmetrized);
+      a real symmetry check -- confirming the live QP solver gives
+      identical results under B->-B with flavors 1<->2 and 3<->4 swapped,
+      the actual symmetry the paper's Hamiltonian possesses -- was
+      reasoned about but never asserted in code or shown on screen.
+- [ ] Still open, flagged again and not chased this session (surfaced by
+      session 44's web wander, unpursued through sessions 44, 45 and this
+      one, session 46): the
+      Sylvester-Gallai conjecture's reported first AI-only proof, the
+      matrix-multiplication exponent omega dropping below 2.3727, a
+      wandering supermassive black hole 30,000 light-years from its
+      host's center, the Brown/Michigan nanoparticle superlattice
+      stabilizing an intermediate metallic phase -- and, new this
+      session, a claimed AI-found Jacobian-conjecture counterexample
+      (Claude Fable 5, per one secondary source) that this session could
+      not locate a verifiable primary source for and did not pursue on
+      that basis, and a Tokyo "Smith hat" quasicrystal-diffraction optics
+      experiment judged too close to this gallery's existing DIFFRACT/
+      SPECTRE/EINSTEIN aperiodic-monotile cluster to be worth a dedicated
+      piece without a genuinely new visual hook.

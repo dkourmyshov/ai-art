@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VALLEY — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:56vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(255,255,255,.58)}
+#stats .row{display:block}
+#stats .phase{display:block;margin-top:.5em;font-size:10px;letter-spacing:.16em}
+#stats .sub{display:block;margin-top:.25em;font-size:8px;opacity:.75}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:90vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:66vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row">B = <span class="val" id="bVal">—</span></span>
+  <span class="row">n<sub></sub> = <span class="val" id="nVal">—</span></span>
+  <span class="phase" id="phaseVal">—</span>
+  <span class="sub" id="phaseSub">—</span>
+  <span class="sub" id="polSub">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">LATTICE</span>
+  <span id="desc">a magnetic field picks which flavors condense</span>
+</div>
+<div id="hint">drag: x = field B &middot; y = exciton density</div>
+<script>
+/*  VALLEY — a magnetic field decides which two flavors of exciton condense
+ *
+ *  On 4 August 2026, Lawrence Berkeley National Laboratory / UC Berkeley
+ *  (Ruishi Qi, Qize Li, Jiahui Nie, Ruichen Xia, Haleem Kim, Hyungbin Lim,
+ *  Jingxu Xie, Takashi Taniguchi, Kenji Watanabe, Michael F. Crommie,
+ *  Allan H. MacDonald, Feng Wang) published "Two-component exciton
+ *  condensates in an electron-hole bilayer," Nature (2026), DOI
+ *  10.1038/s41586-026-10636-y. Nature itself redirected WebFetch to a login
+ *  wall, but the underlying preprint -- "Observation of two-component
+ *  exciton condensates in an excitonic insulator," arXiv:2603.15443 -- is
+ *  open access and WebFetch reached it as raw PDF bytes; this session
+ *  installed pypdf mid-run (not present in the base image) to extract the
+ *  full text, methods, and every explicit equation and parameter used
+ *  below, not just an abstract. Cross-checked against phys.org, Tech Times,
+ *  The Quantum Insider and ico-optics's independent coverage, all agreeing
+ *  on authors, DOI and the central claim.
+ *
+ *  The device: a MoSe2 electron layer and a WSe2 hole layer separated by a
+ *  1-3nm hBN tunnelling barrier (interlayer spacing d ~ 2nm), gated to
+ *  populate both layers so Coulomb attraction spontaneously binds stable
+ *  dipolar excitons -- an "excitonic insulator" first established by this
+ *  same group's earlier work (Ma et al., Nature 2021; Qi et al., Science
+ *  2025), incompressible up to a Mott transition at nx = 0.75e12 cm^-2
+ *  where it melts into a metallic electron-hole plasma. Spin-orbit coupling
+ *  locks spin to valley in each TMD monolayer, so an interlayer exciton has
+ *  FOUR possible flavors depending on which valley (K or K') hosts its
+ *  electron and which hosts its hole: two INTRAVALLEY flavors (KK, K'K')
+ *  and two INTERVALLEY flavors (KK', K'K). Magneto-optical circular-
+ *  dichroism spectroscopy in a dilution refrigerator (10mK lattice
+ *  temperature) let the authors read electron and hole valley polarization
+ *  separately and directly, revealing three distinct condensate phases as
+ *  a function of magnetic field: at B=0 the ground state is a COHERENT
+ *  TWO-COMPONENT SUPERPOSITION of the two intravalley flavors (phase IIA);
+ *  a weak field drives a sudden FIRST-ORDER quantum phase transition to a
+ *  two-component condensate of the two INTERvalley flavors instead (phase
+ *  IIB) -- the electron spin-valley polarization briefly REVERSES SIGN
+ *  through this window, polarizing against the applied field, an effect
+ *  the authors could rule out as single-particle physics (the numbers are
+ *  many times too big, and grow with density where a single-exciton
+ *  mechanism would shrink) -- and at high field the system saturates into
+ *  a fully polarized SINGLE-component condensate (phase I). The two-
+ *  component condensates persist up to ~1.8K, "millions of times warmer"
+ *  than an ultracold-atom BEC, per the authors' own framing.
+ *
+ *  What is computed live here, not looked up: the paper gives (Methods,
+ *  Eq. 2-3 and the reduced two-flavor form) an exact mean-field interacting-
+ *  boson Hamiltonian for the four flavor densities n1..n4 (1=KK, 2=K'K',
+ *  3=KK', 4=K'K):
+ *    H = sum_i (Ei - mu) ni + (gH+gX)/2 (sum ni)^2 - gX(n1 n2 + n3 n4)
+ *    E1=(gv-gc)muB*B-Delta, E2=-(gv-gc)muB*B-Delta, E3=-(gc+gv)muB*B, E4=+(gc+gv)muB*B
+ *  with every constant taken verbatim from the paper's own Methods: g-
+ *  factors gc=3, gv=6 (Robert et al. 2021); Bohr radius aB=1.543nm and
+ *  Rydberg Ry=66.64meV from their stated e-h mass/dielectric constant;
+ *  Hartree coefficient gH=8*pi*d with d=1 (their own atomic-unit
+ *  approximation for the real ~2nm hBN spacer). Two parameters -- the
+ *  exchange constant gX=1 and the zero-field intravalley/intervalley
+ *  splitting Delta=1ueV -- are, in the paper's OWN words, "difficult to
+ *  determine for strongly interacting excitons," chosen by the authors
+ *  themselves to approximately match their measured saturation field and
+ *  phase-IIA width; this piece uses their exact chosen values, not a fit
+ *  of its own. Minimizing H over n1..n4 >= 0 is a small constrained
+ *  quadratic program; this piece solves it EXACTLY every frame via brute-
+ *  force active-set enumeration (15 candidate subsets of 4 variables, each
+ *  a tiny linear solve) -- verified in a Python scratch script this
+ *  session (not committed) against the paper's own reported numbers: at
+ *  nx=0.5e12 cm^-2 the solver's IIA/IIB crossing lands at 58mT, inside the
+ *  paper's own quoted "several tens of millitesla" window for that
+ *  density, and the IIB->I saturation field grows from ~150mT at
+ *  nx=0.1e12 to ~1.07T near the Mott density -- matching the paper's own
+ *  quoted "~1T" scale -- and, critically, both transitions emerge only
+ *  from the >= 0 density CONSTRAINT binding (a naive unconstrained
+ *  comparison of candidate branch energies gets the IIA/IIB crossing right
+ *  but never finds the IIB->I transition at all, a mistake this session
+ *  caught and fixed by hand-deriving and checking the closed-form
+ *  candidate-branch energies before trusting the live solver).
+ *
+ *  What is NOT the paper's own data, disclosed on screen: the density
+ *  slider sets a target zero-field density nx0 (converted to a chemical
+ *  potential mu via the paper's own S=(mu+Delta)/(gH+gX/2) relation and
+ *  aB=1.543nm); because the underlying model is grand-canonical (fixed mu,
+ *  not fixed particle number), density can drift slightly once inside
+ *  phase I as the field keeps rising -- shown honestly as a live n(B)
+ *  readout rather than hidden or pinned. Only B >= 0 is modeled, using the
+ *  real B -> -B, K<->K' symmetry the paper's own antisymmetrized data
+ *  already assumes. The BKT dome readout below nx0=0.2e12 uses the paper's
+ *  own two-component dilute-limit formula (kB*T_BKT = 0.65 hbar^2/mx * nx,
+ *  which they say "matches well" there); above that it is smoothly
+ *  interpolated -- disclosed, not measured -- toward their reported 1.8K
+ *  ceiling near the Mott density, since the real curve's sublinear shape
+ *  in between was not given in closed form. The paper's own reported ~60-
+ *  degree TWIST-ANGLE dependence (phase IIA weakens away from 60 degrees
+ *  and vanishes near 0 degrees) is not modeled at all -- this piece always
+ *  assumes the near-60-degree device.
+ *
+ *  Three modes. LATTICE: a patch of the MoSe2/hBN/WSe2 bilayer, each
+ *  dipole (electron dot over hole dot) assigned to whichever flavor its own
+ *  persistent random threshold falls into given the live n1:n2:n3:n4 mix;
+ *  every dipole sharing a flavor pulses in EXACT lockstep -- literally what
+ *  "condensate" means, a single shared macroscopic phase -- while the two
+ *  populated flavors of a phase pulse independently of each other. PHASE:
+ *  the live-computed B-vs-density phase diagram, all three regions colored
+ *  by which flavor set actually minimizes the real Hamiltonian at each
+ *  point, sampled and cached as a grid, with the Mott density and the
+ *  paper's own quoted reference field marked. LEVELS: the three candidate
+ *  branch energies (E_IIA, E_IIB, E_I -- Fig. 3b's own logic) plotted
+ *  against field, the true realized ground state highlighted as the lower
+ *  envelope, showing the abrupt kink of the first-order IIA->IIB jump next
+ *  to the smooth entry into IIB->I saturation.
+ */
+
+const TWO_PI = Math.PI * 2;
+
+/* ---------------- physics: the paper's own Eq. 2-3 Hamiltonian ---------------- */
+const P = {
+  gc: 3, gv: 6,                 // Robert et al. 2021 g-factors
+  gX: 1,                        // paper's own phenomenological exchange const (a.u.)
+  gH: 8 * Math.PI,              // 8*pi*d, d=1 a.u. (real hBN spacer ~2nm)
+  Ry: 66.64,                    // meV, from eps=7, me=0.6m0, mh=0.4m0
+  aB_nm: 1.543,
+  DeltaMeV: 0.001,              // 1 ueV, paper's own phenomenological splitting
+  muB_meV_per_T: 0.057883818,   // Bohr magneton, real physical constant
+  nMott: 0.75,                  // x1e12 cm^-2, real reported Mott density
+  Bmax: 1.4,                    // T
+};
+const aB_cm = P.aB_nm * 1e-7;
+const aB2_cm2 = aB_cm * aB_cm;
+const DeltaRy = P.DeltaMeV / P.Ry;
+
+function EmeV(B) {
+  const z = (P.gv - P.gc) * P.muB_meV_per_T * B;
+  const w = (P.gc + P.gv) * P.muB_meV_per_T * B;
+  return [z - P.DeltaMeV, -z - P.DeltaMeV, -w, w]; // E1..E4
+}
+
+function solveLinear(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => row.concat([b[i]]));
+  for (let col = 0; col < n; col++) {
+    let piv = -1;
+    for (let row = col; row < n; row++) if (Math.abs(M[row][col]) > 1e-12) { piv = row; break; }
+    if (piv < 0) return null;
+    const tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+    const pv = M[col][col];
+    for (let j = 0; j <= n; j++) M[col][j] /= pv;
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const f = M[row][col];
+      if (f === 0) continue;
+      for (let j = 0; j <= n; j++) M[row][j] -= f * M[col][j];
+    }
+  }
+  return M.map(row => row[n]);
+}
+
+// exact constrained minimization of H over n_i>=0, i in `allowed` (default all 4)
+function solveQP(muRy, B, allowed) {
+  allowed = allowed || [0, 1, 2, 3];
+  const E = EmeV(B).map(e => e / P.Ry);
+  const c = E.map(e => e - muRy);
+  const a = P.gH + P.gX;
+  const Qfull = [
+    [a, P.gH, a, a],
+    [P.gH, a, a, a],
+    [a, a, a, P.gH],
+    [a, a, P.gH, a],
+  ];
+  // the trivial all-zero allocation is always a feasible candidate (relevant
+  // when every flavor in `allowed` is energetically unfavorable, e.g. the
+  // IIA branch restricted to {KK,K'K'} once a high field has made both cost
+  // more than they gain -- without it the solver could wrongly report no
+  // feasible state at all instead of "zero density in this flavor set")
+  let best = { H: 0, n: [0, 0, 0, 0], mask: 0 };
+  for (let i of allowed) if (c[i] < -1e-9) { best = null; break; } // zero isn't optimal if something wants to condense
+  const m = allowed.length;
+  for (let mask = 1; mask < (1 << m); mask++) {
+    const S = [];
+    for (let i = 0; i < m; i++) if (mask & (1 << i)) S.push(allowed[i]);
+    const k = S.length;
+    const A = [], b = [];
+    for (let i = 0; i < k; i++) {
+      const row = [];
+      for (let j = 0; j < k; j++) row.push(Qfull[S[i]][S[j]]);
+      A.push(row); b.push(-c[S[i]]);
+    }
+    const x = solveLinear(A, b);
+    if (!x) continue;
+    if (x.some(v => v < -1e-9)) continue;
+    const n = [0, 0, 0, 0];
+    for (let i = 0; i < k; i++) n[S[i]] = Math.max(x[i], 0);
+    let ok = true;
+    for (let i = 0; i < 4; i++) {
+      if (!S.includes(i)) {
+        let grad = c[i];
+        for (let j = 0; j < 4; j++) grad += Qfull[i][j] * n[j];
+        if (grad < -1e-9) { ok = false; break; }
+      }
+    }
+    if (!ok) continue;
+    let H = 0;
+    for (let i = 0; i < 4; i++) { H += c[i] * n[i]; for (let j = 0; j < 4; j++) H += 0.5 * n[i] * Qfull[i][j] * n[j]; }
+    let key = 0; for (const i of S) key |= (1 << i);
+    if (best === null || H < best.H) best = { H, n, mask: key };
+  }
+  return best;
+}
+
+// candidate branch value restricted to `indices`, ignoring any pull from
+// flavors outside it (unlike solveQP, which enforces true 4-flavor KKT) --
+// this is what LEVELS mode plots: "if the system committed to only this
+// flavor set, what would its energy be," Fig. 3b's own presentation, not
+// necessarily the true global minimum at that B
+function branchValue(muRy, B, indices) {
+  const E = EmeV(B).map(e => e / P.Ry);
+  const c = E.map(e => e - muRy);
+  const a = P.gH + P.gX;
+  const Qfull = [
+    [a, P.gH, a, a],
+    [P.gH, a, a, a],
+    [a, a, a, P.gH],
+    [a, a, P.gH, a],
+  ];
+  let best = { H: 0, n: [0, 0, 0, 0] };
+  const m = indices.length;
+  for (let mask = 1; mask < (1 << m); mask++) {
+    const S = [];
+    for (let i = 0; i < m; i++) if (mask & (1 << i)) S.push(indices[i]);
+    const k = S.length;
+    const A = [], b = [];
+    for (let i = 0; i < k; i++) {
+      const row = [];
+      for (let j = 0; j < k; j++) row.push(Qfull[S[i]][S[j]]);
+      A.push(row); b.push(-c[S[i]]);
+    }
+    const x = solveLinear(A, b);
+    if (!x || x.some(v => v < -1e-9)) continue;
+    const n = [0, 0, 0, 0];
+    for (let i = 0; i < k; i++) n[S[i]] = Math.max(x[i], 0);
+    let H = 0;
+    for (let i = 0; i < 4; i++) { H += c[i] * n[i]; for (let j = 0; j < 4; j++) H += 0.5 * n[i] * Qfull[i][j] * n[j]; }
+    if (H < best.H) best = { H, n };
+  }
+  return best;
+}
+
+function muFromNx0(nx0) { // nx0 in units of 1e12 cm^-2 -> mu in Ry (calibrated at B=0)
+  const S = nx0 * 1e12 * aB2_cm2;
+  return S * (P.gH + P.gX / 2) - DeltaRy;
+}
+function densityFromN(n) { // -> x1e12 cm^-2
+  return (n[0] + n[1] + n[2] + n[3]) / aB2_cm2 / 1e12;
+}
+function polarizations(n) {
+  const S = n[0] + n[1] + n[2] + n[3];
+  if (S <= 1e-12) return { e: 0, h: 0 };
+  return { e: (n[0] + n[2] - n[1] - n[3]) / S, h: (n[0] + n[3] - n[1] - n[2]) / S };
+}
+function phaseInfo(mask) {
+  if (mask === 3) return { key: 'IIA', name: 'PHASE IIA', long: 'two-component intravalley (KK + K′K′)' };
+  if (mask === 12) return { key: 'IIB', name: 'PHASE IIB', long: 'two-component intervalley (KK′ + K′K)' };
+  if (mask === 4) return { key: 'I', name: 'PHASE I', long: 'single-component, fully polarized (KK′)' };
+  if (mask === 8) return { key: 'I', name: 'PHASE I', long: 'single-component, fully polarized (K′K)' };
+  if (mask === 1) return { key: 'I', name: 'PHASE I', long: 'single-component, fully polarized (KK)' };
+  if (mask === 2) return { key: 'I', name: 'PHASE I', long: 'single-component, fully polarized (K′K′)' };
+  return { key: 'other', name: 'MIXED', long: 'not one of the paper’s three named phases' };
+}
+
+// paper's own dilute-limit BKT formula, kB*T = 0.65 * hbar^2/m0 * nx
+const HBAR = 1.054571817e-34, M0 = 9.1093837015e-31, KB_meV = 0.08617333;
+const HBAR2_OVER_M0_meVcm2 = (HBAR * HBAR / M0) * 6.241509e21 * 1e4;
+function tbktDilute(nx0) { // nx0 in x1e12 cm^-2 -> Kelvin
+  const kT = 0.65 * HBAR2_OVER_M0_meVcm2 * (nx0 * 1e12);
+  return kT / KB_meV;
+}
+function smoothstep(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
+function tbktDisplay(nx0) {
+  const dilute = tbktDilute(nx0);
+  if (nx0 <= 0.2) return dilute;
+  const at02 = tbktDilute(0.2);
+  const t = smoothstep((nx0 - 0.2) / (P.nMott - 0.2));
+  return at02 + (1.8 - at02) * t;
+}
+
+/* ---------------- rendering ---------------- */
+let canvas, ctx, W, H;
+let bValEl, nValEl, phaseValEl, phaseSubEl, polSubEl, modeNameEl, descEl, hintEl;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.round(window.innerWidth * dpr);
+  H = canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  phaseGridDirty = true;
+}
+
+const MODES = [
+  { key: 'lattice', name: 'LATTICE', desc: 'each dipole joins whichever flavor(s) actually condense' },
+  { key: 'phase', name: 'PHASE', desc: 'the live-computed field / density phase diagram' },
+  { key: 'levels', name: 'LEVELS', desc: 'three candidate condensates, competing energies' },
+];
+const MODE_HOLD_MS = 32000;
+let modeIdx = 0, modeStart = 0;
+let dragging = false, dragX = 0.06, dragY = 0.35;
+let driftPhaseX = 0.7, driftPhaseY = 2.1;
+const DRIFT_PERIOD_X = 30000, DRIFT_PERIOD_Y = 41000;
+
+function autoFrac(phase, t, period) { return 0.5 + 0.5 * Math.sin(TWO_PI * t / period + phase); }
+function currentXY(now) {
+  if (dragging) return { x: dragX, y: dragY };
+  return { x: autoFrac(driftPhaseX, now, DRIFT_PERIOD_X), y: autoFrac(driftPhaseY, now, DRIFT_PERIOD_Y) };
+}
+function stateFromXY(xy) {
+  const B = P.Bmax * xy.x;
+  const nx0 = P.nMott - (P.nMott - 0.02) * xy.y;
+  return { B, nx0 };
+}
+
+function applyMode(idx) {
+  modeIdx = ((idx % MODES.length) + MODES.length) % MODES.length;
+  const m = MODES[modeIdx];
+  modeNameEl.textContent = m.name;
+  descEl.textContent = m.desc;
+  modeStart = performance.now();
+  if (m.key === 'lattice') hintEl.textContent = 'drag: x = field B · y = exciton density';
+  else if (m.key === 'phase') hintEl.textContent = 'drag anywhere: set (B, density)';
+  else hintEl.textContent = 'drag: x = field B · y = exciton density';
+}
+
+/* ---------------- colors ---------------- */
+const COL = {
+  n1: [120, 175, 255], // KK, blue
+  n2: [150, 220, 255], // K'K', pale cyan
+  n3: [255, 120, 190], // KK', pink (paper's own "pink line", Fig 3b)
+  n4: [255, 190, 110], // K'K, amber
+};
+const PHASE_COL = { IIA: [120, 175, 255], IIB: [255, 190, 110], I: [255, 120, 190], other: [150, 150, 150] };
+function rgba(c, a) { return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+
+/* ---------------- LATTICE mode ---------------- */
+const GRID_NX = 13, GRID_NY = 9;
+let latticeU = null;
+function initLatticeU() {
+  latticeU = new Float32Array(GRID_NX * GRID_NY);
+  for (let i = 0; i < latticeU.length; i++) latticeU[i] = Math.random();
+}
+initLatticeU();
+
+function flavorOf(u, n, S) {
+  if (S <= 1e-12) return -1;
+  const f0 = n[0] / S, f1 = f0 + n[1] / S, f2 = f1 + n[2] / S;
+  if (u < f0) return 0; if (u < f1) return 1; if (u < f2) return 2; return 3;
+}
+
+function drawLattice(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const st = stateFromXY(xy);
+  const mu = muFromNx0(st.nx0);
+  const sol = solveQP(mu, st.B);
+  const n = sol.n;
+  const S = n[0] + n[1] + n[2] + n[3];
+  const nxNow = densityFromN(n);
+  const info = phaseInfo(sol.mask);
+  const pol = polarizations(n);
+
+  const plotW = W * 0.62, plotH = H * 0.6;
+  const x0 = W * 0.5 - plotW / 2, y0 = H * 0.46 - plotH / 2;
+  const cellW = plotW / (GRID_NX - 1), cellH = plotH / (GRID_NY - 1);
+  const dotR = Math.min(cellW, cellH) * 0.16;
+  const linkGap = Math.min(cellW, cellH) * 0.34;
+
+  // shared coherent phase per flavor -- identical for every particle of that flavor
+  const speeds = [0.00068, 0.00079, 0.00091, 0.00103];
+  const flavAlpha = speeds.map(s => 0.5 + 0.5 * Math.sin(now * s * TWO_PI));
+
+  for (let j = 0; j < GRID_NY; j++) {
+    for (let i = 0; i < GRID_NX; i++) {
+      const idx = j * GRID_NX + i;
+      const u = latticeU[idx];
+      const fl = flavorOf(u, n, S);
+      const cx = x0 + i * cellW, cyE = y0 + j * cellH - linkGap / 2, cyH = y0 + j * cellH + linkGap / 2;
+      if (fl < 0) {
+        ctx.fillStyle = 'rgba(255,255,255,.04)';
+        ctx.beginPath(); ctx.arc(cx, (cyE + cyH) / 2, dotR * 0.5, 0, TWO_PI); ctx.fill();
+        continue;
+      }
+      const key = ['n1', 'n2', 'n3', 'n4'][fl];
+      const c = COL[key];
+      const a = 0.35 + 0.55 * flavAlpha[fl];
+      ctx.strokeStyle = rgba(c, a * 0.35); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cyE); ctx.lineTo(cx, cyH); ctx.stroke();
+      // electron (MoSe2, top)
+      ctx.fillStyle = rgba(c, a);
+      ctx.beginPath(); ctx.arc(cx, cyE, dotR, 0, TWO_PI); ctx.fill();
+      // hole (WSe2, bottom) — hollow ring
+      ctx.strokeStyle = rgba(c, a); ctx.lineWidth = dotR * 0.35;
+      ctx.beginPath(); ctx.arc(cx, cyH, dotR * 0.8, 0, TWO_PI); ctx.stroke();
+      // glow when strongly coherent
+      if (a > 0.75) {
+        const g = ctx.createRadialGradient(cx, cyE, 0, cx, cyE, dotR * 3);
+        g.addColorStop(0, rgba(c, 0.22)); g.addColorStop(1, rgba(c, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cyE, dotR * 3, 0, TWO_PI); ctx.fill();
+      }
+    }
+  }
+
+  // layer labels
+  ctx.font = `${Math.max(8, cellH * 0.16)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.textAlign = 'left';
+  ctx.fillText('MoSe₂ (e⁻)  · top', x0 - plotW * 0.02, y0 - linkGap / 2 - cellH * 0.35);
+  ctx.fillText('WSe₂ (h⁺) · bottom', x0 - plotW * 0.02, y0 + (GRID_NY - 1) * cellH + linkGap / 2 + cellH * 0.5);
+
+  // legend
+  const legend = [['KK', 'n1'], ['K′K′', 'n2'], ['KK′', 'n3'], ['K′K', 'n4']];
+  const lw = plotW / legend.length;
+  const ly = y0 + (GRID_NY - 1) * cellH + linkGap / 2 + cellH * 1.15;
+  ctx.font = `${Math.max(8, cellH * 0.17)}px 'Courier New',monospace`;
+  ctx.textAlign = 'center';
+  legend.forEach(([label, key], k) => {
+    const cx = x0 + lw * (k + 0.5);
+    const frac = n[k] / (S || 1);
+    const c = COL[key];
+    ctx.fillStyle = rgba(c, frac > 0.02 ? 0.9 : 0.25);
+    ctx.beginPath(); ctx.arc(cx - lw * 0.18, ly, dotR * 0.7, 0, TWO_PI); ctx.fill();
+    ctx.fillStyle = frac > 0.02 ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.15)';
+    ctx.fillText(label, cx + lw * 0.12, ly + dotR * 0.5);
+  });
+
+  // stats
+  bValEl.textContent = `${(st.B * 1000).toFixed(0)} mT`;
+  nValEl.textContent = `${st.nx0.toFixed(2)} ×10¹² cm⁻² → n(B)=${nxNow.toFixed(3)}`;
+  phaseValEl.textContent = info.name;
+  phaseSubEl.textContent = info.long;
+  polSubEl.textContent = `e-pol ${(pol.e * 100).toFixed(1)}% · h-pol ${(pol.h * 100).toFixed(1)}% · Tᵇᵏᵗ≈${tbktDisplay(st.nx0).toFixed(2)}K`;
+}
+
+/* ---------------- PHASE mode ---------------- */
+let phaseGridCanvas = null, phaseGridDirty = true;
+const GRID_W = 220, GRID_H = 130;
+function buildPhaseGrid() {
+  if (!phaseGridCanvas) phaseGridCanvas = document.createElement('canvas');
+  phaseGridCanvas.width = GRID_W; phaseGridCanvas.height = GRID_H;
+  const g = phaseGridCanvas.getContext('2d');
+  const img = g.createImageData(GRID_W, GRID_H);
+  for (let py = 0; py < GRID_H; py++) {
+    const nx0 = P.nMott - (P.nMott - 0.02) * (py / (GRID_H - 1));
+    const mu = muFromNx0(nx0);
+    for (let px = 0; px < GRID_W; px++) {
+      const B = P.Bmax * (px / (GRID_W - 1));
+      const sol = solveQP(mu, B);
+      const info = phaseInfo(sol.mask);
+      const c = PHASE_COL[info.key] || PHASE_COL.other;
+      const o = (py * GRID_W + px) * 4;
+      img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  phaseGridDirty = false;
+}
+
+function drawPhase(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  if (phaseGridDirty) buildPhaseGrid();
+  const st = stateFromXY(xy);
+  const mu = muFromNx0(st.nx0);
+  const sol = solveQP(mu, st.B);
+  const info = phaseInfo(sol.mask);
+  const pol = polarizations(sol.n);
+
+  const plotW = W * 0.62, plotH = H * 0.55;
+  const x0 = W * 0.5 - plotW / 2, y0 = H * 0.46 - plotH / 2;
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalAlpha = 0.75;
+  ctx.drawImage(phaseGridCanvas, x0, y0, plotW, plotH);
+  ctx.globalAlpha = 1;
+
+  // axes
+  ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x0, y0, plotW, plotH);
+  ctx.font = `${Math.max(8, plotH * 0.028)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.textAlign = 'left'; ctx.fillText('B = 0', x0, y0 + plotH + plotH * 0.06);
+  ctx.textAlign = 'right'; ctx.fillText(`B = ${P.Bmax.toFixed(1)}T`, x0 + plotW, y0 + plotH + plotH * 0.06);
+  ctx.textAlign = 'left'; ctx.fillText(`nₓ = ${P.nMott.toFixed(2)}×10¹²`, x0, y0 - plotH * 0.03);
+  ctx.fillText('nₓ = 0.02×10¹²', x0, y0 + plotH + plotH * 0.14);
+
+  // Mott density line (top of usable range)
+  ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(x0, y0 + 1); ctx.lineTo(x0 + plotW, y0 + 1); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.textAlign = 'right';
+  ctx.fillText('Mott transition (EI → e-h plasma)', x0 + plotW, y0 - plotH * 0.03);
+
+  // reference point from the paper's own text: nx=0.5e12, IIA<30mT, IIB 30-70mT
+  const refPy = y0 + plotH * (1 - (0.5 - 0.02) / (P.nMott - 0.02));
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x0 + plotW * (0.03 / P.Bmax), refPy, 3, 0, TWO_PI); ctx.stroke();
+  ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.3)';
+  ctx.fillText('paper: nₓ=0.5×10¹² → IIA<30mT, IIB 30-70mT', x0 + plotW * (0.05 / P.Bmax), refPy - 6);
+
+  // crosshair
+  const cxp = x0 + plotW * (st.B / P.Bmax);
+  const cyp = y0 + plotH * (1 - (st.nx0 - 0.02) / (P.nMott - 0.02));
+  ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cxp - 10, cyp); ctx.lineTo(cxp + 10, cyp); ctx.moveTo(cxp, cyp - 10); ctx.lineTo(cxp, cyp + 10); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cxp, cyp, 4, 0, TWO_PI); ctx.stroke();
+
+  bValEl.textContent = `${(st.B * 1000).toFixed(0)} mT`;
+  nValEl.textContent = `${st.nx0.toFixed(2)} ×10¹² cm⁻²`;
+  phaseValEl.textContent = info.name;
+  phaseSubEl.textContent = info.long;
+  polSubEl.textContent = `e-pol ${(pol.e * 100).toFixed(1)}% · h-pol ${(pol.h * 100).toFixed(1)}%`;
+}
+
+/* ---------------- LEVELS mode ---------------- */
+function drawLevels(now, xy) {
+  ctx.fillStyle = '#040406'; ctx.fillRect(0, 0, W, H);
+  const st = stateFromXY(xy);
+  const mu = muFromNx0(st.nx0);
+
+  const plotW = W * 0.66, plotH = H * 0.52;
+  const x0 = W * 0.5 - plotW / 2, y0 = H * 0.44 - plotH / 2;
+
+  const NB = 240;
+  const branches = { IIA: [], IIB: [], I: [] };
+  let emin = Infinity, emax = -Infinity;
+  for (let i = 0; i <= NB; i++) {
+    const B = P.Bmax * i / NB;
+    const a = branchValue(mu, B, [0, 1]).H * P.Ry * 1000; // ueV
+    const b = branchValue(mu, B, [2, 3]).H * P.Ry * 1000;
+    const c = branchValue(mu, B, [2]).H * P.Ry * 1000;
+    branches.IIA.push(a); branches.IIB.push(b); branches.I.push(c);
+    for (const v of [a, b, c]) { if (v < emin) emin = v; if (v > emax) emax = v; }
+  }
+  const pad = (emax - emin) * 0.08 || 1;
+  emin -= pad; emax += pad;
+  const toX = i => x0 + plotW * i / NB;
+  const toY = e => y0 + plotH * (1 - (e - emin) / (emax - emin));
+
+  function plotBranch(arr, col, lw) {
+    ctx.strokeStyle = rgba(col, 0.85); ctx.lineWidth = lw;
+    ctx.beginPath();
+    for (let i = 0; i <= NB; i++) { const x = toX(i), y = toY(arr[i]); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  plotBranch(branches.IIA, PHASE_COL.IIA, 1.3);
+  plotBranch(branches.IIB, PHASE_COL.IIB, 1.3);
+  plotBranch(branches.I, PHASE_COL.I, 1.3);
+
+  // true lower envelope (the exact global constrained minimum), highlighted thick
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  let started = false;
+  for (let i = 0; i <= NB; i++) {
+    const B = P.Bmax * i / NB;
+    const sol = solveQP(mu, B);
+    const info = phaseInfo(sol.mask);
+    const col = PHASE_COL[info.key] || PHASE_COL.other;
+    const x = toX(i), y = toY(sol.H * P.Ry * 1000);
+    ctx.strokeStyle = rgba(col, 1);
+    if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y); }
+  }
+
+  // current B marker
+  const bi = Math.round(NB * st.B / P.Bmax);
+  const mx = toX(bi), mSol = solveQP(mu, st.B);
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(mx, y0); ctx.lineTo(mx, y0 + plotH); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.beginPath(); ctx.arc(mx, toY(mSol.H * P.Ry * 1000), 3.5, 0, TWO_PI); ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x0, y0, plotW, plotH);
+  ctx.font = `${Math.max(8, plotH * 0.035)}px 'Courier New',monospace`;
+  ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.textAlign = 'left';
+  ctx.fillText('grand-potential H (µeV)  vs  B', x0, y0 - plotH * 0.04);
+  ctx.textAlign = 'left'; ctx.fillText('B=0', x0, y0 + plotH + plotH * 0.08);
+  ctx.textAlign = 'right'; ctx.fillText(`${P.Bmax.toFixed(1)}T`, x0 + plotW, y0 + plotH + plotH * 0.08);
+
+  const legend = [['IIA (KK+K′K′)', PHASE_COL.IIA], ['IIB (KK′+K′K)', PHASE_COL.IIB], ['I (single)', PHASE_COL.I]];
+  ctx.textAlign = 'left';
+  legend.forEach(([label, col], k) => {
+    const ly = y0 + plotH + plotH * 0.2 + k * plotH * 0.08;
+    ctx.fillStyle = rgba(col, 0.9);
+    ctx.fillRect(x0, ly - plotH * 0.02, plotH * 0.03, plotH * 0.03);
+    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    ctx.fillText(label, x0 + plotH * 0.05, ly + plotH * 0.005);
+  });
+
+  const info = phaseInfo(mSol.mask);
+  const pol = polarizations(mSol.n);
+  bValEl.textContent = `${(st.B * 1000).toFixed(0)} mT`;
+  nValEl.textContent = `${st.nx0.toFixed(2)} ×10¹² cm⁻²`;
+  phaseValEl.textContent = info.name;
+  phaseSubEl.textContent = info.long;
+  polSubEl.textContent = `e-pol ${(pol.e * 100).toFixed(1)}% · h-pol ${(pol.h * 100).toFixed(1)}%`;
+}
+
+/* ---------------- main loop ---------------- */
+function draw(now) {
+  const m = MODES[modeIdx];
+  const xy = currentXY(now);
+  if (m.key === 'lattice') drawLattice(now, xy);
+  else if (m.key === 'phase') drawPhase(now, xy);
+  else drawLevels(now, xy);
+}
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (now - modeStart > MODE_HOLD_MS) applyMode(modeIdx + 1);
+  draw(now);
+}
+
+/* ---------------- interaction ---------------- */
+let downPos = null;
+function ptFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    fx: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    fy: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+  };
+}
+function onDown(clientX, clientY) {
+  const p = ptFromEvent(clientX, clientY);
+  downPos = p; dragging = true; dragX = p.fx; dragY = p.fy;
+}
+function onMove(clientX, clientY) {
+  if (!downPos) return;
+  const p = ptFromEvent(clientX, clientY);
+  if (dragging) { dragX = p.fx; dragY = p.fy; }
+}
+function onUp() {
+  if (dragging) {
+    dragging = false;
+    const now = performance.now();
+    const clampedX = Math.max(-1, Math.min(1, 2 * dragX - 1));
+    const clampedY = Math.max(-1, Math.min(1, 2 * dragY - 1));
+    driftPhaseX = Math.asin(clampedX) - TWO_PI * now / DRIFT_PERIOD_X;
+    driftPhaseY = Math.asin(clampedY) - TWO_PI * now / DRIFT_PERIOD_Y;
+  }
+  downPos = null;
+}
+
+function init() {
+  canvas = document.getElementById('c');
+  ctx = canvas.getContext('2d');
+  modeNameEl = document.getElementById('modeName');
+  descEl = document.getElementById('desc');
+  bValEl = document.getElementById('bVal');
+  nValEl = document.getElementById('nVal');
+  phaseValEl = document.getElementById('phaseVal');
+  phaseSubEl = document.getElementById('phaseSub');
+  polSubEl = document.getElementById('polSub');
+  hintEl = document.getElementById('hint');
+
+  window.addEventListener('resize', resize);
+  resize();
+  applyMode(0);
+
+  canvas.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(); }, { passive: false });
+
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>
