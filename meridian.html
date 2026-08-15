@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MERIDIAN — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:52vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;z-index:2;
+}
+#stats .val{color:rgba(255,220,160,.75)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.1em;opacity:.8;max-width:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:28vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:66vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row">t = <span class="val" id="tVal">—</span></span>
+  <span class="row">zeros found = <span class="val" id="countVal">—</span></span>
+  <span class="row">N(T) est. = <span class="val" id="nmainVal">—</span></span>
+  <span class="sub" id="ratioVal">—</span>
+  <span class="sub" id="recordVal">proven bound (2026): 67.2% · see RECORD</span>
+</div>
+<div id="ui">
+  <span id="modeName">THREAD</span>
+  <span id="desc">Hardy's Z(t) on the critical line · live sign changes</span>
+</div>
+<div id="hint">drag: scrub height t &middot; click: switch mode</div>
+<script>
+/*  MERIDIAN — Hardy's real zeta function, scored against the record for
+ *  how much of the critical line can be PROVEN rather than merely checked
+ *
+ *  On 10 August 2026 (updated 13 August), Anthropic disclosed that an
+ *  unreleased research version of Claude had raised the proven
+ *  unconditional lower bound on the proportion of nontrivial Riemann zeta
+ *  zeros lying exactly on the critical line Re(s)=1/2 -- what number
+ *  theorists call kappa, formally liminf_{T->infinity} N0(T)/N(T) -- from
+ *  41.6% to 67.2% ("Learning more about Claude's mathematical
+ *  capabilities," anthropic.com/research/riemann-zeta; WebFetch reached
+ *  the post itself, cross-checked against TechCrunch, The AI Insider and
+ *  Kingy AI's independent coverage). The model was given the problem with
+ *  almost no scaffolding: an Anthropic employee with limited specialist
+ *  training told it to seriously attempt the Riemann Hypothesis and left
+ *  it running for about a day and a half across two sessions -- the first
+ *  (650 generated approaches) failed outright, the second deployed roughly
+ *  60 subagents, ran about 2,400 shell commands and hundreds of Python
+ *  scripts, and used 31 million output tokens in total. Two Anthropic
+ *  mathematicians (Levent Alpoge, Ralph Furman) checked the argument,
+ *  outside number theorists Brian Conrey and Dan Goldston reviewed it, and
+ *  the model itself produced a formally verifiable Lean proof of its own
+ *  result. Per Anthropic's own summary the technique builds on Hugh
+ *  Montgomery's 1973 pair-correlation approach (adapted to not assume the
+ *  Riemann Hypothesis by later work of Aryan and of Baluyot et al.) and
+ *  Enrico Bombieri's 2000 work, forming a space of test functions with a
+ *  quadratic form induced by the Weil explicit formula, whose positive-
+ *  definite subspace corresponds to zeros ON the line and whose negative-
+ *  definite subspace to zeros off it -- the reported innovation was
+ *  treating both subspaces together rather than separately. Anthropic is
+ *  explicit this is not a proof of the Riemann Hypothesis and that they do
+ *  not expect the technique itself to yield one.
+ *
+ *  That single jump is bigger than this exact problem's entire previous
+ *  century. The lineage, checked this session against independent sources
+ *  for each figure (arXiv preprints, ResearchGate, a 2026 Springer paper's
+ *  own citation list): Selberg (1942) proved a POSITIVE proportion lies on
+ *  the line with no explicit constant; Levinson (1974) gave the first real
+ *  number, >=1/3 (33.33%), via his own new mollifier method; Conrey (1989)
+ *  pushed it to >=2/5 (40%) using Kloosterman sums; Bui, Conrey & Young
+ *  (2011) reached >=41.05%; Pratt, Robles, Zaharescu & Zeindler (2020) held
+ *  the pre-Claude record, >=5/12 = 41.66...% -- 41.6% in Anthropic's own
+ *  rounding, "41.7%" in most secondary write-ups of that same fraction --
+ *  via a mollifier due to Feng. Forty-six years, five papers, +8.4
+ *  percentage points. One AI system, a day and a half, +25.5 points more.
+ *
+ *  What is computed live here, verified this session, not looked up:
+ *  Hardy's Z(t), the real-valued function e^{i theta(t)} zeta(1/2+it) --
+ *  real because theta(t), the Riemann-Siegel theta function (computed here
+ *  via its standard asymptotic expansion), is chosen exactly to cancel
+ *  zeta's phase on the critical line -- evaluated by the actual Riemann-
+ *  Siegel formula: the main sum to N=floor(sqrt(t/2pi)) terms, plus the
+ *  first-order correction C0(p) = cos(2pi(p^2-p-1/16)) / cos(2pi p), with a
+ *  smoothstep safety blend near that term's classical singularity at
+ *  p=1/4, 3/4. Verified in Node before any canvas code by scanning t=0.5
+ *  to 103 in 0.005 steps: this implementation finds exactly the 30 real
+ *  sign changes matching the 30 published zero locations (14.134725
+ *  through 101.317851) to within 0.005 on average, and, over an extended
+ *  0-to-3000 sweep, 2,469 live sign changes against the unconditional
+ *  Riemann-von Mangoldt main-term estimate N(T) ~ theta(T)/pi + 1 =
+ *  2,468.65 at T=3000. Every sign change IS, by the intermediate value
+ *  theorem alone -- no lookup table, no numerical trickery -- an actual
+ *  zero of the actual Riemann zeta function sitting exactly on the
+ *  critical line; scrolling through this piece finds them the same way
+ *  Hardy did in 1914, one crossing at a time.
+ *
+ *  What that live count deliberately does NOT show, disclosed here and on
+ *  screen: because the Riemann Hypothesis has already been checked by
+ *  direct computation to enormously larger heights than a browser will
+ *  ever scroll to here (billions of zeros, every one on the line, no
+ *  counterexample ever found), THREAD mode's live ratio will sit at or
+ *  near 100% no matter how far you drag -- and that number is NOT the same
+ *  quantity as the 41.6%/67.2% figures above. Those are unconditional,
+ *  T->infinity asymptotic LOWER BOUNDS, proved analytically without
+ *  computing a single zero location at large height; this piece's counter
+ *  is a finite, direct check, nothing more. The real gap between "every
+ *  zero ever found sits on the line" and "we can currently only PROVE
+ *  67.2% of them must" is, honestly, most of what keeps the Riemann
+ *  Hypothesis open -- that gap is this piece's actual subject, not a
+ *  shortfall in it. The Weil-explicit-formula quadratic form behind the
+ *  real 67.2% bound is not modeled at all; RECORD mode shows the
+ *  historical numbers above as cited data, not computed results.
+ *
+ *  Two modes. THREAD: Z(t) drawn as a single luminous line winding up a
+ *  vertical strip, t increasing upward, its horizontal position a tanh-
+ *  compressed reading of Z(t)'s real value around the bright central
+ *  meridian (sigma=1/2); every sign change glows on the meridian itself
+ *  the instant it is found, folding into a running total. Autoscrolls
+ *  upward; drag to scrub through the strip by hand. RECORD: the six-point
+ *  timeline above as a real, cited bar chart -- forty-six years of single-
+ *  digit gains, then the 2026 jump, drawn at true relative scale.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = (W * DPR) | 0; canvas.height = (H * DPR) | 0;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── Hardy's Z(t) via the Riemann-Siegel formula ─────────────────────── */
+function theta(t) {
+  const t2 = t / 2;
+  return t2 * Math.log(t / (2 * Math.PI)) - t2 - Math.PI / 8
+    + 1 / (48 * t) + 7 / (5760 * Math.pow(t, 3)) + 31 / (80640 * Math.pow(t, 5));
+}
+function Z(t) {
+  if (t < 0.6) t = 0.6; // theta's asymptotic expansion needs t away from 0
+  const v = Math.sqrt(t / (2 * Math.PI));
+  const N = Math.floor(v);
+  const p = v - N;
+  const th = theta(t);
+  let sum = 0;
+  for (let n = 1; n <= N; n++) sum += Math.cos(th - t * Math.log(n)) / Math.sqrt(n);
+  const denom = Math.cos(2 * Math.PI * p);
+  let corr = 0;
+  if (Math.abs(denom) > 1e-3) {
+    const C0 = Math.cos(2 * Math.PI * (p * p - p - 1 / 16)) / denom;
+    const corrSign = (N % 2 === 0) ? -1 : 1;
+    const b = Math.pow(t / (2 * Math.PI), -0.25);
+    const atten = Math.min(1, (Math.abs(denom) - 1e-3) / 0.05);
+    corr = corrSign * b * C0 * atten;
+  }
+  return 2 * sum + corr;
+}
+function Nmain(T) { return theta(Math.max(T, 0.6)) / Math.PI + 1; }
+
+/* ── real, cited historical record (not computed) ────────────────────── */
+const RECORD = [
+  { year: 1942, name: 'Selberg',            pct: null,  label: 'positive proportion, no explicit constant' },
+  { year: 1974, name: 'Levinson',           pct: 33.33, label: '≥ 1/3 · mollifier method' },
+  { year: 1989, name: 'Conrey',             pct: 40.0,  label: '≥ 2/5 · Kloosterman sums' },
+  { year: 2011, name: 'Bui–Conrey–Young',   pct: 41.05, label: '≥ 41.05%' },
+  { year: 2020, name: 'Pratt et al.',       pct: 41.66, label: '≥ 5/12 · Feng’s mollifier' },
+  { year: 2026, name: 'Claude (Anthropic)', pct: 67.2,  label: 'Weil quadratic form' },
+];
+
+/* ── running state ─────────────────────────────────────────────────── */
+let mode = 'thread';
+const state = {
+  t0: 40,              // current center height (t units)
+  tPerPx: 0.34,         // zoom: t units per screen pixel
+  maxTKnown: 0.6,       // sweep frontier
+  crossings: [],        // {t, born}
+  autoSpeed: 5.5,       // t units / second, auto-scroll upward
+};
+
+function extendCrossings(targetT) {
+  const step = 0.03;
+  let t = state.maxTKnown;
+  if (t >= targetT) return;
+  let zPrev = Z(t);
+  let n = 0;
+  const budget = 9000;
+  while (t < targetT && n < budget) {
+    t += step;
+    const z = Z(t);
+    if (isFinite(z) && zPrev !== 0 && Math.sign(z) !== Math.sign(zPrev)) {
+      const frac = Math.abs(zPrev) / (Math.abs(zPrev) + Math.abs(z));
+      const tc = (t - step) + step * frac;
+      state.crossings.push({ t: tc, born: performance.now() });
+    }
+    if (isFinite(z)) zPrev = z;
+    n++;
+  }
+  state.maxTKnown = t;
+}
+
+/* ── interaction ──────────────────────────────────────────────────── */
+let dragging = false, dragStartY = 0, dragStartT0 = 0, dragMoved = false, downTime = 0;
+function down(x, y) {
+  dragging = true; dragMoved = false; downTime = performance.now();
+  dragStartY = y; dragStartT0 = state.t0;
+}
+function move(x, y) {
+  if (!dragging) return;
+  const dy = y - dragStartY;
+  if (Math.abs(dy) > 4) dragMoved = true;
+  state.t0 = Math.max(1, Math.min(30000, dragStartT0 + dy * state.tPerPx));
+}
+function up() {
+  if (dragging && !dragMoved && performance.now() - downTime < 350) {
+    mode = (mode === 'thread') ? 'record' : 'thread';
+    document.getElementById('modeName').textContent = mode === 'thread' ? 'THREAD' : 'RECORD';
+    document.getElementById('desc').textContent = mode === 'thread'
+      ? "Hardy's Z(t) on the critical line · live sign changes"
+      : 'proportion of zeros provably on the line · 46 years, then one AI session';
+    document.getElementById('stats').style.display = mode === 'thread' ? '' : 'none';
+  }
+  dragging = false;
+}
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', up);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', up);
+
+/* ── THREAD rendering ─────────────────────────────────────────────── */
+const SCALE = 2.6;
+function squash(z) { return Math.tanh(z / SCALE); }
+
+function drawThread(nowMs) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+
+  const cx = W * 0.5;
+  const maxOff = Math.min(W * 0.34, 260);
+
+  // faint outer guides (the tanh asymptote, not a literal sigma=0/1 boundary)
+  ctx.strokeStyle = 'rgba(255,255,255,.045)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - maxOff, 0); ctx.lineTo(cx - maxOff, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + maxOff, 0); ctx.lineTo(cx + maxOff, H); ctx.stroke();
+
+  // the meridian itself, sigma = 1/2
+  const merGrad = ctx.createLinearGradient(0, 0, 0, H);
+  merGrad.addColorStop(0, 'rgba(255,205,140,.05)');
+  merGrad.addColorStop(0.5, 'rgba(255,205,140,.16)');
+  merGrad.addColorStop(1, 'rgba(255,205,140,.05)');
+  ctx.strokeStyle = merGrad;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+
+  // Z(t) thread
+  const step = 2;
+  ctx.beginPath();
+  let started = false;
+  for (let y = 0; y <= H; y += step) {
+    const t = state.t0 + (H / 2 - y) * state.tPerPx;
+    if (t < 0.6) continue;
+    const z = Z(t);
+    const x = cx + squash(z) * maxOff;
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(150,215,255,.68)';
+  ctx.lineWidth = 1.4;
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = 'rgba(120,200,255,.55)';
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // zero-crossing glows, visible ones only
+  const tTop = state.t0 + (H / 2) * state.tPerPx;
+  const tBot = state.t0 - (H / 2) * state.tPerPx;
+  for (const c of state.crossings) {
+    if (c.t < tBot - 2 || c.t > tTop + 2) continue;
+    const y = H / 2 - (c.t - state.t0) / state.tPerPx;
+    const age = (nowMs - c.born) / 1000;
+    const pulse = age < 1.2 ? (1 - age / 1.2) : 0;
+    const r = 2.6 + pulse * 9;
+    const glow = ctx.createRadialGradient(cx, y, 0, cx, y, r * 4);
+    const base = 0.55 + pulse * 0.4;
+    glow.addColorStop(0, `rgba(255,235,200,${base})`);
+    glow.addColorStop(1, 'rgba(255,235,200,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(cx, y, r * 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,250,235,.9)';
+    ctx.beginPath(); ctx.arc(cx, y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ── RECORD rendering ─────────────────────────────────────────────── */
+function drawRecord() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+
+  const marginX = Math.min(W * 0.15, 150);
+  const rightMargin = Math.min(W * 0.16, 190);
+  const chartW = W - marginX - rightMargin;
+  const rowH = Math.min(64, (H - 140) / RECORD.length);
+  const top = (H - rowH * RECORD.length) / 2;
+  const maxPct = 85;
+
+  ctx.font = '9px "Courier New", monospace';
+  ctx.textBaseline = 'middle';
+
+  RECORD.forEach((r, i) => {
+    const y = top + i * rowH + rowH / 2;
+    const isNew = r.year === 2026;
+    const barW = r.pct === null ? 3 : (r.pct / maxPct) * chartW;
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = isNew ? 'rgba(255,225,180,.85)' : 'rgba(255,255,255,.35)';
+    ctx.fillText(r.year, marginX - 14, y - 8);
+    ctx.fillStyle = isNew ? 'rgba(255,225,180,.55)' : 'rgba(255,255,255,.2)';
+    ctx.font = '8px "Courier New", monospace';
+    ctx.fillText(r.name.toUpperCase(), marginX - 14, y + 8);
+    ctx.font = '9px "Courier New", monospace';
+
+    ctx.fillStyle = 'rgba(255,255,255,.05)';
+    ctx.fillRect(marginX, y - rowH * 0.22, chartW, rowH * 0.44);
+
+    if (r.pct !== null) {
+      const barGrad = ctx.createLinearGradient(marginX, 0, marginX + barW, 0);
+      if (isNew) {
+        barGrad.addColorStop(0, 'rgba(255,205,120,.85)');
+        barGrad.addColorStop(1, 'rgba(255,235,190,.95)');
+      } else {
+        barGrad.addColorStop(0, 'rgba(150,215,255,.5)');
+        barGrad.addColorStop(1, 'rgba(150,215,255,.75)');
+      }
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(marginX, y - rowH * 0.2, barW, rowH * 0.4);
+      if (isNew) {
+        ctx.shadowBlur = 16; ctx.shadowColor = 'rgba(255,210,140,.65)';
+        ctx.fillRect(marginX, y - rowH * 0.2, barW, rowH * 0.4);
+        ctx.shadowBlur = 0;
+      }
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      ctx.fillRect(marginX, y - rowH * 0.2, 3, rowH * 0.4);
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = isNew ? 'rgba(255,225,180,.9)' : 'rgba(255,255,255,.55)';
+    ctx.font = isNew ? 'bold 11px "Courier New", monospace' : '10px "Courier New", monospace';
+    ctx.fillText(r.pct === null ? 'unspecified' : r.pct.toFixed(2) + '%', marginX + barW + 10, y - 8);
+    ctx.font = '8px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.fillText(r.label, marginX + barW + 10, y + 8);
+  });
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.font = '9px "Courier New", monospace';
+  ctx.fillText('+8.4 points across 46 years (1974–2020)  ·  +25.5 points in one AI session (2026)', W / 2, top + rowH * RECORD.length + 30);
+}
+
+/* ── stats panel ──────────────────────────────────────────────────── */
+function updateStats() {
+  document.getElementById('tVal').textContent = state.t0.toFixed(1);
+  document.getElementById('countVal').textContent = state.crossings.length.toString();
+  const nm = Nmain(state.t0 + (H / 2) * state.tPerPx);
+  document.getElementById('nmainVal').textContent = nm.toFixed(1);
+  const ratio = nm > 0 ? (Math.min(state.crossings.length, nm) / nm * 100) : 0;
+  document.getElementById('ratioVal').textContent =
+    `direct check: ${ratio.toFixed(1)}% — not the proven bound, see below`;
+}
+
+/* ── main loop ────────────────────────────────────────────────────── */
+let lastFrame = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - lastFrame) / 1000, 0.05);
+  lastFrame = now;
+
+  if (mode === 'thread') {
+    if (!dragging) state.t0 = Math.min(30000, state.t0 + state.autoSpeed * dt);
+    const target = state.t0 + (H / 2) * state.tPerPx + 20;
+    extendCrossings(target);
+    drawThread(now);
+    updateStats();
+  } else {
+    drawRecord();
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

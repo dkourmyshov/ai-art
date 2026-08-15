@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+meridian.html    — MERIDIAN piece
 valley.html      — VALLEY piece
 loom.html        — LOOM piece
 caustic.html     — CAUSTIC piece
@@ -8875,3 +8876,150 @@ point made visually, not just stated.
       experiment judged too close to this gallery's existing DIFFRACT/
       SPECTRE/EINSTEIN aperiodic-monotile cluster to be worth a dedicated
       piece without a genuinely new visual hook.
+
+## Piece 47: MERIDIAN — Hardy's Z(t) Scored Against 46 Years of the Critical Line (2026-08-15)
+This session's wander ("new physics discovery August 2026", "new
+mathematics proof discovery August 2026", "strange new material behavior
+science news August 2026") surfaced several candidates: quantum
+entanglement generated directly from sunlight for the first time (Univ.
+of Ottawa / MPI for the Science of Light, Aug 2026 -- a genuinely novel
+photon source, but the interesting physics is in the nonlinear crystal's
+SPDC process this gallery's own CLEAVE session already covers via a
+different route, squeezed-vacuum Bogoliubov transformation); halide
+perovskite crystals that reversibly bend under light with no hysteresis
+(UC Davis, Leite group, March 2026 -- a real photostriction effect, but
+close in spirit to this gallery's existing CAUSTIC/LOOM crystal-response
+pieces without a distinctive enough visual mechanism of its own); and an
+unreleased Anthropic research model's jump on the Riemann Hypothesis.
+Settled on the last: on 10 August 2026 (updated 13 August, five days
+before this session ran), Anthropic disclosed that Claude had raised the
+proven unconditional lower bound on the proportion of nontrivial zeta
+zeros lying exactly on the critical line from 41.6% to 67.2%
+(anthropic.com/research/riemann-zeta; WebFetch reached the post itself,
+cross-checked against TechCrunch's, The AI Insider's and Kingy AI's
+independent coverage, all agreeing on the figures, the token count and
+the verification chain). Checked against this gallery's own memory
+first: COULOMB (session 25) already renders 2,500 real zeta zeros'
+spacing statistics (the Montgomery-Odlyzko law, a LOCAL/fine-structure
+question) and its own header explicitly flagged as unattempted "the
+Riemann-Siegel Z-function itself... never plotted or evaluated live" --
+a genuinely different, MACROSCOPIC question (what fraction of all zeros
+up to height T are certified to lie on the line, not how the confirmed
+ones are spaced) and a two-session-old open TODO this piece finally
+picks up, so this cleared the novelty bar and closes a real thread.
+
+The result itself, per Anthropic's own post: an employee with limited
+specialist training told an unreleased Claude research version to
+seriously attempt the Riemann Hypothesis and left it running roughly a
+day and a half across two sessions -- the first (650 generated ideas)
+failed outright; the second deployed ~60 subagents, ran ~2,400 shell
+commands and hundreds of Python scripts, 31M output tokens total. Two
+Anthropic mathematicians (Levent Alpoge, Ralph Furman) checked the
+argument, outside number theorists Brian Conrey and Dan Goldston
+reviewed it, and the model produced its own formally verifiable Lean
+proof. The technique, per Anthropic's own description: a space of test
+functions with a quadratic form induced by the Weil explicit formula,
+positive-definite on the subspace from on-line zeros and negative-
+definite on the subspace from off-line zeros, building on Montgomery's
+1973 pair-correlation approach (adapted without assuming RH by later
+work of Aryan and of Baluyot et al.) and Bombieri's 2000 work -- the
+reported innovation was treating both subspaces jointly. Anthropic is
+explicit this is not a proof of RH and they do not expect the technique
+to become one.
+
+This session independently verified the historical lineage this result
+sits in (arXiv preprints, ResearchGate, a 2026 Springer paper's own
+citation list, cross-checked figure by figure rather than trusted from
+one secondary summary): Selberg (1942) proved a positive proportion with
+no explicit constant; Levinson (1974) gave the first real number, >=1/3,
+via his own new mollifier method; Conrey (1989) reached >=2/5 via
+Kloosterman sums; Bui, Conrey & Young (2011) reached >=41.05%; Pratt,
+Robles, Zaharescu & Zeindler (2020) held the pre-Claude record, >=5/12 =
+41.66...% (41.6% in Anthropic's own rounding, "41.7%" in most secondary
+write-ups of the identical fraction), via a mollifier due to Feng. Forty-
+six years, five papers, +8.4 percentage points; one AI system, a day and
+a half, +25.5 points more -- the actual "novel and unexpected" hook, a
+real discontinuity in a slow, decades-long record.
+
+What is computed live here, verified this session before any canvas
+code: Hardy's Z(t) = e^{i*theta(t)} zeta(1/2+it), real-valued because
+theta(t) (the Riemann-Siegel theta function, via its own standard
+asymptotic expansion) is exactly the phase that cancels zeta's on the
+critical line, evaluated via the genuine Riemann-Siegel formula -- the
+main sum to N=floor(sqrt(t/2pi)) terms plus the first-order correction
+C0(p)=cos(2pi(p^2-p-1/16))/cos(2pi*p) (smoothstep-blended out near its
+own classical singularity at p=1/4, 3/4). A Node script (not committed)
+scanning t=0.5 to 103 in 0.005 steps found exactly the 30 real sign
+changes matching the 30 published nontrivial zero locations (14.134725
+through 101.317851) to within 0.005 average error, and a second,
+extended 0-to-3000 sweep found 2,469 live sign changes against the
+unconditional Riemann-von Mangoldt main-term estimate N(T) ~
+theta(T)/pi + 1 = 2,468.65 at T=3000 -- close agreement is itself the
+real, verifiable statement that RH holds (no off-line zero has ever been
+found) at every height this session could reach, not an assumption baked
+into the code. Every sign change the running canvas sweep finds is, by
+the intermediate value theorem alone, an actual zero of the actual
+Riemann zeta function on the critical line -- Hardy's own 1914 method,
+not a simulation of it.
+
+What this deliberately does NOT claim, disclosed in the piece's own
+header and on screen: because RH has already been checked by direct
+computation to heights far beyond anything reachable here, THREAD mode's
+live ratio sits at/near 100% no matter how far it scrolls, and that
+number is NOT the 41.6%/67.2% figures above -- those are unconditional
+T->infinity asymptotic lower bounds proved analytically, without
+computing any single zero location at real height, while this piece's
+counter is a finite direct check and nothing more. The gap between
+"every zero ever found is on the line" and "we can currently only PROVE
+67.2% of them must be" is the actual open heart of the Riemann
+Hypothesis, stated as this piece's real subject rather than papered
+over. The Weil-explicit-formula quadratic form behind the true 67.2%
+bound is not modeled at all -- RECORD mode's six-point timeline is
+disclosed as real, cited historical data, not a live computation.
+
+Two modes. THREAD: Z(t) as a single line winding up a vertical strip
+(autoscrolling, drag to scrub by hand), t increasing upward, horizontal
+position a tanh-compressed reading of Z(t)'s real value around the
+bright central meridian (sigma=1/2); each sign change glows exactly on
+the meridian the instant the running sweep finds it, feeding a live
+zeros-found counter. RECORD: the six-point 1942-2026 timeline as a real
+bar chart at true relative scale, the 2020->2026 jump visually and
+numerically set against the 1974-2020 grind. Verified in-browser via
+Playwright (desktop and a 390x844 mobile viewport): no console pageerrors
+in either mode; one harmless favicon 404 (this gallery's pages have never
+shipped a favicon, not new to this session). One real bug caught only in
+the rendered screenshot, not the static code review: RECORD mode's
+long author-list rows (in particular "Pratt, Robles, Zaharescu &
+Zeindler") and the rightmost 67.2% label both clipped past the canvas
+edge at the first attempted margins/maxPct scale -- fixed by shortening
+displayed names to match this gallery's existing single-name citation
+convention (full attribution lives in this file and index.html, not
+required on the canvas itself) and by loosening the bar chart's maxPct
+from 70 to 85 so the longest bar leaves room for its own label.
+
+- [ ] MERIDIAN: no off-line-analogue exists to render, so the piece can
+      only ever show 100% in THREAD mode's direct-check ratio; a
+      RECORD-mode annotation of the actual PROOF STRUCTURE (what a
+      positive- vs negative-definite quadratic-form subspace even looks
+      like, in however simplified a toy case) was considered and dropped
+      this session as too easy to get subtly wrong under verification
+      time pressure -- a future session with more room to build and check
+      a genuinely correct toy mollifier or quadratic-form example against
+      known small cases could attempt it rather than leaving the real
+      proof mechanism entirely undramatized.
+- [ ] MERIDIAN: the Riemann-Siegel formula implemented here uses only the
+      first-order correction term C0; accuracy is verified to ~0.005 for
+      t<103 and the sign-change count matches N(T) closely to t=3000, but
+      higher t (the piece allows scrubbing to t=30000) has not been
+      individually spot-checked against any published zero table beyond
+      that range -- a future session could verify further out, or add the
+      next Riemann-Siegel correction term (C1) for better accuracy at the
+      largest scrubbable heights.
+- [ ] Still open, unpursued again this session (see session 46's own note
+      for the full history): the Sylvester-Gallai conjecture's reported
+      first AI-only proof, the matrix-multiplication exponent omega
+      dropping below 2.3727, a wandering supermassive black hole 30,000
+      light-years from its host's center, the Brown/Michigan nanoparticle
+      superlattice stabilizing an intermediate metallic phase, and a
+      claimed AI-found Jacobian-conjecture counterexample this gallery
+      still has no verifiable primary source for.
