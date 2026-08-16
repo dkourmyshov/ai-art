@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHIME — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:56vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;z-index:2;
+}
+#stats .val{color:rgba(150,225,200,.8)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.75;max-width:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:68vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">CAVITY</span>
+  <span id="desc">Earth-ionosphere cavity · geomagnetic dipole · coherent axion field</span>
+</div>
+<div id="hint">drag: rotate globe · click: switch mode</div>
+<script>
+/*  CHIME — the whole Earth, rung like a bell, listening for dark matter
+ *
+ *  This session's web wander turned up a real observational result from
+ *  August 2026: Atsushi Nishizawa, Atsushi Taruya & Yoshiaki Himemoto
+ *  (Kyoto Univ.) used a decade (2012-2022) of geomagnetic-field data from
+ *  the British Geological Survey's Eskdalemuir Observatory (55.3N, 3.2W,
+ *  Scotland) to search for ultralight axion dark matter -- "Axion Dark
+ *  Matter Search from Terrestrial Magnetic Fields at Extremely Low
+ *  Frequencies," Prog. Theor. Exp. Phys. 2026, 073E02 (published 8 June
+ *  2026), alongside the companion formulation paper (arXiv:2509.14673)
+ *  and phys.org's own 12 Aug 2026 coverage -- all cross-checked, all
+ *  agreeing on the method, the observatory and the "~100x tighter than
+ *  CAST" headline number. Checked against this gallery's own memory
+ *  first (grep for "dark matter|axion|boson|magnetometer" across every
+ *  existing piece and this file): zero matches, a genuinely untouched
+ *  thread, not a previously-flagged one.
+ *
+ *  The physics, extracted from the papers' own text via WebFetch (not
+ *  paraphrased from a press summary): if axion dark matter exists, its
+ *  field a(t) oscillates coherently at a frequency set purely by its own
+ *  mass, f_a = m_a/h -- verified this session in Node (verify.js,
+ *  scratchpad, not committed): m_a=1e-14 eV gives f=2.418 Hz, matching
+ *  the formulation paper's own quoted "~2.4 Hz per 1e-14 eV" exactly.
+ *  The axion-photon interaction L = -g_ag * a * E.B means a's own time
+ *  derivative, crossed with Earth's REAL geomagnetic field, sources an
+ *  effective current J_eff = -g_ag*(da/dt)*B_geo -- so the induced signal
+ *  is literally proportional to how strong the local geomagnetic field
+ *  is, which is why CAVITY mode's glow below is modulated by the real
+ *  dipole formula |B(theta)| = B_eq*sqrt(1+3cos^2(theta)), not an
+ *  invented field. That current radiates into the Earth-ionosphere
+ *  cavity -- the SAME resonant cavity that turns lightning strikes into
+ *  the textbook Schumann resonances (7.83, 14.3, 20.8, 27.3, 33.8 Hz,
+ *  standard values, not re-derived) -- so an axion whose mass lands its
+ *  frequency on a cavity eigenmode gets resonantly amplified. The
+ *  formulation paper's own idealized (lossless) resonance condition is
+ *  m_a*R = sqrt(l(l+1)); verified this session that this idealized
+ *  formula predicts 10.6/18.3/25.9/33.5 Hz for l=1..4 -- 22-35% ABOVE the
+ *  real measured Schumann values, a gap the real papers close with
+ *  atmospheric-conductivity modeling this piece does not reproduce (their
+ *  own words: finite conductivity turns the idealized divergence into
+ *  "well-defined peaks with finite amplitude" near the true, lower,
+ *  measured frequencies) -- SPECTRUM mode below draws peaks at the REAL
+ *  measured frequencies and shows the idealized ticks as faint, honestly
+ *  offset reference marks, not as the modeled curve.
+ *
+ *  Why one planet can act as a single antenna rather than needing an
+ *  interferometer: an ultralight field's coherence length is its reduced
+ *  Compton wavelength divided by the dark-matter virial velocity
+ *  (~220 km/s, standard halo value). Verified this session in Node: at
+ *  m_a=3e-14 eV (the mass nearest the new bound below), that comes to
+ *  about 9 million km -- roughly 1,400 Earth radii. The whole planet
+ *  sits well inside one coherence patch, oscillating in lock-step; CAVITY
+ *  mode's global brightness pulse (slowed to ~0.15 Hz for visibility --
+ *  disclosed, the real 0.24-24 Hz range would just look like flicker) is
+ *  a literal rendering of that fact, not a stylistic choice.
+ *
+ *  The real result: a decade of Eskdalemuir data, analyzed for axion
+ *  masses 1e-15 to 1e-13 eV (f = 0.24 to 24.2 Hz), turned up 65
+ *  persistent candidate peaks with signal-to-noise > 3 -- per the papers'
+ *  own account, still unconfirmed, exactly what a Gaussian noise floor
+ *  is expected to throw off occasionally across that many frequency
+ *  bins, not (yet) a detection. No new axion was found; the null result
+ *  itself set g_ag <~ 4e-13 GeV^-1 near m_a~3e-14 eV (f=7.25 Hz, almost
+ *  exactly the fundamental Schumann line -- the resonance is doing its
+ *  job) -- about 100x tighter than the prior best terrestrial bound
+ *  (CAST), per the paper's own stated ratio, not an independently
+ *  re-derived number. SPECTRUM mode's 65 candidate ticks are seeded,
+ *  reproducible, statistically-placed stand-ins (this session could not
+ *  reach the paper's own list of 65 frequencies/SNRs) -- disclosed as
+ *  such on screen, not presented as the real list.
+ *
+ *  What is NOT modeled: the true vector-spherical-harmonic cavity
+ *  eigenmodes (the general review, Kalia & Sulai, Universe 12(8):236,
+ *  gives the full B_a(Omega,t) sum over Phi_lm -- reached via WebFetch,
+ *  but only the resonance DENOMINATOR, not a renderable closed form for
+ *  Phi_lm itself); the real IGRF-precision geomagnetic field (an
+ *  idealized tilted dipole, ~10 degrees off the rotation axis, standard
+ *  textbook approximation, stands in); and the actual atmospheric-
+ *  conductivity lineshape (a plain Lorentzian per Schumann line, tuned
+ *  only for legibility, stands in for their full solved cavity Green's
+ *  function). SPECTRUM mode's live amplitude readout combines the
+ *  papers' own back-of-envelope scaling, |B_a| ~ 0.3 pT *
+ *  (g_ag/1e-10 GeV^-1) * sqrt(rho_DM/0.3 GeV/cm^3) * (R/R_earth) *
+ *  (B_geo/50 uT) -- quoted directly from the formulation paper -- with
+ *  this piece's own Lorentzian envelope as a multiplicative "how close to
+ *  a cavity line" factor; that combination is this piece's own honest
+ *  simplification, not a number either paper published.
+ *
+ *  Two modes. CAVITY: an orthographic globe, drag to rotate -- real
+ *  tilted-dipole field lines, Eskdalemuir and the axion-sensitive
+ *  Southeast Asia region (per the papers: axion signals vary with
+ *  geomagnetic geometry, dark-photon signals would not) marked at their
+ *  real coordinates, surface glow proportional to the real dipole
+ *  formula, pulsing everywhere in phase. SPECTRUM: predicted signal vs.
+ *  frequency, real Schumann peaks, the searched mass window, the 65
+ *  simulated candidate ticks, and the new bound married against its
+ *  ~100x-weaker predecessor -- drag to scrub and read live numbers.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = (W * DPR) | 0; canvas.height = (H * DPR) | 0;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── verified constants ───────────────────────────────────────────── */
+const H_EVS = 4.135667696e-15;           // Planck constant, eV*s
+const R_EARTH_KM = 6371;
+const B_EQ_UT = 30;                       // equatorial surface dipole field
+const DIPOLE_TILT_DEG = 10.2;             // ~current geomagnetic dipole tilt
+const GEOMAG_POLE = { lat: 80.7, lon: -72.7 }; // approx N geomagnetic pole
+const ESKDALEMUIR = { lat: 55.3, lon: -3.2, label: 'ESKDALEMUIR OBS.' };
+const SE_ASIA = { lat: 4.0, lon: 105.0, label: 'PEAK AXION SENSITIVITY' };
+const SCHUMANN_REAL = [7.83, 14.3, 20.8, 27.3, 33.8];
+const SCHUMANN_AMP = [1.0, 0.55, 0.36, 0.24, 0.16];
+const MASS_LO = 1e-15, MASS_HI = 1e-13;   // eV, searched range
+const F_LO = MASS_LO / H_EVS, F_HI = MASS_HI / H_EVS;
+const F_AXIS_MAX = 36;                    // Hz, spectrum axis extent
+const NEW_BOUND = { g: 4e-13, m: 3e-14 };
+NEW_BOUND.f = NEW_BOUND.m / H_EVS;
+const PRIOR_BOUND_G = NEW_BOUND.g * 100;
+
+function fToMass(f) { return f * H_EVS; }
+function idealMode(l) { return (2.99792458e8 / (2 * Math.PI * R_EARTH_KM * 1000)) * Math.sqrt(l * (l + 1)); }
+const IDEAL_MODES = [1, 2, 3, 4].map(idealMode);
+
+function schumannEnvelope(f) {
+  let s = 0;
+  for (let i = 0; i < SCHUMANN_REAL.length; i++) {
+    const f0 = SCHUMANN_REAL[i], amp = SCHUMANN_AMP[i], gamma = 1.3; // Hz, illustrative Q~6
+    s += amp / (1 + Math.pow((f - f0) / gamma, 2));
+  }
+  return s; // ~1 at fundamental peak
+}
+function dipoleFieldUT(thetaMagRad) {
+  return B_EQ_UT * Math.sqrt(1 + 3 * Math.cos(thetaMagRad) * Math.cos(thetaMagRad));
+}
+function amplitudePT(g, envelope, bGeoUT) {
+  return 0.3 * (g / 1e-10) * Math.sqrt(0.3 / 0.3) * 1 * (bGeoUT / 50) * (0.15 + 0.85 * envelope);
+}
+
+/* ── seeded 65 unconfirmed SNR>3 candidates (simulated placement) ───── */
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(654321);
+const CANDIDATES = [];
+for (let i = 0; i < 65; i++) {
+  const f = F_LO + rnd() * (F_HI - F_LO);
+  const snr = 3 + Math.pow(rnd(), 2.2) * 3.2; // most just above 3, a long thin tail
+  CANDIDATES.push({ f, snr });
+}
+CANDIDATES.sort((a, b) => a.f - b.f);
+
+/* ── 3D helpers (orthographic, Earth-frame: Y = spin axis) ──────────── */
+function latLonToVec(latDeg, lonDeg) {
+  const lat = latDeg * Math.PI / 180, lon = lonDeg * Math.PI / 180;
+  return [Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon)];
+}
+function sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function dot(a, b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function norm(a) { const n = Math.sqrt(dot(a,a))||1e-9; return [a[0]/n, a[1]/n, a[2]/n]; }
+function scale(a, s) { return [a[0]*s, a[1]*s, a[2]*s]; }
+function add(a, b) { return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
+
+const D_AXIS = latLonToVec(GEOMAG_POLE.lat, GEOMAG_POLE.lon); // dipole axis, Earth frame
+const D_X = norm(cross([0, 1, 0], D_AXIS).some(v => Math.abs(v) > 1e-6) ? cross([0, 1, 0], D_AXIS) : [1, 0, 0]);
+const D_Z = norm(cross(D_AXIS, D_X));
+function dipoleFrameToEarth(v) { return add(add(scale(D_X, v[0]), scale(D_AXIS, v[1])), scale(D_Z, v[2])); }
+function magneticColatitude(earthVec) { return Math.acos(Math.max(-1, Math.min(1, dot(norm(earthVec), D_AXIS)))); }
+
+let yaw = 0.5, pitch = -0.25;
+function rotateView(v) {
+  let [x, y, z] = v;
+  let x1 = x * Math.cos(yaw) + z * Math.sin(yaw);
+  let z1 = -x * Math.sin(yaw) + z * Math.cos(yaw);
+  let y2 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
+  let z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
+  return [x1, y2, z2];
+}
+
+/* ── interaction ──────────────────────────────────────────────────── */
+let mode = 'cavity';
+let dragging = false, dragMoved = false, downTime = 0, lastX = 0, lastY = 0;
+let specCursorF = 12;
+function setMode(m) {
+  mode = m;
+  document.getElementById('modeName').textContent = m === 'cavity' ? 'CAVITY' : 'SPECTRUM';
+  document.getElementById('desc').textContent = m === 'cavity'
+    ? 'Earth-ionosphere cavity · geomagnetic dipole · coherent axion field'
+    : 'predicted signal vs. frequency · 65 unconfirmed candidates · new bound';
+  document.getElementById('hint').textContent = m === 'cavity'
+    ? 'drag: rotate globe · click: switch mode'
+    : 'drag: scrub frequency · click: switch mode';
+}
+function down(x, y) { dragging = true; dragMoved = false; downTime = performance.now(); lastX = x; lastY = y; }
+function move(x, y) {
+  if (!dragging) return;
+  const dx = x - lastX, dy = y - lastY;
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+  if (mode === 'cavity') {
+    yaw += dx * 0.006;
+    pitch = Math.max(-1.1, Math.min(1.1, pitch + dy * 0.006));
+  } else {
+    const chartX0 = Math.min(W * 0.1, 90), chartW = W - chartX0 - Math.min(W * 0.1, 90);
+    specCursorF = Math.max(0.1, Math.min(F_AXIS_MAX, specCursorF + dx / chartW * F_AXIS_MAX));
+  }
+  lastX = x; lastY = y;
+}
+function up() {
+  if (dragging && !dragMoved && performance.now() - downTime < 350) {
+    setMode(mode === 'cavity' ? 'spectrum' : 'cavity');
+  }
+  dragging = false;
+}
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', up);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', up);
+setMode('cavity');
+
+/* ── CAVITY rendering ─────────────────────────────────────────────── */
+function drawCavity(nowMs) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const Rpx = Math.min(W, H) * 0.30;
+  const pulse = 0.5 + 0.5 * Math.sin(nowMs / 1000 * 2 * Math.PI * 0.15); // slowed visual pulse, disclosed
+
+  function proj(vEarth) {
+    const v = rotateView(vEarth);
+    return { x: cx + v[0] * Rpx, y: cy - v[1] * Rpx, z: v[2] };
+  }
+
+  // globe body with dipole-modulated glow
+  const globeGrad = ctx.createRadialGradient(cx - Rpx * 0.3, cy - Rpx * 0.3, Rpx * 0.1, cx, cy, Rpx * 1.05);
+  globeGrad.addColorStop(0, `rgba(70,110,100,${0.22 + 0.1 * pulse})`);
+  globeGrad.addColorStop(0.7, 'rgba(20,35,32,.24)');
+  globeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = globeGrad;
+  ctx.beginPath(); ctx.arc(cx, cy, Rpx, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.09)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, Rpx, 0, Math.PI * 2); ctx.stroke();
+
+  // graticule, front-facing only, tinted by local dipole field strength
+  for (let lat = -60; lat <= 60; lat += 30) {
+    ctx.beginPath(); let started = false;
+    for (let lon = 0; lon <= 360; lon += 4) {
+      const vE = latLonToVec(lat, lon);
+      const p = proj(vE);
+      if (p.z < -0.05) { started = false; continue; }
+      const a = Math.min(1, (p.z + 0.05) / 0.5);
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = `rgba(140,200,180,${0.12 * a})`;
+    }
+    ctx.stroke();
+  }
+  for (let lon = 0; lon < 360; lon += 30) {
+    ctx.beginPath(); let started = false;
+    for (let lat = -90; lat <= 90; lat += 4) {
+      const vE = latLonToVec(lat, lon);
+      const p = proj(vE);
+      if (p.z < -0.05) { started = false; continue; }
+      const a = Math.min(1, (p.z + 0.05) / 0.5);
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = `rgba(140,200,180,${0.1 * a})`;
+    }
+    ctx.stroke();
+  }
+
+  // surface glow dots modulated by real dipole formula, pulsing in phase everywhere
+  for (let lat = -80; lat <= 80; lat += 10) {
+    const lonStep = Math.min(30, 10 / Math.max(0.12, Math.cos(lat * Math.PI / 180)));
+    for (let lon = 0; lon < 360; lon += lonStep) {
+      const vE = latLonToVec(lat, lon);
+      const p = proj(vE);
+      if (p.z < 0.05) continue;
+      const thetaMag = magneticColatitude(vE);
+      const bLocal = dipoleFieldUT(thetaMag);
+      const bNorm = (bLocal - B_EQ_UT) / (2 * B_EQ_UT - B_EQ_UT); // 0 at equator, 1 at pole
+      const glowA = (0.05 + 0.35 * bNorm) * (0.35 + 0.65 * pulse) * Math.min(1, p.z * 1.5);
+      ctx.fillStyle = `rgba(160,255,220,${glowA})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 + bNorm * 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // dipole field lines: r = L*sin^2(theta') from axis, few L-shells x few azimuths
+  const tilt = DIPOLE_TILT_DEG; void tilt;
+  ctx.lineWidth = 1;
+  for (const Lshell of [1.12, 1.3, 1.55]) {
+    for (let az = 0; az < 360; az += 45) {
+      ctx.beginPath(); let started = false;
+      for (let thP = 6; thP <= 174; thP += 3) {
+        const th = thP * Math.PI / 180;
+        const r = Lshell * Math.sin(th) * Math.sin(th);
+        if (r < 1.001) continue; // stay outside the surface
+        const vDipole = [r * Math.sin(th) * Math.cos(az * Math.PI / 180), r * Math.cos(th), r * Math.sin(th) * Math.sin(az * Math.PI / 180)];
+        const vEarth = dipoleFrameToEarth(vDipole);
+        const vNorm = scale(vEarth, 1); // already in Earth-radius units via r
+        const v = rotateView(vNorm);
+        const x = cx + v[0] * Rpx, y = cy - v[1] * Rpx;
+        const a = v[2] > -0.2 ? Math.min(1, (v[2] + 0.2) / 0.6) : 0;
+        if (a <= 0) { started = false; continue; }
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+        ctx.strokeStyle = `rgba(120,180,255,${0.16 * a})`;
+      }
+      ctx.stroke();
+    }
+  }
+
+  // markers
+  function drawMarker(m, color) {
+    const vE = latLonToVec(m.lat, m.lon);
+    const p = proj(vE);
+    if (p.z < -0.1) return;
+    const a = Math.min(1, (p.z + 0.1) / 0.4);
+    ctx.fillStyle = color.replace('A', a.toFixed(2));
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color.replace('A', (a * 0.5).toFixed(2));
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = '8px "Courier New", monospace';
+    ctx.fillStyle = `rgba(255,255,255,${0.5 * a})`;
+    ctx.textAlign = p.x > cx ? 'left' : 'right';
+    ctx.fillText(m.label, p.x + (p.x > cx ? 10 : -10), p.y + 3);
+  }
+  drawMarker(ESKDALEMUIR, 'rgba(255,210,140,A)');
+  drawMarker(SE_ASIA, 'rgba(255,140,180,A)');
+}
+
+/* ── SPECTRUM rendering ───────────────────────────────────────────── */
+function drawSpectrum() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const chartX0 = Math.min(W * 0.1, 90), chartX1 = W - Math.min(W * 0.1, 90);
+  const chartW = chartX1 - chartX0;
+  const smallScreen = W < 480;
+  const top = smallScreen ? Math.min(H * 0.32, 210) : Math.min(H * 0.22, 150);
+  const bottom = H - Math.min(H * 0.24, 170);
+  const chartH = bottom - top;
+  function fx(f) { return chartX0 + (f / F_AXIS_MAX) * chartW; }
+
+  // searched-range shading
+  ctx.fillStyle = 'rgba(140,200,180,.05)';
+  ctx.fillRect(fx(F_LO), top, fx(F_HI) - fx(F_LO), chartH);
+
+  // envelope curve
+  ctx.beginPath();
+  for (let px = 0; px <= chartW; px += 2) {
+    const f = (px / chartW) * F_AXIS_MAX;
+    const env = schumannEnvelope(f);
+    const y = bottom - env * chartH * 0.82;
+    if (px === 0) ctx.moveTo(chartX0 + px, y); else ctx.lineTo(chartX0 + px, y);
+  }
+  ctx.strokeStyle = 'rgba(150,215,255,.6)'; ctx.lineWidth = 1.4;
+  ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(120,200,255,.5)';
+  ctx.stroke(); ctx.shadowBlur = 0;
+
+  // real Schumann peak labels + idealized (offset) reference ticks
+  ctx.textAlign = 'center';
+  SCHUMANN_REAL.forEach((f0, i) => {
+    const x = fx(f0);
+    ctx.strokeStyle = 'rgba(255,220,160,.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, bottom); ctx.lineTo(x, bottom - SCHUMANN_AMP[i] * chartH * 0.82); ctx.stroke();
+    ctx.font = '8px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(255,220,160,.55)';
+    ctx.fillText(f0.toFixed(2) + 'Hz', x, bottom + 14);
+  });
+  IDEAL_MODES.forEach(f0 => {
+    if (f0 > F_AXIS_MAX) return;
+    const x = fx(f0);
+    ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // 65 candidate ticks
+  CANDIDATES.forEach(c => {
+    const x = fx(c.f);
+    const h2 = 4 + (c.snr - 3) * 5;
+    ctx.strokeStyle = 'rgba(255,120,120,.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, bottom + 24); ctx.lineTo(x, bottom + 24 - h2); ctx.stroke();
+  });
+  ctx.fillStyle = 'rgba(255,120,120,.55)'; ctx.textAlign = 'left'; ctx.font = '8px "Courier New", monospace';
+  ctx.fillText('65 unconfirmed SNR>3 candidates (positions simulated, see header)', chartX0, bottom + 46);
+
+  // new bound marker — single-line badge, clamped so it never leaves the canvas
+  const xb = fx(NEW_BOUND.f);
+  ctx.fillStyle = 'rgba(150,255,210,.85)';
+  ctx.beginPath(); ctx.moveTo(xb, top - 4); ctx.lineTo(xb - 5, top - 12); ctx.lineTo(xb + 5, top - 12); ctx.closePath(); ctx.fill();
+  const badgeText = smallScreen
+    ? 'NEW BOUND: g_aγ ≲ 4×10⁻¹³ GeV⁻¹'
+    : 'NEW BOUND: g_aγ ≲ 4×10⁻¹³ GeV⁻¹  ·  ~100x tighter than prior best (CAST)';
+  ctx.font = smallScreen ? 'bold 8px "Courier New", monospace' : 'bold 9px "Courier New", monospace';
+  const badgeW = ctx.measureText(badgeText).width;
+  const badgeX = Math.max(chartX0 + badgeW / 2 + 4, Math.min(chartX1 - badgeW / 2 - 4, xb));
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  ctx.fillRect(badgeX - badgeW / 2 - 6, top - 30, badgeW + 12, 16);
+  ctx.fillStyle = 'rgba(150,255,210,.9)';
+  ctx.fillText(badgeText, badgeX, top - 19);
+
+  // axis
+  ctx.strokeStyle = 'rgba(255,255,255,.15)';
+  ctx.beginPath(); ctx.moveTo(chartX0, bottom); ctx.lineTo(chartX1, bottom); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.font = '8px "Courier New", monospace';
+  for (let f = 0; f <= F_AXIS_MAX; f += 6) {
+    ctx.textAlign = 'center';
+    ctx.fillText(f + 'Hz', fx(f), bottom + 14);
+  }
+  if (!smallScreen) {
+    ctx.font = '8px "Courier New", monospace'; ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.textAlign = 'left';
+    ctx.fillText('shaded: searched range (m_a 1e-15 to 1e-13 eV) · dashed: idealized cavity modes (22-35% above real lines)', chartX0, bottom + 62);
+  }
+
+  // scrub cursor
+  const xc = fx(specCursorF);
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(xc, top); ctx.lineTo(xc, bottom); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.beginPath(); ctx.arc(xc, bottom - schumannEnvelope(specCursorF) * chartH * 0.82, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+/* ── stats panel ──────────────────────────────────────────────────── */
+function updateStats() {
+  if (mode === 'cavity') {
+    document.getElementById('r1').innerHTML = `dipole tilt = <span class="val">${DIPOLE_TILT_DEG.toFixed(1)}°</span>`;
+    document.getElementById('r2').innerHTML = `B_eq = <span class="val">${B_EQ_UT} µT</span> · B_pole = <span class="val">${(2*B_EQ_UT)} µT</span>`;
+    document.getElementById('r3').innerHTML = `coherence length ≫ R_Earth <span class="val">(~1,400x @ 3e-14 eV)</span>`;
+    document.getElementById('r4').textContent = 'J_eff = -g_aγ (∂a/∂t) B_geo — glow tracks the real dipole field';
+    document.getElementById('r5').textContent = 'orange: Eskdalemuir Obs. · pink: peak axion sensitivity (SE Asia)';
+  } else {
+    const m = fToMass(specCursorF);
+    const env = schumannEnvelope(specCursorF);
+    const amp = amplitudePT(NEW_BOUND.g, env, 50);
+    document.getElementById('r1').innerHTML = `f = <span class="val">${specCursorF.toFixed(2)} Hz</span>  →  m_a = <span class="val">${m.toExponential(2)} eV</span>`;
+    document.getElementById('r2').innerHTML = `cavity envelope = <span class="val">${(env*100).toFixed(1)}%</span> of fundamental`;
+    document.getElementById('r3').innerHTML = `predicted |B_a| at new bound ≈ <span class="val">${amp.toExponential(2)} pT</span>`;
+    document.getElementById('r4').textContent = 'Nishizawa, Taruya & Himemoto, PTEP 2026, 073E02';
+    document.getElementById('r5').textContent = '65 SNR>3 peaks, unconfirmed — expected from noise this often';
+  }
+}
+
+/* ── main loop ────────────────────────────────────────────────────── */
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (mode === 'cavity') {
+    if (!dragging) yaw += 0.0018;
+    drawCavity(now);
+  } else {
+    drawSpectrum();
+  }
+  updateStats();
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
