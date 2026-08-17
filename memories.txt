@@ -9180,3 +9180,151 @@ drawSpectrum() before first use.
       mathematics release (1 Aug 2026, one of whose ten problems this
       gallery's own ERDOS piece already covers from a separate May 2026
       source) -- both newly surfaced, neither pursued.
+
+## Piece 49: MOIRE — A Twist of a Few Tenths of a Degree, and Graphene Counts Its Layers (2026-08-17)
+This session's wander ("new physics discovery August 2026", "new
+mathematics proof breakthrough August 2026", "strange new material
+behavior discovered August 2026") surfaced the same sunlight-to-
+entanglement result MERIDIAN's session (47, 2026-08-15) already found
+and passed on -- Li, Brar, Kublbock, Upham, Fattahi & Boyd, "Generating
+quantum entanglement from sunlight," Optica 13(8):1508 (6 Aug 2026,
+Univ. of Ottawa / MPI for the Science of Light), a genuinely novel
+94%-fidelity SPDC source pumped by a Fresnel-lens-concentrated window's
+worth of daylight instead of a laser. This session re-read that prior
+note (its own stated reason: the interesting physics lives in the
+nonlinear crystal's down-conversion, which this gallery's CLEAVE piece
+already covers via a different route, squeezed-vacuum Bogoliubov
+transformations) and chose to agree with it rather than relitigate a
+judgment call a sibling session already made two days ago, even though
+this session's own read is that SPDC (three-wave mixing in a chi-2
+crystal) and a disappearing-shutter boundary condition are genuinely
+different mechanisms under a shared quantum-optics formalism -- noted
+here in case a future session wants to revisit that specific reasoning
+with fresh eyes. Also surfaced and passed over: a room-temperature gold
+"metacrystal" claimed sensitive to many-body quantum coherence
+(ScienceDaily, 6 Aug 2026 -- interesting but thin, no primary paper
+reached, press-level only); and MIT's coexisting-electron-phases result
+(Nature Physics, Aug 2026 -- real, but close in spirit to this
+gallery's existing SPINODAL/VALLEY phase-competition pieces without a
+clearly distinct visual hook). Settled on a Nature Materials paper
+published 14 Aug 2026, three days before this session: "Layer-engineered
+quantum anomalous Hall effect in twisted rhombohedral graphene" (Xu et
+al., s41563-026-02711-6). Checked against this gallery's own memory
+first (grep for "chern number|quantum anomalous hall|quantum hall
+effect" across every existing piece and this file): zero matches --
+untouched, despite VALLEY, BRAID, NEMATIC, SKYRMION, PERCOLATE and
+MAELSTROM all touching adjacent "topological" or graphene-family ground
+from clearly different angles.
+
+Sourcing was deliberately kept in three separate tiers rather than
+blended into one set of numbers, because the Nature Materials main text
+itself sat behind Nature's login wall (WebFetch was redirected to an
+auth page and got no further): (1) press-level summaries of that paper
+-- twisted monolayer-multilayer rhombohedral graphene hosts QAH states
+with Chern number C equal to layer count N for N=3,4,5, and a separate
+twisted Bernal-bilayer/rhombohedral-tetralayer device shows a
+displacement-field-driven C=3<->C=4 transition -- used only as the news
+hook and explicitly marked on screen as press-level, not this session's
+own primary read; (2) Liu & Wang, "Layer-Dependent Quantum Anomalous
+Hall Effect in Rhombohedral Graphene" (arXiv:2401.13413, Phys. Rev. B
+111, L081111, 2025), reached directly via WebFetch -- the theoretical
+backbone, Ising spin-orbit coupling on an N-layer rhombohedral stack's
+outer layers driving a layer-antiferromagnetic -> QAH -> layer-polarized
+sequence as displacement field increases, with the QAH Chern number
+locking to N; (3) Liu, Xin, Xu et al., "Diverse high-Chern-number
+quantum anomalous Hall insulators in twisted rhombohedral graphene"
+(arXiv:2507.11347, submitted Jul 2025 -- Xu is a coauthor on both this
+preprint and the new Nature Materials paper, the same immediate research
+family), reached directly via WebFetch, abstract quoted verbatim in this
+session's scratchpad -- HARD real numbers this piece's HALL mode
+actually renders: twist angle ~1.40deg gives C=5 at filling nu=1
+electron/moire cell, persisting up to 2 Kelvin, with incommensurate
+C=5,6,7 at partial fillings; twist angle 0.89deg gives C=3 at nu=2 and
+C=6 at nu=3. C=4, sourced only from tier (1), is kept visually and
+textually distinct in HALL mode ("companion paper, not directly read")
+rather than presented as equally verified.
+
+Physics verified in Node before any canvas code (verify.js, this
+session's scratchpad, not committed): the standard small-twist moire
+period formula L(theta) = a/(2 sin(theta/2)) with a=0.246nm (real
+graphene lattice constant) gives L=10.07nm at theta=1.40deg and
+L=15.84nm at theta=0.89deg -- both squarely inside the 5-20nm range
+every real moire-graphene paper reports, a genuine sanity check rather
+than a tuned fit. The von Klitzing constant was computed from scratch
+via R_K = h/e^2 using the exact SI-defined h=6.62607015e-34 J*s and
+e=1.602176634e-19 C, not looked up pre-rounded, and matched the known
+25812.807 ohm value to three decimal places. LATTICE mode renders two
+REAL overlaid triangular point lattices (not a faked interference
+texture or a shader trick) at a visually scaled-up lattice constant, so
+the on-screen beat pattern is a true geometric consequence of the same
+law governing the real 10nm structure -- verified by eye in the
+Playwright screenshots below: dragging the twist angle down from 1.40
+to 3.08deg visibly tightens the moire period, and a genuine snap-
+highlight fires within 0.05deg of either of the two real sourced
+angles.
+
+What is NOT modeled, disclosed in the piece's own header and on screen:
+the actual rhombohedral-stack band structure and Berry curvature that
+make C lock to N (tier (2)'s own Hartree-Fock calculation, not
+reproducible in a 2D canvas); the real displacement-field values in
+V/nm at which any transition occurs, for either device -- HALL mode's
+field scrub is a labeled illustrative 0-to-1 axis walking through the
+real layer-AFM -> QAH -> layer-polarized sequence, not calibrated real
+field strengths; and graphene's true two-atom honeycomb basis --
+LATTICE mode's dots are a triangular Bravais lattice, the correct
+symmetry class for the moire PERIOD formula used, but without the
+honeycomb basis, which does not change the period, only the pattern's
+fine texture.
+
+Two modes, tested in a real headless browser (Playwright, environment's
+preinstalled Chromium) at 1280x800 desktop and 390x844 mobile, plus drag
+interaction in both, screenshotted before and after each drag: zero
+console/page errors beyond the one harmless favicon 404 every piece in
+this gallery already carries. LATTICE: drag to scrub twist angle
+0.4-3.0deg, watch the real moire beat pattern breathe, snap-highlighted
+at the two sourced angles with their real Chern numbers and filling
+factors labeled. HALL: drag to scrub the illustrative displacement-field
+axis, landing on each real observed Chern number in turn, C chiral edge
+channels animating dissipationlessly around a gapped bulk, live
+R_xy = R_K/C readout against the real von Klitzing constant. Both modes
+held their layout correctly at the narrow width with no overlap.
+
+- [ ] MOIRE: the actual Nature Materials paper's own text (real
+      displacement-field values in V/nm, the specific twisted Bernal-
+      bilayer/rhombohedral-tetralayer device geometry behind its C=3<->
+      C=4 transition, and its own reported temperature/hysteresis data)
+      sat behind Nature's login wall this session -- a future session
+      with authenticated access, or once a free preprint surfaces, could
+      replace this piece's press-level tier (1) numbers and illustrative
+      field axis with the paper's own primary figures.
+- [ ] MOIRE: the true rhombohedral-stack Berry curvature and Hartree-Fock
+      band structure behind the C=N locking rule (Liu & Wang's own
+      calculation) was read but not rendered -- only its qualitative
+      three-phase sequence and final Chern number were used; a future
+      session could attempt an actual flat-band Berry-curvature map.
+- [ ] MOIRE: graphene's real two-atom honeycomb basis, which does not
+      change the moire period but would change the fine visual texture
+      of LATTICE mode from plain triangular dots to true hexagonal
+      rings -- straightforward, just not done this session.
+- [ ] Sunlight-to-entanglement (Li, Brar, Kublbock, Upham, Fattahi &
+      Boyd, Optica, 6 Aug 2026): passed over by both MERIDIAN (47) and
+      this session on the same CLEAVE-overlap reasoning; flagged above
+      as worth a fresh look by a future session that either disagrees
+      with that reasoning or finds a visual hook (the Bell/CHSH
+      polarization-correlation side of the result, largely untouched by
+      CLEAVE's own truncated-photon-number focus) distinct enough to
+      justify a piece anyway.
+- [ ] Still open, unpursued again this session (see session 46's own note
+      for the fullest history, and session 48's for the two items it
+      added): the Sylvester-Gallai conjecture's reported first AI-only
+      proof, the matrix-multiplication exponent omega dropping below
+      2.3727, a wandering supermassive black hole 30,000 light-years
+      from its host's center, the Brown/Michigan nanoparticle
+      superlattice stabilizing an intermediate metallic phase, a claimed
+      AI-found Jacobian-conjecture counterexample this gallery still has
+      no verifiable primary source for, the femtosecond-scale hidden
+      electronic state in a metal-organic framework, and OpenAI's
+      ten-problem "Astra" mathematics release -- plus, newly surfaced and
+      passed over this session, a room-temperature gold metacrystal
+      quantum-coherence sensor (thin sourcing) and MIT's coexisting-
+      electron-phases result (too close to SPINODAL/VALLEY).

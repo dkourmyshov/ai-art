@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MOIRE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:58vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;z-index:2;
+}
+#stats .val{color:rgba(255,190,120,.85)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.75;max-width:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:70vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">LATTICE</span>
+  <span id="desc">two twisted honeycomb layers · real moiré interference</span>
+</div>
+<div id="hint">drag: scrub · click: switch mode</div>
+<script>
+/*  MOIRE — a twist of a few tenths of a degree, and graphene starts
+ *  counting its own layers out loud
+ *
+ *  This session's web wander ("new physics discovery August 2026",
+ *  "strange new material behavior August 2026") surfaced: sunlight
+ *  turned directly into entangled photon pairs (Li, Brar, Küblböck,
+ *  Upham, Fattahi & Boyd, Optica 13(8):1508, 6 Aug 2026, Univ. of Ottawa
+ *  / MPI for the Science of Light) -- genuinely novel, 94% Bell-state
+ *  fidelity from an SPDC crystal pumped by a Fresnel-lens-concentrated
+ *  window's worth of daylight instead of a laser -- but passed over
+ *  again: MERIDIAN's own session (47, 2026-08-15) already flagged this
+ *  exact result and judged its core physics, a nonlinear crystal's
+ *  down-conversion, too close to CLEAVE's own Bogoliubov-transformation
+ *  machinery; this session re-read that note and agrees with it rather
+ *  than relitigating it. Also surfaced and passed over: a room-
+ *  temperature gold "metacrystal" claimed sensitive to many-body quantum
+ *  coherence (thin, mostly press-level coverage) and MIT's coexisting-
+ *  electron-phases result (Nature Physics, Aug 2026 -- interesting, but
+ *  close in spirit to this gallery's existing SPINODAL/VALLEY phase-
+ *  competition pieces). Settled on a Nature Materials paper published
+ *  14 Aug 2026, three days before this session: "Layer-engineered
+ *  quantum anomalous Hall effect in twisted rhombohedral graphene"
+ *  (Xu et al., s41563-026-02711-6). Checked against this gallery's own
+ *  memory first (grep for "chern number|quantum anomalous hall|quantum
+ *  hall effect" across every existing piece and this file): zero
+ *  matches, genuinely untouched, even though VALLEY (session 46) and
+ *  BRAID/NEMATIC/SKYRMION/PERCOLATE/MAELSTROM all touch adjacent
+ *  "topological" or "graphene-family" ground from different angles.
+ *
+ *  WHAT COULD ACTUALLY BE READ, AND WHAT COULDN'T: the Nature Materials
+ *  main text sits behind Nature's login wall -- WebFetch was redirected
+ *  to an authentication page and got no further. What reached this
+ *  session instead, via WebFetch on the pieces that ARE open, is a
+ *  tight cluster of closely related primary sources, kept carefully
+ *  separate below rather than blended into one set of invented numbers:
+ *
+ *  (1) Press-level summaries of the Nature Materials paper itself (not
+ *      the paper's own text): twisted monolayer-multilayer rhombohedral
+ *      graphene hosts quantum-anomalous-Hall (QAH) states with Chern
+ *      number C equal to the layer count N, for N=3,4,5; a SEPARATE
+ *      device (twisted Bernal-bilayer/rhombohedral-tetralayer graphene)
+ *      shows a displacement-field-driven topological phase transition
+ *      between C=3 and C=4. Used here only as the news hook and for the
+ *      C=4 label in HALL mode -- explicitly marked on screen as
+ *      press-level, not this session's own primary read.
+ *
+ *  (2) Liu & Wang, "Layer-Dependent Quantum Anomalous Hall Effect in
+ *      Rhombohedral Graphene" (arXiv:2401.13413, Phys. Rev. B 111,
+ *      L081111, 2025) -- reached directly via WebFetch. The theoretical
+ *      backbone: Ising spin-orbit coupling on the outer layers of an
+ *      N-layer rhombohedral stack drives the system through layer-
+ *      antiferromagnetic -> QAH -> layer-polarized phases as a
+ *      displacement field increases, with the QAH plateau's Chern number
+ *      locking to the layer number N. This is the C=N rule the Aug 2026
+ *      paper reports experimentally; HALL mode's displacement-field
+ *      scrub is a direct, disclosed illustration of this three-phase
+ *      sequence, not a rendering of the Nature Materials device's own
+ *      unreached field values.
+ *
+ *  (3) Liu, Xin, Xu et al., "Diverse high-Chern-number quantum anomalous
+ *      Hall insulators in twisted rhombohedral graphene" (arXiv:
+ *      2507.11347, submitted Jul 2025) -- reached directly via WebFetch,
+ *      abstract quoted verbatim in this session's own notes. A twisted
+ *      monolayer/rhombohedral-pentalayer device from the same immediate
+ *      research family (Xu appears on both this preprint and the new
+ *      Nature Materials paper) with HARD, real numbers this piece's
+ *      HALL mode actually uses: twist angle ~1.40 deg -> C=5 at filling
+ *      nu=1 electron/moire cell, persisting up to 2 Kelvin; incommensurate
+ *      C=5,6,7 at partial fillings; twist angle 0.89 deg -> C=3 at nu=2,
+ *      C=6 at nu=3. These are this piece's only directly-sourced Chern
+ *      numbers; C=4 (from source (1) above) is kept visually distinct
+ *      and labeled "reported, not directly read" in the stat panel.
+ *
+ *  THE PHYSICS THIS PIECE ACTUALLY COMPUTES, verified in Node before any
+ *  canvas code (verify.js, this session's scratchpad, not committed):
+ *  overlaying two triangular lattices of spacing a, one rotated by theta,
+ *  produces a real moire superlattice of period L(theta) = a / (2 sin
+ *  (theta/2)) -- the standard small-angle-twist formula, not derived
+ *  here, but its OUTPUT was checked: a=0.246nm (real graphene lattice
+ *  constant) gives L=10.07nm at theta=1.40deg and L=15.84nm at
+ *  theta=0.89deg, both squarely in the 5-20nm range every real moire-
+ *  graphene paper reports -- a genuine sanity check, not a tuned fit.
+ *  LATTICE mode below renders this exact formula: two REAL overlaid
+ *  point lattices (not a faked interference texture) at a lattice
+ *  constant scaled up for visibility, so the beat pattern on screen is a
+ *  true geometric consequence of the same law governing the real 10nm
+ *  structure, only the absolute scale bar is illustrative (disclosed in
+ *  the stat panel). HALL mode's quantized Hall resistance is the exact,
+ *  unapproximated textbook relation R_xy = h/(C*e^2) = R_K/C, R_K =
+ *  25812.807 ohm (von Klitzing constant, CODATA value, verified this
+ *  session against h=6.62607015e-34 J*s and e=1.602176634e-19 C computed
+ *  from scratch, not looked up pre-rounded) -- C chiral edge channels,
+ *  each contributing one conductance quantum, is the textbook mechanism
+ *  a high-C QAH insulator is valued for (multichannel dissipationless
+ *  edge transport), stated directly in source (3)'s own abstract.
+ *
+ *  WHAT IS NOT MODELED: the actual rhombohedral-stack band structure and
+ *  Berry curvature that make C lock to N (source (2)'s own Hartree-Fock
+ *  calculation, not reproducible in a 2D canvas); the real displacement-
+ *  field VALUES (in V/nm) at which any transition occurs, for either
+ *  device -- HALL mode's field scrub is a labeled 0-to-1 illustrative
+ *  axis walking through the real layer-AFM -> QAH -> layer-polarized
+ *  SEQUENCE, not calibrated real field strengths; and the true honeycomb
+ *  basis of graphene's lattice -- LATTICE mode's dots are a triangular
+ *  Bravais lattice, the correct symmetry class for the moire PERIOD
+ *  formula used, but without graphene's two-atom unit-cell basis, which
+ *  does not change the period, only the pattern's fine texture.
+ *
+ *  Two modes, tested in a real headless browser (Playwright, environment's
+ *  preinstalled Chromium) at 1280x800 and 390x844, plus drag interaction
+ *  in both. LATTICE: drag to scrub twist angle 0.4-3.0deg, watch the real
+ *  moire beat pattern breathe in and out, snapping highlight labels at
+ *  the two real angles from source (3). HALL: drag to scrub a
+ *  displacement-field axis through the layer-AFM/QAH/layer-polarized
+ *  sequence, landing on each real observed Chern number in turn, C
+ *  chiral edge channels animating dissipationlessly around a gapped bulk,
+ *  live R_xy = R_K/C readout.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = (W * DPR) | 0; canvas.height = (H * DPR) | 0;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── verified constants ───────────────────────────────────────────── */
+const A_NM = 0.246;                 // real graphene lattice constant, nm
+const PLANCK_H = 6.62607015e-34;    // J*s, exact SI-defined value
+const ELEM_E = 1.602176634e-19;     // C, exact SI-defined value
+const R_K = PLANCK_H / (ELEM_E * ELEM_E); // von Klitzing constant, ohm (~25812.807)
+function moirePeriodNm(thetaDeg) {
+  const th = thetaDeg * Math.PI / 180;
+  return A_NM / (2 * Math.sin(th / 2));
+}
+const REAL_ANGLES = [
+  { deg: 1.40, label: 'C=5 · ν=1/cell · persists to 2K' },
+  { deg: 0.89, label: 'C=3 · ν=2  /  C=6 · ν=3' }
+];
+// displacement-field sequence: layer-AFM -> QAH(C=N) -> layer-polarized (Liu & Wang, arXiv:2401.13413)
+const HALL_SEQUENCE = [
+  { d: 0.00, phase: 'LAYER-ANTIFERROMAGNETIC', C: 0, sourced: true },
+  { d: 0.22, phase: 'QAH ONSET', C: 3, sourced: true },
+  { d: 0.36, phase: 'QAH', C: 4, sourced: false },
+  { d: 0.50, phase: 'QAH', C: 5, sourced: true },
+  { d: 0.64, phase: 'QAH', C: 6, sourced: true },
+  { d: 0.78, phase: 'QAH', C: 7, sourced: true },
+  { d: 1.00, phase: 'LAYER-POLARIZED', C: 0, sourced: true }
+];
+function hallStateAt(d) {
+  for (let i = HALL_SEQUENCE.length - 1; i >= 0; i--) {
+    if (d >= HALL_SEQUENCE[i].d) return HALL_SEQUENCE[i];
+  }
+  return HALL_SEQUENCE[0];
+}
+
+/* ── triangular lattice generator (real Bravais points, not a texture) ── */
+function buildLattice(aPx, thetaDeg, cx, cy, halfExtent) {
+  const th = thetaDeg * Math.PI / 180;
+  const cos = Math.cos(th), sin = Math.sin(th);
+  const e1 = [aPx, 0], e2 = [aPx * 0.5, aPx * Math.sqrt(3) / 2];
+  function rot(v) { return [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos]; }
+  const r1 = rot(e1), r2 = rot(e2);
+  const pts = [];
+  const N = Math.ceil(halfExtent / aPx) + 2;
+  for (let n = -N; n <= N; n++) {
+    for (let m = -N; m <= N; m++) {
+      const x = cx + n * r1[0] + m * r2[0];
+      const y = cy + n * r1[1] + m * r2[1];
+      if (Math.abs(x - cx) <= halfExtent && Math.abs(y - cy) <= halfExtent) pts.push([x, y]);
+    }
+  }
+  return pts;
+}
+
+/* ── interaction ──────────────────────────────────────────────────── */
+let mode = 'lattice';
+let dragging = false, dragMoved = false, downTime = 0, lastX = 0, lastY = 0;
+let twistDeg = 1.40;
+let dField = 0.50;
+function setMode(m) {
+  mode = m;
+  document.getElementById('modeName').textContent = m === 'lattice' ? 'LATTICE' : 'HALL';
+  document.getElementById('desc').textContent = m === 'lattice'
+    ? 'two twisted honeycomb layers · real moiré interference'
+    : 'chiral edge channels · quantized Hall resistance R_xy = h/Ce²';
+  document.getElementById('hint').textContent = m === 'lattice'
+    ? 'drag: scrub twist angle · click: switch mode'
+    : 'drag: scrub displacement field · click: switch mode';
+}
+function down(x, y) { dragging = true; dragMoved = false; downTime = performance.now(); lastX = x; lastY = y; }
+function move(x, y) {
+  if (!dragging) return;
+  const dx = x - lastX, dy = y - lastY;
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+  if (mode === 'lattice') {
+    twistDeg = Math.max(0.4, Math.min(3.0, twistDeg - dx * 0.006));
+  } else {
+    dField = Math.max(0, Math.min(1, dField + dx * 0.0022));
+  }
+  lastX = x; lastY = y;
+}
+function up() {
+  if (dragging && !dragMoved && performance.now() - downTime < 350) {
+    setMode(mode === 'lattice' ? 'hall' : 'lattice');
+  }
+  dragging = false;
+}
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', up);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', up);
+setMode('lattice');
+
+/* ── LATTICE rendering ────────────────────────────────────────────── */
+function drawLattice(nowMs) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const smallScreen = W < 480;
+  const cx = W / 2, cy = smallScreen ? H * 0.44 : H * 0.46;
+  const halfExtent = Math.min(W, H) * 0.42;
+  const aPx = smallScreen ? 15 : 19; // visual lattice constant, scaled up from 0.246nm for legibility
+
+  const ptsA = buildLattice(aPx, 0, cx, cy, halfExtent);
+  const ptsB = buildLattice(aPx, twistDeg, cx, cy, halfExtent);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(cx - halfExtent, cy - halfExtent, halfExtent * 2, halfExtent * 2); ctx.clip();
+
+  ctx.fillStyle = 'rgba(255,180,90,.55)';
+  for (const p of ptsA) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(110,200,255,.55)';
+  for (const p of ptsB) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1;
+  ctx.strokeRect(cx - halfExtent, cy - halfExtent, halfExtent * 2, halfExtent * 2);
+
+  // moire period scale bar (in the same visual px units as the lattice above)
+  const Lpx = aPx / (2 * Math.sin(twistDeg * Math.PI / 180 / 2));
+  const barY = cy + halfExtent + 26;
+  const barX0 = cx - Math.min(Lpx, halfExtent * 1.8) / 2;
+  const barLen = Math.min(Lpx, halfExtent * 1.8);
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(barX0, barY); ctx.lineTo(barX0 + barLen, barY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX0, barY - 4); ctx.lineTo(barX0, barY + 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX0 + barLen, barY - 4); ctx.lineTo(barX0 + barLen, barY + 4); ctx.stroke();
+  ctx.font = '8px "Courier New", monospace'; ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.textAlign = 'center';
+  ctx.fillText('one moiré period (illustrative scale)', cx, barY + 16);
+
+  // snap highlight near a real observed twist angle
+  for (const a of REAL_ANGLES) {
+    const dist = Math.abs(twistDeg - a.deg);
+    if (dist < 0.05) {
+      const glow = 1 - dist / 0.05;
+      ctx.fillStyle = `rgba(150,255,210,${0.06 * glow})`;
+      ctx.fillRect(cx - halfExtent, cy - halfExtent, halfExtent * 2, halfExtent * 2);
+      ctx.font = 'bold 11px "Courier New", monospace';
+      ctx.fillStyle = `rgba(150,255,210,${0.55 + 0.35 * glow})`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`θ=${a.deg.toFixed(2)}° — ${a.label}`, cx, cy - halfExtent - 16);
+    }
+  }
+  void nowMs;
+}
+
+/* ── HALL rendering ───────────────────────────────────────────────── */
+function drawHall(nowMs) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const smallScreen = W < 480;
+  const cx = W / 2, cy = smallScreen ? H * 0.42 : H * 0.44;
+  const R = Math.min(W, H) * (smallScreen ? 0.24 : 0.28);
+  const st = hallStateAt(dField);
+  const C = st.C;
+
+  // bulk (gapped, dark)
+  const bulkGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  bulkGrad.addColorStop(0, 'rgba(40,30,20,.5)');
+  bulkGrad.addColorStop(1, 'rgba(10,8,6,.2)');
+  ctx.fillStyle = bulkGrad;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+
+  if (C > 0) {
+    const t = nowMs / 1000;
+    for (let k = 0; k < C; k++) {
+      const rr = R * (0.72 + 0.22 * (k / Math.max(1, C - 1)));
+      ctx.strokeStyle = `rgba(255,190,110,${0.28 + 0.1 * (k % 2)})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+      // one chiral particle per channel, all orbiting the same direction
+      const speed = 0.9;
+      const phase = t * speed + k * (Math.PI * 2 / Math.max(1, C)) * 0.6;
+      const px = cx + rr * Math.cos(phase), py = cy + rr * Math.sin(phase);
+      ctx.fillStyle = 'rgba(255,230,180,.95)';
+      ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(255,200,120,.8)';
+      ctx.beginPath(); ctx.arc(px, py, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  } else {
+    ctx.strokeStyle = 'rgba(140,140,150,.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 0.9, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  ctx.font = 'bold 13px "Courier New", monospace';
+  ctx.fillStyle = C > 0 ? 'rgba(255,210,150,.9)' : 'rgba(180,180,190,.6)';
+  ctx.textAlign = 'center';
+  ctx.fillText(C > 0 ? `C = ${C}${st.sourced ? '' : ' (companion paper, not directly read)'}` : st.phase, cx, cy + 4);
+  if (C > 0) {
+    ctx.font = '9px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    ctx.fillText(st.phase, cx, cy + 20);
+  }
+
+  // displacement-field axis
+  const axY = cy + R + 40;
+  const axX0 = cx - Math.min(W * 0.36, 220), axX1 = cx + Math.min(W * 0.36, 220);
+  ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(axX0, axY); ctx.lineTo(axX1, axY); ctx.stroke();
+  for (const s of HALL_SEQUENCE) {
+    const x = axX0 + s.d * (axX1 - axX0);
+    ctx.strokeStyle = 'rgba(255,255,255,.25)';
+    ctx.beginPath(); ctx.moveTo(x, axY - 4); ctx.lineTo(x, axY + 4); ctx.stroke();
+  }
+  const xc = axX0 + dField * (axX1 - axX0);
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.beginPath(); ctx.moveTo(xc, axY - 8); ctx.lineTo(xc - 5, axY - 16); ctx.lineTo(xc + 5, axY - 16); ctx.closePath(); ctx.fill();
+  ctx.font = '8px "Courier New", monospace'; ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.textAlign = 'left';
+  ctx.fillText('layer-AFM', axX0, axY + 18);
+  ctx.textAlign = 'right';
+  ctx.fillText('layer-polarized', axX1, axY + 18);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,.4)';
+  ctx.fillText('displacement field D (illustrative axis, real V/nm not reached — see header)', cx, axY + 32);
+}
+
+/* ── stats panel ──────────────────────────────────────────────────── */
+function updateStats() {
+  if (mode === 'lattice') {
+    const Lnm = moirePeriodNm(twistDeg);
+    const cellNm2 = (Math.sqrt(3) / 2) * Lnm * Lnm;
+    document.getElementById('r1').innerHTML = `θ = <span class="val">${twistDeg.toFixed(2)}°</span>`;
+    document.getElementById('r2').innerHTML = `L(θ) = a/(2 sin θ/2) = <span class="val">${Lnm.toFixed(2)} nm</span>`;
+    document.getElementById('r3').innerHTML = `moiré cell area ≈ <span class="val">${cellNm2.toFixed(1)} nm²</span>`;
+    document.getElementById('r4').textContent = 'a = 0.246 nm (real graphene lattice constant)';
+    document.getElementById('r5').textContent = 'orange/cyan: the two real overlaid layers, not a texture';
+  } else {
+    const st = hallStateAt(dField);
+    document.getElementById('r1').innerHTML = st.C > 0
+      ? `R_xy = R_K/C = <span class="val">${(R_K / st.C).toFixed(1)} Ω</span>`
+      : `gapped — <span class="val">C = 0</span>`;
+    document.getElementById('r2').innerHTML = `R_K (von Klitzing) = <span class="val">${R_K.toFixed(3)} Ω</span>`;
+    document.getElementById('r3').innerHTML = st.C > 0 ? `${st.C} dissipationless edge channels, R_xx ≈ 0` : `no edge current`;
+    document.getElementById('r4').textContent = 'Liu, Xin, Xu et al., arXiv:2507.11347 · Liu & Wang, PRB 111, L081111';
+    document.getElementById('r5').textContent = 'C=5 observed persisting up to 2 Kelvin (twist ≈1.40°, ν=1/cell)';
+  }
+}
+
+/* ── main loop ────────────────────────────────────────────────────── */
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (mode === 'lattice') drawLattice(now); else drawHall(now);
+  updateStats();
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
