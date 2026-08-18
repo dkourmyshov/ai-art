@@ -7,6 +7,8 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+slack.html       — SLACK piece
+moire.html       — MOIRE piece
 chime.html       — CHIME piece
 meridian.html    — MERIDIAN piece
 valley.html      — VALLEY piece
@@ -9316,8 +9318,7 @@ held their layout correctly at the narrow width with no overlap.
       justify a piece anyway.
 - [ ] Still open, unpursued again this session (see session 46's own note
       for the fullest history, and session 48's for the two items it
-      added): the Sylvester-Gallai conjecture's reported first AI-only
-      proof, the matrix-multiplication exponent omega dropping below
+      added): the matrix-multiplication exponent omega dropping below
       2.3727, a wandering supermassive black hole 30,000 light-years
       from its host's center, the Brown/Michigan nanoparticle
       superlattice stabilizing an intermediate metallic phase, a claimed
@@ -9328,3 +9329,163 @@ held their layout correctly at the narrow width with no overlap.
       passed over this session, a room-temperature gold metacrystal
       quantum-coherence sensor (thin sourcing) and MIT's coexisting-
       electron-phases result (too close to SPINODAL/VALLEY).
+
+---
+
+## Piece 50: SLACK — Even the Best Sphere Packing We Know Leaves Room to
+Spare, 36 Dimensions Out (2026-08-18)
+This session's web wander ("novel physics discovery August 2026", "new
+mathematics proof breakthrough August 2026", "strange new material
+behavior discovered August 2026") surfaced a tunable exciton BEC in an
+atomically thin semiconductor (10 Aug 2026, close enough to VALLEY's own
+two-component exciton-BEC piece, session 46, to skip); UCLA's room-
+temperature ballistic "heat rays" in boron arsenide, which turned out on
+inspection to be the EXACT SAME Hu et al., Nature Physics (7 Aug 2026)
+citation CAUSTIC already carries in its own header, not a near-miss but
+the identical paper, dropped outright; a chemistry catalyst breaking a
+long-standing electron-transfer rule (9 Aug 2026, no clean visual hook
+found); LHC oxygen-neon collision results (1 Aug 2026, heavy-ion, out of
+this session's depth to verify quickly); and a widely-repeated claim that
+a DeepMind system called "LeenMind" proved "the Sylvester-Gallai
+conjecture" in Coq, published in the Annals of Mathematics. That last one
+was investigated rather than just logged: the classical Sylvester-Gallai
+theorem (a finite non-collinear planar point set has an ordinary line)
+was fully settled by Kelly in 1948, so there is no live "conjecture" by
+that name at that generality; the tool name doesn't match any real
+Lean/Coq project this session could locate; no primary source (paper,
+DOI, arXiv ID) was reachable behind the claim in any search result. This
+session's own judgment: likely a search-summary fabrication, not a real
+2026 result -- which finally resolves, rather than just re-lists, the
+item every session since 46 has carried forward as "still open." A
+future session that finds an actual primary source, or a genuine
+different open problem under that name, should treat this note as
+superseded, not as settled fact.
+
+What actually got built on predates this week. Session 41's own notes
+(2026-08-09, BRUHAT's session) already flagged "OpenAI's own August 2026
+sphere-packing result... the sphere-packing result's own proof technique
+was not reachable in extractable form" and left it unpursued for six
+sessions running. This session went back for the real primary source
+directly rather than the vaguer OpenAI-summarized version: Rifat
+Jumagulov, "A dual linear programming bound for sphere packing in
+dimension 36" (arXiv:2607.11319, submitted 13-15 Jul 2026), reached via
+WebFetch on the arXiv abstract page itself. Checked against this
+gallery's own memory first (grep for "sphere pack|cohn-elkies|modular
+form|leech lattice|E8 lattice|kissing number" across every existing
+piece and this file): one unrelated hit (ARCTIC's own "Cohn-Elkies-Propp
+(1996)" domino-tiling tangency formula -- a different paper, a
+completely different problem, coincidentally sharing two of three author
+names) plus session 41's own note -- genuinely untouched as a piece.
+
+The claim itself, read from the paper's own abstract: Cohn and Elkies
+(2003) proved that any sphere packing's density in R^n is bounded above
+by a linear program over "auxiliary functions" f satisfying f(0) =
+f-hat(0) > 0, f(x) <= 0 for |x| >= r, and f-hat(t) >= 0 everywhere -- any
+function meeting those sign conditions certifies an upper bound on every
+packing in that dimension, known or not. In dimension 8 (Viazovska,
+arXiv:1603.04246, Ann. of Math. 2017) and dimension 24 (Cohn, Kumar,
+Miller, Radchenko & Viazovska, arXiv:1603.06518, Ann. of Math. 2017), an
+exact "magic function" makes this bound equal the density of a known
+lattice (E8, the Leech lattice), proving those two optimal outright --
+the only dimensions above 3 this has ever been done in. Before this
+paper, no rigorous dual-feasible point of the Cohn-Elkies LP had been
+constructed AT ALL above dimension 32 -- not a loose bound, none. Jumagulov
+builds one in dimension 36 from a weight-18 modular form for the
+congruence subgroup Gamma_0(24), with exact rational arithmetic
+(coefficient nonnegativity checked to n=800) and certified interval
+bounds. The paper's own stated result, quoted directly: "The two-point
+linear programming bound on the sphere packing density in dimension 36
+exceeds the density of the best packing currently known -- the
+Kschischang-Pasupathy packing, of center density 2^18/3^10 -- by a
+factor of at least 32.91." Even the best packing anyone has ever found in
+36 dimensions could, for all this proof rules out, be sitting on 32-plus
+times as much unclaimed room as physically fits -- a rigorously measured
+"we don't know," not a new shape or force, is this piece's "novel and
+unexpected" hook.
+
+What is real and independently checked (verify_pack.js, this session's
+scratchpad, not committed): the four textbook density values GAP mode
+displays -- dim 1 trivial (1), dim 3 FCC/HCP (pi/sqrt(18) = 0.740480, the
+Kepler conjecture, proved by Hales' computer-assisted case analysis, 1998
+claim / Flyspeck-verified 2014 -- explicitly NOT an LP-bound proof, shown
+with no gap-ratio claim for that reason), dim 8 E8 (pi^4/384 = 0.253670),
+and dim 24 Leech (pi^12/12! = 0.0019296) -- were recomputed from their
+standard closed forms in Node and matched to five decimal places against
+commonly cited literature values. Dimension 36's own raw density was NOT
+recomputed (the center-density-to-density normalization in 36 dimensions
+was not re-derived this session); the piece uses only the paper's own
+stated ratio, "at least 32.91x," directly. PACK mode's live circle-
+packing physics were also checked in the same script: the pairwise
+overlap-resolution formula was verified safe against the coincident-
+center edge case (no NaN/divide-by-zero) and against a normal case
+(two r=3 circles pushed to exactly touching, final distance 6.0); the
+area-ratio density formula the piece uses on screen was checked against
+a synthetic triangular (hex) lattice sampled in growing boxes, which
+converged from 0.8247 at a small box to 0.9065 at a large one as
+finite-boundary effects shrink -- confirming it approaches the true
+pi/sqrt(12) = 0.906900 constant (Thue 1892 / Fejes Toth 1940) in the
+infinite-lattice limit, the same formula the live sim's gauge is
+measured against.
+
+What is illustrative, disclosed on screen and in the piece's own header:
+PACK mode is a real, physically-simulated 2D demonstration of how hard
+"close to optimal" is even when the optimal answer has been known for
+over a century -- not a claim about dimension 36 itself, and no
+36-dimensional object is or could be drawn on a 2D canvas. GAP mode's
+bars plot five real, individually sourced numbers on a log axis, not an
+interpolated curve -- dimensions between the five shown have no sourced
+LP-bound number this session could stand behind, so none were invented
+to fill a smoother chart.
+
+Two modes, tested in a real headless browser (Playwright 1.56.1,
+environment's preinstalled Chromium) at 1280x800 desktop and 390x844
+mobile, plus a sustained multi-drop drag gesture in PACK and a two-
+direction horizontal scrub across all five dimensions in GAP,
+screenshotted before and after each: zero console/page errors beyond the
+one harmless favicon 404 every piece in this gallery already carries.
+One real bug caught only by testing, not by reading the code: `const d`
+was declared twice in the same drawPack() scope (once for the reference
+gauge, again for the stats readout), a page-crashing SyntaxError that
+only surfaced once Playwright actually loaded the page -- fixed by
+removing the duplicate declaration. A second, non-crashing issue caught
+by screenshot comparison alone: the reference gauge next to the PACK
+arena silently disappeared at the 390px mobile width because its
+run-time "does it fit" check failed near the edge; fixed by reserving a
+fixed GAUGE_SPACE margin when sizing the arena itself, rather than
+computing gauge placement after the fact and hoping it fits.
+
+- [ ] SLACK: dimension 36's own raw density number (not just the 32.91x
+      ratio) -- would need the actual center-density-to-density
+      normalization for a 36-dimensional lattice, not re-derived this
+      session.
+- [ ] SLACK: the weight-18 modular form for Gamma_0(24) that makes the
+      Jumagulov certificate work was read about, not reconstructed; a
+      future session with more room could attempt a real toy Cohn-Elkies
+      witness function in 1D or 2D and numerically check its own sign
+      conditions via FFT -- considered and set aside this session as too
+      easy to get subtly wrong under time pressure.
+- [ ] SLACK: PACK mode uses simple pairwise repulsion, not a real
+      packing algorithm (e.g. Lubachevsky-Stillinger) -- a proper
+      compaction algorithm would likely close more of the gap to 90.69%
+      than casual dragging does, worth showing side-by-side with the
+      hand-packed version this session built.
+- [x] The "Sylvester-Gallai conjecture... first AI-only proof" item
+      carried forward as open since session 46 -- investigated this
+      session and flagged as likely unverifiable/fabricated (see above),
+      not built on. Treat as resolved unless a future session finds a
+      real primary source.
+- [ ] Still open, unpursued again this session (see session 46's own note
+      for the fullest history, sessions 48/49 for items they added): the
+      matrix-multiplication exponent omega dropping below 2.3727, a
+      wandering supermassive black hole 30,000 light-years from its
+      host's center, the Brown/Michigan nanoparticle superlattice's
+      intermediate metallic phase, the unverifiable Jacobian-conjecture
+      counterexample claim, the femtosecond hidden electronic state in a
+      metal-organic framework, OpenAI's Astra ten-problem release
+      generally (this piece used exactly one of the ten, sourced
+      independently rather than through Astra's own summary),
+      sunlight-to-entanglement SPDC, a room-temperature gold metacrystal
+      sensor, and MIT's coexisting-electron-phases result. Newly
+      surfaced and passed over this session: LHC oxygen-neon collision
+      findings (1 Aug 2026) and a catalyst breaking a long-standing
+      electron-transfer chemistry rule (9 Aug 2026).

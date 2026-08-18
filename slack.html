@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SLACK — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:58vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.9;z-index:2;
+}
+#stats .val{color:rgba(140,210,255,.85)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.75;max-width:100%}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:70vw;font-size:8px}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">PACK</span>
+  <span id="desc">a real 2D circle-packing sim, chasing a proven optimum</span>
+</div>
+<div id="hint">drag: drop circles · click: switch mode</div>
+<script>
+/*  SLACK — even the best sphere packing we know leaves room to spare,
+ *  36 dimensions out
+ *
+ *  This session's web wander ("novel physics discovery August 2026",
+ *  "new mathematics proof breakthrough August 2026", "strange new
+ *  material behavior discovered August 2026") surfaced several
+ *  candidates, most of them already this gallery's own ground: a
+ *  tunable exciton Bose-Einstein condensate in an atomically thin
+ *  semiconductor (10 Aug 2026) sits close enough to VALLEY's own
+ *  two-component exciton-BEC piece (session 46) to skip without a
+ *  clearly distinct mechanism; UCLA's room-temperature ballistic
+ *  "heat rays" in boron arsenide (Hu et al., Nature Physics, 7 Aug
+ *  2026) turned out on inspection to be the EXACT SAME Hu et al. paper
+ *  CAUSTIC already cites in its own header -- not a near-miss, the same
+ *  citation -- so it was dropped outright rather than reused; a claim
+ *  that DeepMind's "LeenMind" proved a "Sylvester-Gallai conjecture" in
+ *  Coq, published in the Annals of Mathematics, showed up in multiple
+ *  search summaries but did not survive a sanity check (the classical
+ *  Sylvester-Gallai theorem was already fully settled by Kelly in 1948;
+ *  no further "conjecture" by that name is a live open problem at that
+ *  generality; the tooling name doesn't match any real Lean/Coq project
+ *  this session could find) -- flagged here, not built on, joining the
+ *  gallery's existing caution about unverifiable AI-math claims (see
+ *  session 46's Jacobian-conjecture note); and a room-temperature gold
+ *  "metacrystal" quantum sensor stayed exactly as thin as MOIRE's own
+ *  session (49) already found it.
+ *
+ *  What actually got built on is older than this week: session 41's own
+ *  notes (2026-08-09, BRUHAT's session) flagged "OpenAI's own August
+ *  2026 sphere-packing result... the sphere-packing result's own proof
+ *  technique was not reachable in extractable form" and left it
+ *  unpursued for six sessions running. This session went back for it
+ *  and, instead of that vaguer OpenAI-summarized claim, found the real
+ *  underlying primary source directly: Rifat Jumagulov, "A dual linear
+ *  programming bound for sphere packing in dimension 36" (arXiv:2607.
+ *  11319, submitted 13-15 Jul 2026), reached via WebFetch on the arXiv
+ *  abstract page itself, not a secondary summary. Checked against this
+ *  gallery's own memory first (grep for "sphere pack|cohn-elkies|
+ *  modular form|leech lattice|E8 lattice|kissing number" across every
+ *  existing piece and this file): one unrelated hit (ARCTIC's own
+ *  "Cohn-Elkies-Propp (1996)" domino-tiling tangency formula, a
+ *  different Cohn+Elkies paper with a third author, about a completely
+ *  different problem) and the session-41 note above -- genuinely
+ *  untouched as a piece.
+ *
+ *  THE ACTUAL CLAIM, read from the paper's own abstract: Cohn and
+ *  Elkies (2003) showed that any sphere packing's density in R^n is
+ *  bounded above by a linear program over "auxiliary functions" f with
+ *  f(0)=f-hat(0)>0, f(x)<=0 for |x|>=r, and f-hat(t)>=0 everywhere --
+ *  any such f certifies an upper bound on how dense ANY packing in that
+ *  dimension could ever be. In dimension 8 (Viazovska, arXiv:1603.04246,
+ *  Ann. of Math. 2017) and dimension 24 (Cohn, Kumar, Miller, Radchenko
+ *  & Viazovska, arXiv:1603.06518, Ann. of Math. 2017) an exact "magic
+ *  function" was found that makes this bound EQUAL the density of a
+ *  known lattice (E8 and the Leech lattice), proving those two lattices
+ *  optimal outright -- the only dimensions above 3 where anyone has ever
+ *  done this. Above dimension 32, before this paper, no rigorous
+ *  dual-feasible point of the Cohn-Elkies LP had been constructed AT
+ *  ALL -- not a loose bound, no bound whatsoever. Jumagulov's paper
+ *  builds one in dimension 36 from a weight-18 modular form for the
+ *  congruence subgroup Gamma_0(24), verified with exact rational
+ *  arithmetic (coefficient nonnegativity checked out to n=800) and
+ *  certified interval bounds. The paper's own stated result, quoted
+ *  directly: "The two-point linear programming bound on the sphere
+ *  packing density in dimension 36 exceeds the density of the best
+ *  packing currently known -- the Kschischang-Pasupathy packing, of
+ *  center density 2^18/3^10 -- by a factor of at least 32.91." In other
+ *  words: even the best packing anyone has ever found in 36 dimensions
+ *  could, for all this proof rules out, be sitting on more than 32
+ *  times as much unclaimed room as physically fits. That gap -- not a
+ *  new shape, not a new force, just a rigorously measured "we don't
+ *  know" -- is this piece's "novel and unexpected."
+ *
+ *  What is real and independently checked (verify_pack.js, this
+ *  session's scratchpad, not committed): the four textbook density
+ *  values GAP mode displays -- dim 1 trivial (1), dim 3 FCC/HCP
+ *  (pi/sqrt(18) = 0.740480, the Kepler conjecture, proved by Hales'
+ *  computer-assisted case analysis, 1998 claim / Flyspeck-verified 2014
+ *  -- explicitly NOT an LP-bound proof, shown with no gap-ratio claim
+ *  for exactly that reason), dim 8 E8 (pi^4/384 = 0.253670), and dim 24
+ *  Leech (pi^12/12! = 0.0019296) -- were recomputed from their standard
+ *  closed forms in Node and matched to five decimal places against the
+ *  commonly cited literature values. Dimension 36's own density number
+ *  was NOT recomputed (center density 2^18/3^10 in 36 dimensions
+ *  involves a packing-radius/covolume normalization this session did
+ *  not re-derive) -- the piece uses the paper's own stated ratio,
+ *  "at least 32.91x", directly and only that.
+ *
+ *  What is illustrative, disclosed on screen and here: PACK mode's
+ *  circle-packing sim is real, verified 2D physics (pairwise overlap
+ *  resolution checked in Node for the coincident-center edge case and
+ *  for correct final separation; the live density readout was checked
+ *  against a synthetic triangular lattice sampled in growing boxes,
+ *  converging from 0.825 at a small box to 0.9065 at a large one as
+ *  boundary effects shrink, confirming the area-ratio formula the piece
+ *  uses on-screen is the same one that produces the true pi/sqrt(12)
+ *  constant in the infinite-lattice limit) -- but it is a live,
+ *  hand-packed 2D demonstration of HOW HARD "close to optimal" is even
+ *  when the optimal answer has been known since Thue (1892) / Fejes
+ *  Toth (1940), not a claim about dimension 36 itself. No 36-dimensional
+ *  object is, or could be, drawn on a 2D canvas; GAP mode's bars plot
+ *  real numbers, not real geometry.
+ *
+ *  Two modes, tested in a real headless browser (Playwright,
+ *  environment's preinstalled Chromium) at 1280x800 desktop and 390x844
+ *  mobile, plus a sustained multi-drop drag gesture in PACK and a
+ *  horizontal scrub across every dimension in GAP, screenshotted before
+ *  and after each: zero console/page errors beyond the one harmless
+ *  favicon 404 every piece in this gallery already carries. PACK: drag
+ *  anywhere to drop circles that physically settle and never overlap;
+ *  live density readout climbs toward, and empirically falls short of,
+ *  the true 90.69% hex optimum (marked as a fixed reference tick) --
+ *  a real, unscripted result of the sim's own physics, not a scripted
+ *  animation. GAP: drag left/right to scrub through the five real
+ *  dimensions in ascending order; the three CLOSED dimensions (1, 8, 24)
+ *  sit flat at gap=1 while dimension 36's bar breaks toward the top of
+ *  a log axis at >=32.91x, with dimension 3 held off to the side as a
+ *  dimension that is solved by a wholly different method and carries no
+ *  LP gap-ratio at all.
+ *
+ *  - [ ] SLACK: dimension 36's own raw density number (not just the
+ *        32.91x ratio) -- would need the actual center-density-to-
+ *        density normalization for a 36-dimensional lattice, not
+ *        re-derived this session.
+ *      the modular form itself (weight 18, Gamma_0(24)) that makes the
+ *        Jumagulov certificate work -- read about, not reconstructed;
+ *        a future session with more room could attempt a real toy LP
+ *        witness function in 1D or 2D and numerically check its own
+ *        sign conditions via FFT, something this session considered and
+ *        set aside as too easy to get subtly wrong under time pressure.
+ *  - [ ] SLACK: PACK mode uses simple pairwise repulsion, not a real
+ *        packing algorithm (e.g. Lubachevsky-Stillinger) -- a proper
+ *        compaction algorithm would likely close more of the gap to
+ *        90.69% than casual dragging does, which could be worth showing
+ *        side-by-side with the "hand-packed" version this session built.
+ *  - [ ] Passed over again this session, still open (see sessions 46,
+ *        48 and 49 for fuller history): the matrix-multiplication
+ *        exponent omega below 2.3727, a wandering supermassive black
+ *        hole 30,000 ly from its host's center, the Brown/Michigan
+ *        nanoparticle superlattice's intermediate metallic phase, the
+ *        unverifiable Jacobian-conjecture counterexample claim, a
+ *        femtosecond hidden electronic state in an MOF, OpenAI's Astra
+ *        ten-problem release generally (this piece used exactly one of
+ *        the ten, sourced independently rather than through Astra's own
+ *        summary), sunlight-to-entanglement SPDC, a room-temperature
+ *        gold metacrystal sensor, and MIT's coexisting-electron-phases
+ *        result.
+ *  - [ ] Newly surfaced and passed over this session: the "Sylvester-
+ *        Gallai conjecture... LeenMind... Coq... Annals of Mathematics"
+ *        claim described above -- flagged as likely a search-summary
+ *        fabrication rather than verified further, since the classical
+ *        theorem has no live "conjecture" left at that generality; a
+ *        future session that finds an actual primary source (or a real,
+ *        different open generalization under that name) should treat
+ *        this note as superseded, not as settled fact.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = (W * DPR) | 0; canvas.height = (H * DPR) | 0;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ── verified constants ───────────────────────────────────────────── */
+const HEX_DENSITY = Math.PI / Math.sqrt(12);      // 0.906900 — Thue/Fejes Tóth, proven optimal
+const E8_DENSITY = Math.pow(Math.PI, 4) / 384;    // 0.253670 — Viazovska 2016
+function fact(n) { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
+const LEECH_DENSITY = Math.pow(Math.PI, 12) / fact(12); // 0.0019296 — Cohn-Kumar-Miller-Radchenko-Viazovska 2017
+const KEPLER_DENSITY = Math.PI / Math.sqrt(18);   // 0.740480 — Hales, Kepler conjecture
+
+const DIMS = [
+  { n: 1, tag: 'CLOSED', label: 'trivial line', density: 1, gap: 1,
+    method: 'trivially optimal', year: '—', cite: '—' },
+  { n: 3, tag: 'CLOSED', label: 'FCC / HCP · Kepler', density: KEPLER_DENSITY, gap: null,
+    method: 'exhaustive computer proof — NOT an LP bound', year: '1998 / 2014', cite: 'Hales · Flyspeck' },
+  { n: 8, tag: 'CLOSED', label: 'E8 lattice', density: E8_DENSITY, gap: 1,
+    method: 'LP bound met exactly', year: '2016', cite: 'Viazovska, Ann. of Math. (2017)' },
+  { n: 24, tag: 'CLOSED', label: 'Leech lattice', density: LEECH_DENSITY, gap: 1,
+    method: 'LP bound met exactly', year: '2017', cite: 'Cohn–Kumar–Miller–Radchenko–Viazovska' },
+  { n: 36, tag: 'OPEN', label: 'Kschischang–Pasupathy', density: null, gap: 32.91,
+    method: 'first dual LP bound above dim 32', year: '2026', cite: 'Jumagulov, arXiv:2607.11319' }
+];
+const MAX_GAP_AXIS = 40;
+
+/* ── interaction ──────────────────────────────────────────────────── */
+let mode = 'pack';
+let dragging = false, dragMoved = false, downTime = 0, lastX = 0, lastY = 0;
+let gapScrub = 0.999; // 0..1 across DIMS
+function setMode(m) {
+  mode = m;
+  document.getElementById('modeName').textContent = m === 'pack' ? 'PACK' : 'GAP';
+  document.getElementById('desc').textContent = m === 'pack'
+    ? 'a real 2D circle-packing sim, chasing a proven optimum'
+    : 'five real dimensions · how much of sphere packing is actually solved';
+  document.getElementById('hint').textContent = m === 'pack'
+    ? 'drag: drop circles · click: switch mode'
+    : 'drag: scrub dimension · click: switch mode';
+}
+setMode('pack');
+function down(x, y) { dragging = true; dragMoved = false; downTime = performance.now(); lastX = x; lastY = y; if (mode === 'pack') spawnAt(x, y); }
+function move(x, y) {
+  if (!dragging) return;
+  const dx = x - lastX, dy = y - lastY;
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+  if (mode === 'pack') {
+    if (dragMoved) spawnAt(x, y);
+  } else {
+    gapScrub = Math.max(0, Math.min(0.999, gapScrub + dx * 0.0035));
+  }
+  lastX = x; lastY = y;
+}
+function up() {
+  if (dragging && !dragMoved && performance.now() - downTime < 350) {
+    setMode(mode === 'pack' ? 'gap' : 'pack');
+  }
+  dragging = false;
+}
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', up);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', up);
+
+/* ── PACK: real 2D circle-packing physics ─────────────────────────── */
+let circles = [];
+const MAX_CIRCLES = 260;
+let lastSpawn = 0;
+const GAUGE_SPACE = 34; // reserved so the reference gauge always has room, even on narrow mobile widths
+function arenaRect() {
+  const top = 6.4 * 16, bottom = H - 7.2 * 16;
+  const availW = W - GAUGE_SPACE;
+  const pad = Math.min(availW, bottom - top) * 0.06;
+  const size = Math.min(availW - pad * 2, bottom - top);
+  return { x: (availW - size) / 2, y: top + (bottom - top - size) / 2, w: size, h: size };
+}
+function spawnAt(x, y) {
+  const now = performance.now();
+  if (now - lastSpawn < 26) return;
+  lastSpawn = now;
+  if (circles.length >= MAX_CIRCLES) circles.shift();
+  const r = 7 + Math.random() * 11;
+  circles.push({ x, y, r, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 30 });
+}
+function stepPack(dt) {
+  const A = arenaRect();
+  for (const c of circles) {
+    c.vy += 60 * dt; // mild settle bias
+    c.x += c.vx * dt; c.y += c.vy * dt;
+    c.vx *= 0.985; c.vy *= 0.985;
+    if (c.x - c.r < A.x) { c.x = A.x + c.r; c.vx = Math.abs(c.vx) * 0.4; }
+    if (c.x + c.r > A.x + A.w) { c.x = A.x + A.w - c.r; c.vx = -Math.abs(c.vx) * 0.4; }
+    if (c.y - c.r < A.y) { c.y = A.y + c.r; c.vy = Math.abs(c.vy) * 0.4; }
+    if (c.y + c.r > A.y + A.h) { c.y = A.y + A.h - c.r; c.vy = -Math.abs(c.vy) * 0.4; }
+  }
+  for (let i = 0; i < circles.length; i++) {
+    for (let j = i + 1; j < circles.length; j++) {
+      const a = circles[i], b = circles[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = a.r + b.r;
+      if (dist < minDist) {
+        if (dist < 1e-6) { dx = 1; dy = 0; dist = 1e-6; }
+        const overlap = (minDist - dist) / 2;
+        const nx = dx / dist, ny = dy / dist;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+        const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+        const rel = rvx * nx + rvy * ny;
+        if (rel < 0) {
+          a.vx -= nx * rel * 0.3; a.vy -= ny * rel * 0.3;
+          b.vx += nx * rel * 0.3; b.vy += ny * rel * 0.3;
+        }
+      }
+    }
+  }
+}
+function packDensity() {
+  const A = arenaRect();
+  const arenaArea = A.w * A.h;
+  let sum = 0;
+  for (const c of circles) sum += Math.PI * c.r * c.r;
+  return Math.min(1, sum / arenaArea);
+}
+function drawPack(now) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const A = arenaRect();
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(A.x + .5, A.y + .5, A.w, A.h);
+
+  for (const c of circles) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r - 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(140,210,255,.16)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140,210,255,.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // reference gauge to the right of the arena (GAUGE_SPACE always leaves it room)
+  const gaugeX = A.x + A.w + 10;
+  const gaugeW = 8;
+  ctx.strokeStyle = 'rgba(255,255,255,.15)';
+  ctx.strokeRect(gaugeX + .5, A.y + .5, gaugeW, A.h);
+  const d = packDensity();
+  const fillH = A.h * d;
+  ctx.fillStyle = 'rgba(140,210,255,.5)';
+  ctx.fillRect(gaugeX, A.y + A.h - fillH, gaugeW, fillH);
+  const tickY = A.y + A.h * (1 - HEX_DENSITY);
+  ctx.strokeStyle = 'rgba(255,190,120,.85)';
+  ctx.beginPath();
+  ctx.moveTo(gaugeX - 4, tickY); ctx.lineTo(gaugeX + gaugeW + 4, tickY);
+  ctx.stroke();
+
+  document.getElementById('r1').innerHTML = 'live density <span class="val">' + (d * 100).toFixed(1) + '%</span>';
+  document.getElementById('r2').innerHTML = 'proven optimum <span class="val">' + (HEX_DENSITY * 100).toFixed(2) + '%</span>';
+  document.getElementById('r3').innerHTML = 'circles <span class="val">' + circles.length + '</span>';
+  document.getElementById('r4').textContent = 'hex packing, proven optimal since Thue (1892) / Fejes Tóth';
+  document.getElementById('r5').textContent = 'shortfall ' + Math.max(0, (HEX_DENSITY - d) * 100).toFixed(1) + ' pts — this session\'s own casual drops, not a claim about dim 36';
+}
+
+/* ── GAP: five real dimensions on a log axis ──────────────────────── */
+function drawGap(now) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const top = 7.2 * 16, bottom = H - 8 * 16;
+  const left = Math.max(28, W * 0.08), right = W - Math.max(28, W * 0.08);
+  const axisH = bottom - top;
+
+  // axis
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.textAlign = 'right';
+  [1, 10, MAX_GAP_AXIS].forEach(g => {
+    const t = Math.log10(g) / Math.log10(MAX_GAP_AXIS);
+    const y = bottom - t * axisH;
+    ctx.fillText(g + '×', left - 6, y + 3);
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+  });
+
+  const gapDims = DIMS.filter(d => d.gap !== null);
+  const n = gapDims.length;
+  const slot = (right - left) / (n + 1);
+  const idxF = gapScrub * (DIMS.length - 1);
+  const nearest = DIMS[Math.round(idxF)];
+
+  gapDims.forEach((d, i) => {
+    const x = left + slot * (i + 1);
+    const t = Math.log10(Math.max(1, d.gap)) / Math.log10(MAX_GAP_AXIS);
+    const barTop = bottom - t * axisH;
+    const active = d === nearest;
+    const barW = Math.max(18, slot * 0.34);
+    ctx.fillStyle = d.tag === 'OPEN' ? 'rgba(255,140,120,' + (active ? .85 : .55) + ')' : 'rgba(140,210,255,' + (active ? .85 : .5) + ')';
+    ctx.fillRect(x - barW / 2, barTop, barW, Math.max(2, bottom - barTop));
+    ctx.font = (active ? 'bold ' : '') + '9px "Courier New",monospace';
+    ctx.fillStyle = active ? '#fff' : 'rgba(255,255,255,.4)';
+    ctx.textAlign = 'center';
+    ctx.fillText('dim ' + d.n, x, bottom + 16);
+    ctx.font = '8px "Courier New",monospace';
+    ctx.fillStyle = active ? 'rgba(255,255,255,.6)' : 'rgba(255,255,255,.22)';
+    ctx.fillText(d.tag, x, bottom + 28);
+  });
+
+  // dim 3 — off-axis, no LP gap claim
+  const d3 = DIMS[1];
+  const x3 = left;
+  const active3 = d3 === nearest;
+  ctx.fillStyle = active3 ? 'rgba(255,255,255,.7)' : 'rgba(255,255,255,.28)';
+  ctx.beginPath(); ctx.arc(x3, bottom - 10, active3 ? 5 : 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.font = (active3 ? 'bold ' : '') + '9px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('dim 3', x3, bottom + 16);
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = active3 ? 'rgba(255,255,255,.6)' : 'rgba(255,255,255,.22)';
+  ctx.fillText('no LP claim', x3, bottom + 28);
+
+  const dd = nearest;
+  document.getElementById('r1').innerHTML = 'dim ' + dd.n + ' <span class="val">' + dd.tag + '</span>';
+  document.getElementById('r2').innerHTML = dd.gap === null
+    ? 'density <span class="val">' + (dd.density * 100).toFixed(4) + '%</span>'
+    : 'LP gap <span class="val">' + (dd.gap === 1 ? '1× (exact)' : '≥' + dd.gap.toFixed(2) + '×') + '</span>';
+  document.getElementById('r3').innerHTML = dd.label;
+  document.getElementById('r4').textContent = dd.method + ' — ' + dd.year;
+  document.getElementById('r5').textContent = dd.cite;
+}
+
+let lastT = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.033, (now - lastT) / 1000);
+  lastT = now;
+  if (mode === 'pack') { stepPack(dt); drawPack(now); } else { drawGap(now); }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
