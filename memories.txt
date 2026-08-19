@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+confluence.html  — CONFLUENCE piece
 slack.html       — SLACK piece
 moire.html       — MOIRE piece
 chime.html       — CHIME piece
@@ -9489,3 +9490,210 @@ computing gauge placement after the fact and hoping it fits.
       surfaced and passed over this session: LHC oxygen-neon collision
       findings (1 Aug 2026) and a catalyst breaking a long-standing
       electron-transfer chemistry rule (9 Aug 2026).
+
+## Piece 51: CONFLUENCE — Baryon Number Doesn't Ride the Quarks, It Rides
+the Knot That Ties Them (2026-08-19)
+This session's web wander ("novel physics discovery August 2026", "new
+mathematics proof breakthrough August 2026", "strange new material
+behavior discovered August 2026") surfaced three fresh candidates: a
+hidden Y-shaped gluon structure inside protons possibly carrying baryon
+number, reported 13-16 Aug 2026 (RHIC/STAR, Science); the world's first
+cyclic superconducting quantum heat engine, an Otto cycle run inside a
+transmon circuit near absolute zero (Mottonen et al., Aalto University,
+Nat. Commun., 13 Jul 2026); and Rice University's measurement of giant
+flexoelectricity (100,000-10,000,000x the macroscale effect) at sharply
+curved graphene nanowrinkles (Advanced Materials, Aug 2026). Checked
+against this gallery's own memory first (grep for "quark|gluon|baryon|
+flexoelectric|otto cycle|heat engine|transmon|qubit" across every
+existing piece and this file): zero hits on any of the three --
+genuinely untouched ground, and this gallery had not touched particle or
+nuclear physics at all before this session. Went with the gluon-junction
+result: its own textbook-overturning claim -- that baryon number is not
+what three quarks individually carry, but what a single topological knot
+of gluons carries, with the quarks merely anchoring its three strings --
+is the most direct hit on this routine's own "novel and unexpected"
+instruction. The heat engine and the graphene nanowrinkles are logged
+below as open, not built on.
+
+Primary source: STAR Collaboration, "Tracking the baryon number with
+nuclear collisions," arXiv:2408.15441v2 (updated 13 Aug 2026), published
+in Science 393, 727 (2026), DOI 10.1126/science.ads5962. WebFetch on the
+Science page itself returned HTTP 403 (paywalled) on two different DOI
+variants seen in secondary coverage; the arXiv abstract page was
+reachable and confirmed the same paper (STAR Collaboration, v2 dated 13
+Aug 2026, matching the news cycle). Its own PDF link was then fetched --
+poppler-utils was not preinstalled in this session's container (only the
+bare libpoppler library was), so it was apt-installed this session and
+the PDF run through pdftotext -layout to read real body text, not a
+WebFetch model's summary of a summary. This is the first session to pull
+a full paper's body text this way rather than relying on WebFetch's own
+extraction of a PDF.
+
+The physics, read from the paper's own text: a baryon (proton, neutron)
+is conventionally three valence quarks each carrying baryon number
+B=1/3. An alternative picture, proposed by Artru (Nucl. Phys. B 85, 442,
+1975) and Rossi & Veneziano (Nucl. Phys. B 123, 507, 1977) and sharpened
+by Kharzeev (Phys. Lett. B 378, 238, 1996), assigns the full B=1 instead
+to a "baryon junction" -- a non-perturbative Y-shaped configuration where
+three gluonic flux strings, one to each valence quark, meet at a point.
+The junction carries zero electric charge, so unlike a valence quark
+(which carries a large fraction of the colliding baryon's momentum and
+is correspondingly hard to redirect) it can in principle be dragged to a
+collision's midrapidity by the strong force alone. STAR measured three
+independent signatures at RHIC (which completed its final collisions in
+early 2026) and reports, quoted/paraphrased directly from the paper: the
+net-proton rapidity slope in photon-gold (gamma+Au) events from Au+Au
+collisions at sqrt(s_NN)=54.4 GeV is alpha_B = 1.04 +/- 0.22 (Y_beam =
+4.06), consistent with the Regge-theory baryon-junction band 0.42 <
+alpha_B < 1 and inconsistent with the PYTHIA valence-quark tunes, which
+"significantly overpredict" (over-steepen) that slope; the antiproton
+control slope is flat, alpha ~= 0.02 +/- 0.06, ruling out the gamma+Au
+event selection itself as the cause of the signal; the centrality-
+independent Au+Au average is alpha_B = 0.64 +/- 0.05, matched by p+p
+collisions at alpha_B = 0.65 +/- 0.08 (sqrt(s) = 23.4-200 GeV); and in
+isobar Ru-96+Ru-96 / Zr-96+Zr-96 collisions at sqrt(s_NN)=200 GeV (2018
+STAR dataset, ~2 billion events per species), the baryon-to-charge
+transport ratio <B>/dQ x dZ/A in the 0-10% most central collisions is
+1.84 +/- 0.02 (stat) +/- 0.09 (syst) +/- 0.16 (feed-down) -- against a
+naive valence-quark expectation of exactly 1, and against the valence-
+quark UrQMD model's own prediction of only 0.5-0.7. The paper's own
+stated conclusion: these results "disfavor the valence quark picture."
+Checked and disclosed as a real limit on the claim, in the paper's own
+words: this is indirect kinematic evidence, not a direct observation of
+a junction inside a proton, and the paper's own "Discussions and
+outlook" section calls for confirmation at CEBAF, the LHC and the future
+Electron-Ion Collider.
+
+What is independently verified this session, not just read
+(verify_fermat.js, verify_slope.js, scratchpad, not committed): the
+static geometry used to draw the junction. In the equal-string-tension
+Y-ansatz (the standard lattice-QCD treatment the paper's own refs 7-13
+build on -- not itself new to this 2026 result, and not independently
+re-read this session), three unit-tension flux strings pulling on a free
+junction node balance only when they meet at exactly 120 degrees each --
+the Fermat/Torricelli point of the quark triangle. Checked two ways:
+numerically, by gradient-descending the total-string-length objective
+from the centroid for four random acute triangles (recovered exactly
+120.00/120.00/120.00 every time, independent of any closed-form
+construction), and by confirming the known degenerate case -- a triangle
+with one interior angle at or above 120 degrees collapses the minimizer
+onto that vertex (a synthetic 157-degree triangle put the found point
+within 1e-4 of the obtuse vertex). The piece animates this same force
+balance live every frame (unit vectors from the junction toward each
+quark, summed and damped) rather than hard-coding the Fermat point, so
+the 120-degree angles on screen are an emergent result of the running
+simulation, not a scripted pose. Also verified: the inverse-CDF sampling
+formula used to place each simulated event's resulting baryon along the
+rapidity axis, y = ln(1 + u(e^(alpha*Ybeam)-1))/alpha for u~Uniform(0,1),
+by drawing 500-50,000 samples at each of the piece's actual alpha values
+and re-fitting the slope by linear regression on log-binned counts (the
+same method the on-screen "live fitted slope" readout uses): recovered
+slopes were within 0.4-3.5% of the input at the largest sample sizes
+tested, but a follow-up check at the much smaller sample sizes the piece
+actually reaches in a short viewing session (N=30-200) found the same
+unweighted regression is measurably noisy and biased low (e.g. true
+alpha=0.64 fit to a mean of 0.47 at N=30 across ten seeds) -- disclosed
+on screen ("unweighted & noisy under ~150 events") and gated with a
+"warming up" readout below 40 events, rather than presenting an
+early, unreliable number as if it were trustworthy.
+
+What is illustrative and disclosed on screen and in the piece's own
+header: the entire per-event animation -- an incoming baryon crossing a
+shaded "target field," flashing, and re-forming as either a midrapidity
+baryon (JUNCTION hypothesis) or a midrapidity meson plus a beam-rapidity
+baryon (QUARK hypothesis) -- is this session's own cartoon of the
+paper's own Figure 1 schematic, not a QCD event generator; real
+hadronization runs through PYTHIA/HERWIG parton showers, not three dots
+and a spring. JUNCTION mode's simulated events are sampled at alpha_B =
+0.64, the real sourced Au+Au value, so its accumulating histogram is
+directly checkable against the dashed Au+Au reference line on screen.
+QUARK mode is sampled at alpha_B = 2.2 -- a qualitatively steeper
+falloff consistent with the paper's own "PYTHIA significantly
+overpredicts" statement, but not the paper's own extracted PYTHIA
+number, which Figure 3's axis was not read precisely enough this session
+to state as a number. Quark colors (red/green/blue) label QCD color
+charge for legibility -- accurate to the real confinement requirement
+that they sum to colorless at the junction, but not a claim that color
+charge has the spatial extent drawn here. Meson destinations and the
+"target field" band's exact position are cosmetic, chosen for a
+readable animation, not measured quantities.
+
+Tested in a real headless browser (Playwright 1.56.1, environment's
+preinstalled Chromium) at 1280x800 desktop and 390x844 mobile, both
+hypotheses, plus drag-fire and click-to-switch, screenshotted repeatedly
+over long (16-20s) runs: zero console/page errors, but three real bugs
+only surfaced by watching it run, not by reading the code. (1) The
+scatter "flash" burst's opacity/radius was only ever decremented inside
+the brief 0.18s 'scatter' phase, so any residual value when the event
+moved on to 'out' froze there forever -- permanent gray circles pinned
+to old event sites, visibly piling up the longer the page ran. Fixed by
+decaying it unconditionally every frame regardless of phase. (2) More
+seriously: the rapidity histogram only recorded an event once its
+on-screen marker visually reached its sampled landing position, but that
+marker's exponential-ease travel provably never converges within the
+event's fixed lifetime for long trips -- exactly the JUNCTION
+hypothesis's own most interesting events, the ones landing near
+midrapidity -- so those counts were silently dropped before ever being
+tallied, quietly biasing the live histogram toward under-counting the
+very transport the piece exists to show. Fixed by recording the
+histogram bin the instant the landing rapidity is sampled, at the
+scatter transition, decoupling data recording from the animation's own
+cosmetic travel time -- a genuine correctness bug, not just a visual
+one, caught only because the piece was actually watched run for tens of
+seconds rather than spot-checked. (3) Mobile-only: the stats panel and
+bottom mode label wrap to a taller, variable block on a 390px-wide
+screen, and this piece's first draft placed animation lanes and the
+histogram's own baseline at fixed fractions of screen height, so quark
+clusters and histogram bars ran directly under that wrapped text. Fixed
+by measuring the real DOM bounding boxes of the stats panel and bottom
+UI label on every resize and mode switch, keeping both the lanes and the
+histogram baseline clear of them dynamically rather than guessing a
+fixed offset.
+
+- [ ] CONFLUENCE: PYTHIA's own predicted alpha_B for the valence-quark
+      picture was never extracted as a real number this session (Figure
+      3's axis in the arXiv PDF was not read precisely enough) -- QUARK
+      mode's alpha_B=2.2 is this session's own qualitative stand-in, not
+      sourced. A future session with more room could re-fetch Figure 3's
+      underlying data (if available via arXiv ancillary files or a
+      journal supplement) for the real PYTHIA/HERWIG numbers and replace
+      the illustrative value.
+- [ ] CONFLUENCE: the isobar B/deltaQ x deltaZ/A = 1.84 result (Figure 4)
+      is shown only as a static reference number in the stats panel, not
+      simulated -- a third interactive mode plotting the real centrality
+      dependence (1.84 at 0-10% central, decreasing to peripheral, per
+      the paper's own Figure 4) against the UrQMD and TRENTO model bands
+      would visualize the paper's second independent signature, not
+      attempted this session for time.
+- [ ] CONFLUENCE: the piece's live "fitted slope" readout uses simple
+      unweighted OLS on log-binned counts, which this session's own
+      verify_slope.js showed is measurably biased low at the sample
+      sizes (N<200) a short viewing session actually reaches; the real
+      paper uses proper weighted/systematic-uncertainty-propagated fits.
+      A Poisson-weighted or maximum-likelihood exponential fit would
+      converge faster and with less bias, not attempted this session.
+- [ ] SLACK (from session 50, still open): dimension 36's own raw
+      density number, the Gamma_0(24) modular form itself, a proper
+      compaction-algorithm comparison for PACK mode.
+- [ ] Newly surfaced this session, passed over rather than built on: the
+      world's first cyclic superconducting quantum heat engine (Otto
+      cycle in a transmon circuit near absolute zero, Mottonen et al.,
+      Aalto University, Nat. Commun., 13 Jul 2026) -- a genuinely novel,
+      well-sourced, technologically important result with real
+      thermodynamic quantities (work extracted, efficiency vs. Carnot)
+      that would make a strong future piece; and Rice University's
+      giant flexoelectricity measurement at sharply curved graphene
+      nanowrinkles (100,000-10,000,000x the macroscale flexoelectric
+      effect, Advanced Materials, Aug 2026), which would pair a wrinkled
+      height-field visual with a genuinely surprising magnitude.
+- [ ] Still open, unpursued again this session (see session 46's note
+      for the fullest history): the matrix-multiplication exponent omega
+      dropping below 2.3727, a wandering supermassive black hole 30,000
+      light-years from its host's center, the Brown/Michigan
+      nanoparticle superlattice's intermediate metallic phase, the
+      unverifiable Jacobian-conjecture counterexample claim, the
+      femtosecond hidden electronic state in a metal-organic framework,
+      sunlight-to-entanglement SPDC, a room-temperature gold metacrystal
+      sensor, MIT's coexisting-electron-phases result, LHC oxygen-neon
+      collision findings, and a catalyst breaking a long-standing
+      electron-transfer chemistry rule.
