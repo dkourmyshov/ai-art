@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REKINDLE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:58vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(140,215,255,.9)}
+#stats .val2{color:rgba(255,190,120,.9)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.7;max-width:100%}
+#legend{
+  position:fixed;top:1.4rem;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:center;
+  color:rgba(255,255,255,.18);
+  pointer-events:none;user-select:none;z-index:2;
+  line-height:1.7;
+}
+#legend .c{color:rgba(140,215,255,.75)}
+#legend .a{color:rgba(255,190,120,.75)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:26vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:74vw;font-size:8px}
+  #legend{display:none}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="legend"><span class="c">cyan</span> dominant c-CDW (T<sub>c</sub>=265K), mean-field &middot; <span class="a">amber</span> subdominant a-CDW (T<sub>c</sub>=160K), nucleation-and-growth</div>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+  <span class="sub" id="r6">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">REKINDLE</span>
+  <span id="desc">two ways for order to come back from a flash of light</span>
+</div>
+<div id="hint">bottom bar: drag = set fluence &middot; crystal: click/drag = fire pump</div>
+<script>
+/*  REKINDLE — Two Ways for Electronic Order to Come Back From a Flash
+ *  of Light
+ *
+ *  This session's web wander ("novel physics discovery August 2026",
+ *  "new mathematics proof breakthrough August 2026", "strange new
+ *  material behavior discovered August 2026") surfaced several
+ *  candidates: an unverified claim that OpenAI's Astra model proved the
+ *  Hadamard conjecture for all orders via quantum annealing (no arXiv
+ *  preprint with an actual proof could be found behind the news
+ *  coverage -- the same red flag this gallery's own SLACK piece hit on
+ *  a different Astra claim, the Sylvester-Gallai conjecture, and
+ *  flagged as "likely unverifiable/fabricated"; passed over again
+ *  here, unbuilt); a room-temperature quantum material sorting photon
+ *  states without cryogenics; and MIT's observation, published in
+ *  Nature Physics on 7 Aug 2026 and covered by ScienceDaily on 19 Aug
+ *  2026, of two competing electronic phases in a rare-earth crystal
+ *  recovering from a laser pulse by two genuinely different physical
+ *  routes -- one smooth, one crystallizing "like ice." That MIT result
+ *  had already been flagged as open, unbuilt inspiration in this
+ *  gallery's own memory since session 51 ("MIT's coexisting-electron-
+ *  phases result"); checked again this session (grep for "charge
+ *  density|CDW|erbium|tritelluride|first-order transition|second-order
+ *  transition|pump-probe|ARPES" across every existing piece --  zero
+ *  hits outside this file's own backlog note) and still genuinely
+ *  untouched ground, so it was the one built.
+ *
+ *  Primary source: Yifan Su, B. Q. Lv, Alfred Zong et al. (Nuh Gedik's
+ *  group, MIT), "Time-domain identification of distinct mechanisms for
+ *  competing charge density waves in a rare-earth tritelluride," Nature
+ *  Physics (2026), also on arXiv:2503.13936 (submitted 18 Mar 2025,
+ *  revised 25 Mar 2025 -- pre-dating the journal's own 2026 publication
+ *  by over a year, an ordinary arXiv-preprint-then-journal-acceptance
+ *  gap, not a red flag). WebFetch reached the arXiv abstract page
+ *  directly (confirmed author list, submission dates and "Nature
+ *  Physics (2026)" journal-ref match the news coverage) and the arXiv
+ *  HTML full-text render (arxiv.org/html/2503.13936), which is the
+ *  paper's own rendered body text, not a WebFetch summary of a summary
+ *  -- cross-checked against ScienceDaily's, phys.org's and Nature
+ *  Physics's own article page, all agreeing on authors, material,
+ *  mechanism and the DOI 10.1038/s41567-026-03382-5.
+ *
+ *  The physics, read from the paper's own text: erbium tritelluride
+ *  (ErTe3) is built from Te "bilayer square-net sheets" with a slight
+ *  in-plane anisotropy between its a- and c-axes (a/c >= 0.997 at room
+ *  temperature). On cooling it develops not one but two charge-density-
+ *  wave (CDW) orders, running along the two perpendicular in-plane
+ *  axes: a dominant c-CDW that sets in at Tc1 ~ 265 K, gap Delta_c ~
+ *  0.14 eV, whose formation fits the textbook Fermi-surface-nesting /
+ *  electron-phonon-coupling picture; and a weaker, subdominant a-CDW
+ *  that only sets in below Tc2 ~ 160 K, gap Delta_a ~ 0.04 eV, whose
+ *  formation mechanism the paper's own introduction calls "enigmatic"
+ *  -- not explained by the same textbook picture. The two orders,
+ *  running at 90 degrees to each other, together weave the crystal's
+ *  electrons into what the paper's own supplementary framing (and this
+ *  gallery's own title for it, "electrons rebuilding like ice," is
+ *  ScienceDaily's paraphrase, not the paper's own words) amounts to an
+ *  atomic-scale checkerboard.
+ *
+ *  The paper's own method: knock both orders down with a single 200-fs,
+ *  1.2 eV (1030 nm) pump pulse, at fluences from 0.14 to 0.7 mJ/cm^2,
+ *  then watch them come back with a 10.8 eV extreme-ultraviolet probe
+ *  pulse (high-harmonic generation) via time- and angle-resolved
+ *  photoemission spectroscopy (trARPES), reading each order's own gap
+ *  size (and hence its own order-parameter amplitude) as a function of
+ *  pump-probe delay, over a recovery window of roughly 2 ps. Their own
+ *  finding, stated directly: the dominant c-CDW's measured recovery
+ *  time is "a linear function of fluence" -- pump harder, it takes
+ *  measurably longer to reassemble, everywhere in the illuminated spot
+ *  at once, consistent with the textbook mean-field/second-order
+ *  picture where a stronger quench simply takes a smoothly relaxing
+ *  order parameter further from its equilibrium value. The subdominant
+ *  a-CDW's measured recovery time, by contrast, stays "nearly constant"
+ *  across the same fluence range -- and the paper's own explanation,
+ *  combining trARPES with a time-dependent Ginzburg-Landau (TDGL)
+ *  model, is that it does not relax back in step everywhere at once;
+ *  it nucleates in localized patches that then expand and merge,
+ *  "resembling the way ice crystals begin forming in liquid water"
+ *  (ScienceDaily's simile for the paper's own first-order-transition
+ *  language) -- a fundamentally different growth process. Two related
+ *  electronic orders in one crystal, driven by the same pulse, taking
+ *  two different physical routes back to order: that contrast is this
+ *  piece's own "novel and unexpected" hook.
+ *
+ *  What the paper's own extracted arXiv text does NOT give (checked
+ *  directly, not assumed missing): explicit numeric CDW wavevectors,
+ *  the TDGL free-energy functional or any coupling coefficient between
+ *  the two order parameters, or the fitted slope/intercept of Fig. 4d's
+ *  fluence-vs-recovery-time comparison -- only the qualitative "linear"
+ *  vs "nearly constant" contrast, in the paper's own words. Every
+ *  number in this piece's stats panel (Tc1, Tc2, Delta_c, Delta_a, the
+ *  pump/probe photon energies, the fluence range, the ~2 ps recovery
+ *  window) is taken directly from that arXiv text; everything about HOW
+ *  those two recovery times behave differently -- the actual tau0/k
+ *  constants driving the c-CDW's on-screen exponential, and the seed
+ *  density/growth-velocity constants driving the a-CDW's on-screen
+ *  nucleation -- is this piece's own illustrative model, chosen only to
+ *  reproduce the paper's qualitative trends and to be visible over a
+ *  few seconds on screen, not the paper's own fitted numbers (Fig 4d's
+ *  own axis was not read to sub-panel precision this session). The
+ *  on-screen clock is likewise compressed for visibility, not a literal
+ *  picosecond timer -- disclosed here and in the legend/hint text
+ *  rather than presented as real trARPES timing.
+ *
+ *  What IS independently verified this session, not just read
+ *  (verify_jmak.js, this session's scratchpad, not committed): the
+ *  mechanistic reason this piece's a-CDW recovery time comes out nearly
+ *  fluence-independent is not hard-coded -- it EMERGES from a real
+ *  Johnson-Mehl-Avrami-Kolmogorov (JMAK) nucleation-and-growth model.
+ *  If nucleation sites are Poisson-scattered at a FIXED areal density
+ *  rho and each grows as a disc of FIXED velocity v (both material
+ *  constants, independent of fluence -- only the pumped area's SIZE
+ *  scales with fluence in this piece), the covered-area fraction at
+ *  time t is the standard Avrami form X(t) = 1 - exp(-rho*pi*v^2*t^2),
+ *  and the time to reach any fixed threshold (90% used here) depends
+ *  ONLY on rho and v, not on the pumped area -- because a bigger
+ *  quenched patch gets proportionally more seeds, not slower-growing
+ *  ones. Checked two ways in verify_jmak.js: the closed-form X(t)
+ *  matches a real Monte Carlo simulation (random seed scatter + disc
+ *  growth, sampled with 40,000 query points per timestep) to within a
+ *  few percent at every timestep tested; and the empirical time to
+ *  reach 90% coverage, measured directly from that same Monte Carlo
+ *  simulation, comes out at 13.3-13.9 (vs. the closed-form's 13.54) for
+ *  three pumped-area sizes spanning a 4x range in linear size (16x in
+ *  area) -- flat to within simulation noise, confirming the
+ *  independence-from-fluence claim isn't an artifact of this piece's UI
+ *  but a real property of the growth model it runs live. (One disclosed
+ *  caveat the same script surfaced: at the smallest area tested, with
+ *  only ~1.6 expected seeds, the empirical t90 undershoots the
+ *  closed-form value by ~25% from small-N seed-count noise -- this
+ *  piece keeps its minimum pump radius large enough to carry several
+ *  seeds for exactly this reason.)
+ *
+ *  What is illustrative, disclosed on screen and here: the crystal
+ *  patch is a coarse 46x27 sample grid, not a literal lattice of atoms
+ *  or a real CDW's actual spatial period; each pump fires locally, at
+ *  the clicked/dragged point, whereas the real experiment's pump spot
+ *  is a broad, spatially uniform beam far larger than either CDW's
+ *  domain size (a deliberate liberty, so multiple independent recovery
+ *  events can be watched and compared side by side rather than only one
+ *  global flash at a time). Pump radius grows mildly with fluence (more
+ *  deposited energy, illustratively, disturbs more area) -- not a
+ *  quantity the paper reports, since its own pump spot size is fixed by
+ *  the beam optics, not the fluence dial.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+// ---- layout: keep the crystal + slider clear of the (variable-height,
+// wraps on narrow screens) stats/legend/ui overlays -----------------------
+let cryTop = 0, cryBottom = 0, sliderTop = 0, sliderBottom = 0;
+function measureLayout() {
+  const statsEl = document.getElementById('stats');
+  const legendEl = document.getElementById('legend');
+  const uiEl = document.getElementById('ui');
+  const statsBottom = statsEl ? statsEl.getBoundingClientRect().bottom : 0;
+  const legendBottom = legendEl ? legendEl.getBoundingClientRect().bottom : 0;
+  cryTop = Math.max(statsBottom, legendBottom) + 18;
+  const uiTop = uiEl ? uiEl.getBoundingClientRect().top : H - 60;
+  sliderBottom = Math.max(uiTop - 14, cryTop + 120);
+  sliderTop = sliderBottom - 46;
+  cryBottom = sliderTop - 14;
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  measureLayout();
+}
+window.addEventListener('resize', resize);
+setInterval(measureLayout, 2000);
+
+// ---- sourced constants (see header) --------------------------------------
+const TC1 = 265, TC2 = 160;            // K
+const DELTA_C = 0.14, DELTA_A = 0.04;  // eV
+const PUMP_EV = 1.2, PUMP_FS = 200, PUMP_NM = 1030;
+const PROBE_EV = 10.8;
+const F_MIN = 0.14, F_MAX = 0.7;       // mJ/cm^2, paper's own studied range
+
+// ---- illustrative simulation constants (see header) ----------------------
+const TAU_C0 = 0.9, TAU_C_K = 3.6;      // c-CDW: tau = TAU_C0 + TAU_C_K * F  (seconds, on-screen)
+const RHO_SEED = 0.0016;                // a-CDW: seeds per px^2 (fixed material constant)
+const V_GROW = 34;                      // a-CDW: front growth speed, px/s (fixed material constant)
+const R_MIN = 70, R_MAX = 175;          // pump radius range, px (scales with fluence)
+
+function fluenceToRadius(f) {
+  const t = (f - F_MIN) / (F_MAX - F_MIN);
+  return R_MIN + t * (R_MAX - R_MIN);
+}
+
+// ---- state -----------------------------------------------------------------
+let fluence = 0.35;
+let draggingSlider = false;
+let pumps = []; // {x,y,r,f,t0,seeds:[{x,y,tSeed}], measuredC:null, measuredA:null, meanCHist, meanAHist, logged:false}
+let clock = 0, lastFrameT = null;
+let history = []; // {f, tauC, tauA}
+
+function firePump(x, y) {
+  const r = fluenceToRadius(fluence);
+  const nSeeds = Math.max(3, Math.round(RHO_SEED * Math.PI * r * r));
+  const seeds = [];
+  for (let i = 0; i < nSeeds; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.sqrt(Math.random()) * r;
+    seeds.push({
+      x: x + Math.cos(ang) * rad,
+      y: y + Math.sin(ang) * rad,
+      tSeed: clock + Math.random() * 0.22,
+    });
+  }
+  pumps.push({
+    x, y, r, f: fluence, t0: clock,
+    tauC: TAU_C0 + TAU_C_K * fluence,
+    seeds, logged: false,
+  });
+  if (pumps.length > 7) pumps.shift();
+}
+
+// area-averaged channel value within a pump's disc at time t, sampled on
+// a small ring of test points (cheap; used both for rendering the "growth
+// front" ring and for measuring the 90%-threshold recovery time live)
+function pumpMeanA(p, t) {
+  const dt = t - p.t0;
+  const N = 24;
+  let sum = 0;
+  for (let i = 0; i < N; i++) {
+    const ang = (i / N) * Math.PI * 2 + 0.37;
+    for (const frac of [0.2, 0.5, 0.8]) {
+      const px = p.x + Math.cos(ang) * p.r * frac;
+      const py = p.y + Math.sin(ang) * p.r * frac;
+      let covered = 0;
+      for (const s of p.seeds) {
+        if (t < s.tSeed) continue;
+        const grown = V_GROW * (t - s.tSeed);
+        const dx = px - s.x, dy = py - s.y;
+        if (dx * dx + dy * dy <= grown * grown) { covered = 1; break; }
+      }
+      sum += covered;
+    }
+  }
+  return sum / (N * 3);
+}
+
+function cellA(p, x, y, t) {
+  for (const s of p.seeds) {
+    if (t < s.tSeed) continue;
+    const grown = V_GROW * (t - s.tSeed);
+    const dx = x - s.x, dy = y - s.y;
+    if (dx * dx + dy * dy <= grown * grown) return 1;
+  }
+  return 0;
+}
+function cellC(p, t) {
+  return 1 - Math.exp(-(t - p.t0) / p.tauC);
+}
+
+// ---- grid ------------------------------------------------------------------
+const CELL = 15; // px, at CSS scale
+
+function drawCrystal(t) {
+  const x0 = 20, x1 = W - 20;
+  const y0 = cryTop, y1 = cryBottom;
+  if (y1 - y0 < 40) return;
+  const nx = Math.max(4, Math.floor((x1 - x0) / CELL));
+  const ny = Math.max(4, Math.floor((y1 - y0) / CELL));
+  const dx = (x1 - x0) / nx, dy = (y1 - y0) / ny;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, y0, x1 - x0, y1 - y0);
+  ctx.clip();
+
+  // faint frame
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+
+  const half = Math.min(dx, dy) * 0.34;
+  for (let j = 0; j < ny; j++) {
+    const cy = y0 + (j + 0.5) * dy;
+    for (let i = 0; i < nx; i++) {
+      const cx = x0 + (i + 0.5) * dx;
+      let cVal = 1, aVal = 1;
+      // most recent pump covering this cell wins (later pumps overwrite)
+      for (let k = pumps.length - 1; k >= 0; k--) {
+        const p = pumps[k];
+        const ddx = cx - p.x, ddy = cy - p.y;
+        if (ddx * ddx + ddy * ddy <= p.r * p.r) {
+          cVal = Math.max(0, Math.min(1, cellC(p, t)));
+          aVal = cellA(p, cx, cy, t);
+          break;
+        }
+      }
+      // c-CDW: horizontal stroke, uniform lockstep glow
+      ctx.strokeStyle = `rgba(140,215,255,${0.12 + cVal * 0.78})`;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(cx - half, cy);
+      ctx.lineTo(cx + half, cy);
+      ctx.stroke();
+      // a-CDW: vertical stroke, crystallizing island-by-island
+      ctx.strokeStyle = `rgba(255,190,120,${0.10 + aVal * 0.8})`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - half);
+      ctx.lineTo(cx, cy + half);
+      ctx.stroke();
+    }
+  }
+
+  // pump rings + seed dots (fading), and live 90%-threshold measurement
+  for (const p of pumps) {
+    const age = t - p.t0;
+    const ringA = Math.max(0, 0.5 - age * 0.12);
+    if (ringA > 0.01) {
+      ctx.strokeStyle = `rgba(255,255,255,${ringA})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const s of p.seeds) {
+      if (t < s.tSeed) continue;
+      const sAge = t - s.tSeed;
+      const dotA = Math.max(0, 0.85 - sAge * 0.9);
+      if (dotA > 0.02) {
+        ctx.fillStyle = `rgba(255,210,150,${dotA})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (!p.logged) {
+      const mA = pumpMeanA(p, t);
+      const mC = Math.max(0, Math.min(1, cellC(p, t)));
+      if (mC >= 0.9 && p.measuredC == null) p.measuredC = age;
+      if (mA >= 0.9 && p.measuredA == null) p.measuredA = age;
+      if (p.measuredC != null && p.measuredA != null) {
+        history.push({ f: p.f, tauC: p.measuredC, tauA: p.measuredA });
+        if (history.length > 24) history.shift();
+        p.logged = true;
+      }
+      if (age > 24 && !p.logged) p.logged = true; // give up quietly, don't hang the log
+    }
+  }
+  ctx.restore();
+}
+
+function drawSlider() {
+  const x0 = 30, x1 = W - 30;
+  const y = (sliderTop + sliderBottom) / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  ctx.lineTo(x1, y);
+  ctx.stroke();
+  const t = (fluence - F_MIN) / (F_MAX - F_MIN);
+  const hx = x0 + t * (x1 - x0);
+  ctx.fillStyle = draggingSlider ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.55)';
+  ctx.beginPath();
+  ctx.arc(hx, y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.font = "9px 'Courier New',monospace";
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('FLUENCE ' + F_MIN.toFixed(2) + ' MJ/CM²', x0, y - 12);
+  ctx.textAlign = 'right';
+  ctx.fillText(F_MAX.toFixed(2) + ' MJ/CM²', x1, y - 12);
+  // current-value readout sits BELOW the track (min/max labels are above),
+  // so a handle dragged near either end never overlaps them
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,220,180,.85)';
+  ctx.fillText(fluence.toFixed(2), Math.max(x0 + 14, Math.min(x1 - 14, hx)), y + 10);
+}
+
+// ---- mini trend chart: fluence -> measured recovery time, echoing the
+// paper's own Fig 4d comparison, built live from the pumps the viewer fires
+function drawTrendChart() {
+  if (history.length < 1) return;
+  const w = Math.min(150, W * 0.32), h = 58;
+  if (cryBottom - cryTop < h + 20) return; // too little room on very short screens
+  const cx0 = W - 24 - w, cy0 = cryTop + 8;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.72)';
+  ctx.fillRect(cx0, cy0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.strokeRect(cx0 + .5, cy0 + .5, w, h);
+  ctx.font = "7px 'Courier New',monospace";
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('τ vs fluence (your data)', cx0 + 3, cy0 + 3);
+  const maxTau = Math.max(6, ...history.map(d => Math.max(d.tauC, d.tauA))) * 1.1;
+  const fx = f => cx0 + ((f - F_MIN) / (F_MAX - F_MIN)) * w;
+  const fy = tau => cy0 + h - (tau / maxTau) * (h - 12);
+  for (const d of history) {
+    ctx.fillStyle = 'rgba(140,215,255,.85)';
+    ctx.beginPath(); ctx.arc(fx(d.f), fy(d.tauC), 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,190,120,.85)';
+    ctx.beginPath(); ctx.arc(fx(d.f), fy(d.tauA), 1.8, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function updateStats(t) {
+  const r1 = document.getElementById('r1');
+  const r2 = document.getElementById('r2');
+  const r3 = document.getElementById('r3');
+  const r4 = document.getElementById('r4');
+  const r5 = document.getElementById('r5');
+  const r6 = document.getElementById('r6');
+  r1.innerHTML = `T<sub>c</sub> <span class="val">${TC1}K</span> / <span class="val2">${TC2}K</span> &middot; Δ <span class="val">${DELTA_C}eV</span> / <span class="val2">${DELTA_A}eV</span>`;
+  r2.innerHTML = `pump ${PUMP_EV}eV (${PUMP_NM}nm, ${PUMP_FS}fs) &middot; probe ${PROBE_EV}eV XUV`;
+  r3.innerHTML = `fluence range ${F_MIN}–${F_MAX} mJ/cm² &middot; real recovery ~2ps`;
+  const last = history[history.length - 1];
+  if (last) {
+    r4.textContent = `last fired: F=${last.f.toFixed(2)} → τ_c=${last.tauC.toFixed(1)}s τ_a=${last.tauA.toFixed(1)}s (on-screen units)`;
+  } else {
+    r4.textContent = 'fire a pump to measure both recovery times';
+  }
+  r5.textContent = `n=${history.length} pumps fired this session`;
+  r6.textContent = 'Su, Lv, Zong et al. (Gedik grp), Nat. Phys. (2026)';
+}
+
+function frame(now) {
+  if (lastFrameT == null) lastFrameT = now;
+  const dt = Math.min(0.05, (now - lastFrameT) / 1000);
+  lastFrameT = now;
+  clock += dt;
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  drawCrystal(clock);
+  drawSlider();
+  drawTrendChart();
+  updateStats(clock);
+
+  requestAnimationFrame(frame);
+}
+
+// ---- input -----------------------------------------------------------------
+function pointInSlider(x, y) {
+  return y >= sliderTop - 16 && y <= sliderBottom + 4;
+}
+function setFluenceFromX(x) {
+  const x0 = 30, x1 = W - 30;
+  const t = Math.max(0, Math.min(1, (x - x0) / (x1 - x0)));
+  fluence = F_MIN + t * (F_MAX - F_MIN);
+}
+
+let downX = 0, downY = 0, downOnSlider = false, moved = false;
+
+function down(x, y) {
+  downX = x; downY = y; moved = false;
+  downOnSlider = pointInSlider(x, y);
+  if (downOnSlider) {
+    draggingSlider = true;
+    setFluenceFromX(x);
+  }
+}
+function move(x, y) {
+  if (Math.hypot(x - downX, y - downY) > 4) moved = true;
+  if (draggingSlider) setFluenceFromX(x);
+}
+function up(x, y) {
+  if (draggingSlider) { draggingSlider = false; return; }
+  if (y >= cryTop && y <= cryBottom) firePump(x, y);
+}
+
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', e => up(e.clientX, e.clientY));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', e => { const t = e.changedTouches[0]; up(t.clientX, t.clientY); }, { passive: false });
+
+resize();
+// seed a couple of pumps so the piece isn't a blank grid on load
+firePump(W * 0.38, cryTop + (cryBottom - cryTop) * 0.5);
+setTimeout(() => firePump(W * 0.64, cryTop + (cryBottom - cryTop) * 0.42), 900);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
