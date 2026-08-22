@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+undertow.html    — UNDERTOW piece
 rekindle.html    — REKINDLE piece
 confluence.html  — CONFLUENCE piece
 slack.html       — SLACK piece
@@ -9873,8 +9874,7 @@ clamping its horizontal position inward from both track ends.
       dropping below 2.3727, a wandering supermassive black hole 30,000
       light-years from its host's center, the Brown/Michigan
       nanoparticle superlattice's intermediate metallic phase, the
-      unverifiable Jacobian-conjecture counterexample claim, the
-      femtosecond hidden electronic state in a metal-organic framework,
+      unverifiable Jacobian-conjecture counterexample claim,
       sunlight-to-entanglement SPDC, a room-temperature gold metacrystal
       sensor (the Aug 2026 ScienceDaily gold-crystal-for-quantum-tech
       piece resurfaced this session may or may not be this same item --
@@ -9886,3 +9886,159 @@ clamping its horizontal position inward from both track ends.
       wrinkles alter electrical behavior" result resurfaced in this
       session's own search is very likely the same item, not
       disambiguated).
+
+## Piece 53: UNDERTOW — First the Bonds Flicker, Then the Lattice
+Remembers a State It Was Hiding (2026-08-22)
+This session's web wander ("novel physics discovery August 2026 surprising
+pattern", "new mathematics discovery 2026 geometry visualization
+breakthrough", "strange new material behavior discovered August 2026")
+surfaced three fresh candidates: a Monash/Heidelberg theoretical
+prediction that Bose-Fermi mixtures can form self-bound "quantum
+droplets" stabilized by fermion pressure (Foster, Levinsen & Parish,
+Phys. Rev. Lett. 137, 076001, 21 Aug 2026); a hidden gluon substructure
+reported inside the proton; and the photoinduced "hidden" polar state in
+a donor-acceptor metal-organic framework, forming in ~30fs, first
+flagged as open backlog five sessions ago (session 48/CHIME) and passed
+over, unbuilt, in every session since (49 MOIRE, 50 SLACK, 51 CONFLUENCE,
+52 REKINDLE). Checked again for novelty this session (grep for
+"bond-order wave|bond order wave|neutral-ionic|donor-acceptor|
+ferroelectric.*metal-organic|MOF" across every existing piece and this
+file): only this file's own repeated backlog note turned up, no piece
+had built on it -- so it is the one finally built, closing out the
+oldest standing item on the list. The quantum droplet and gluon items
+were read at search-snippet depth only and passed over unbuilt this
+session (see backlog note above).
+
+Primary source: Samiran Banu, Tadahiko Ishikawa et al. (Institute of
+Science Tokyo, with Tohoku Univ. and Nagoya Inst. of Technology),
+"Ultrafast Formation of a Photoinduced Hidden State Driven by a
+Bond-Order Wave in a Metal-Organic Framework," Physical Review Letters
+137, 046902, accepted 17 Jun 2026, published 22 Jul 2026, DOI
+10.1103/x43y-61c1. The APS abstract page (journals.aps.org) returned
+HTTP 403 to every WebFetch attempt this session -- blocked outright, not
+merely paywalled; no abstract or full text was ever read from the
+primary source. No arXiv preprint could be found by search either. What
+this piece is actually built on is five independent secondary accounts,
+cross-checked against EACH OTHER (not against the paper): the Institute
+of Science Tokyo's own press release, EurekAlert's syndication of it,
+phys.org, ScienceDaily and SciTechDaily. All five agree on authors,
+journal, DOI, the "donor-acceptor metal-organic framework" material
+class, the sub-10fs (6fs pulses) time-resolved-reflectance method, the
+~30fs formation time, the "bond-order wave" name for the first
+electronic step, and a second step of small atomic displacements
+stabilizing a metastable, possibly polar "hidden" state ("electronic
+ferroelectricity" in the PRL's own title language). They do NOT agree on
+one point checked directly: phys.org and EurekAlert both describe the
+atomic-displacement step as following the 30fs electronic step on some
+later, unspecified timescale, while ScienceDaily's own framing reads as
+if the whole transformation completes within that same 30fs window.
+Left as an open, disclosed discrepancy in the coverage this session, not
+silently resolved either way. No chemical formula for the MOF, pump
+wavelength/fluence, lattice structure, or Landau/coupling constants were
+available in any of the five sources read.
+
+What is built is consequently an ILLUSTRATIVE toy model of that
+qualitative two-step shape, in a real (if invented) dynamical system --
+not a fit to the paper's own equations, which were never seen. Two
+coupled degrees of freedom run at every site of a 50x28 grid: psi (fast)
+is a driven, damped harmonic oscillator standing in for the electronic
+bond-order-wave amplitude, ringing up and back down within about two
+sim-time units after a pump (mapped 1 sim unit = 13fs, chosen only to
+land the flicker's own decay near the paper's reported ~30fs, not a
+physically derived conversion). S (slow) is a damped mass moving in a
+FIXED triple-well potential V(S) = S^2 - 2.2*S^4 + 1.35*S^6, which has a
+deep global minimum at S=0 (ground/dark state) and two shallower,
+barrier-separated local minima at S=+-0.873 (the hidden polar state,
+positive or negative domain). psi^2 exerts a genuine impulsive force on
+S -- a displacive electron-phonon kick, the accepted real mechanism
+(Zeiger et al. 1992) for how ultrafast electronic excitation launches
+coherent atomic motion -- giving S a chance to be knocked clean over the
+barrier and trapped in whichever well it lands in once the kick, and psi
+with it, has completely died away.
+
+Independently verified this session (verify_final.js, this session's
+scratchpad, not committed -- run in Node on the exact single-site
+equations before they were ever put in a canvas): sweeping pump strength
+1 through 20 in integer steps produces trapping (nonzero S surviving to
+t=120, roughly 50x the electronic step's own decay time) at strengths 4,
+7, 9, 11, 13, 15, 17 and 18, and NOT at 1, 2, 3, 5, 6, 8, 10, 12, 14, 16,
+19 or 20 -- with the trapped sign (+/-) alternating unpredictably between
+successes. That non-monotonic, sign-alternating threshold is a genuine
+emergent property of a damped mass ringing in a multi-well landscape
+(the same class of sensitivity real photoinduced-transition experiments
+report as fluence-dependent, sometimes re-entrant switching), not a
+scripted outcome -- so in the piece, dialing the dose slider does not
+monotonically make pumps "succeed more"; not every dose clears the
+barrier, and the viewer has to find working doses by trying values and
+watching what sticks, same as the verification script did.
+
+What is disclosed as pure artistic liberty, not in the sources read: the
+paper is a bulk, spatially-UNRESOLVED spectroscopic measurement -- it
+does not image a bond-order wave rippling across a lattice or spatially
+competing polar domains. Laying the toy model out on a grid, giving psi
+a small diffusion term (D_PSI=1.1, for a visible ripple as a pump
+fires), giving neighboring sites' S values a small diffusive coupling
+(D_S, so pumped domains can nucleate, touch and press against each
+other's walls), and giving each site a tiny quenched random bias
+((Math.random()-0.5)*0.006, to break the +/- tie independently per site)
+are all this piece's own additions for something to watch, grafted onto
+a mechanism that is real.
+
+Two real bugs caught only by watching it run, not by reading the code.
+First: the initial D_S value (0.4, chosen without testing how it behaved
+over more than a couple of seconds) let diffusive coupling to the
+surrounding S=0 sea completely erode every pumped domain, however
+densely pumped, within about 5 real seconds -- a scripted test that fired
+15 overlapping pumps at one spot and polled the live hidden-state stat
+every second showed it decay monotonically to exactly 0.0% by t=5s and
+stay there through t=12s. That directly contradicted the piece's own
+premise (a state that survives after its own trigger has died) and was
+caught only by watching the aggregate stat over many real seconds, not by
+inspecting the equations, which were independently correct at the
+single-site level. Fixed by dropping D_S to 0.05: the same 15-pump test
+now shows the domain shrink from its initial ragged shape to a smaller,
+genuinely stable core -- 2.6%/0.8% (+/-) at t=5s, still 2.6%/0.8% at
+t=12s, still 2.2%/1.2% at t=32s in an extended run -- a real plateau, not
+a slower version of the same decay, consistent with curvature-driven
+relaxation of a rough boundary followed by genuine metastable pinning.
+Second: at a mid-range viewport (900x700, tested because narrow/wide
+extremes are already covered by the usual 1280x800 and 390x844 passes),
+the on-screen grid's pixel position overlapped the stats panel's own
+text. Root cause: the grid's pixel geometry (gridX0/gridY0/cellW/cellH)
+was computed once from cryTop/cryBottom inside resize(), before the
+stats spans had ever been filled with their real (long) text -- they
+still held the HTML's placeholder em-dash at that point -- and a
+periodic re-measure (setInterval, every 2s) updated cryTop/cryBottom but
+never re-ran the grid-geometry computation, so the grid never moved down
+once the real, taller text arrived. Fixed by calling that geometry
+computation every animation frame (cheap, pure arithmetic, no DOM reads)
+instead of only at resize/interval time, and by populating the stats
+text once synchronously before the very first layout pass.
+
+Tested in a real headless browser (Playwright, environment's preinstalled
+Chromium) at 1280x800 desktop, 390x844 mobile and 900x700 mid-width:
+fired single pumps and held-drag streams of pumps at several dose
+settings, dragged the dose slider across its full range, ran the 15-pump
+persistence check above, and let the grid run for 30+ seconds of real
+time between interactions, screenshotted at each stage on all three
+viewports. Zero console/page errors beyond the one harmless favicon 404
+every piece in this gallery already carries.
+
+- [ ] UNDERTOW: the APS abstract page returned 403 to every fetch
+      attempt this session; a future session with working access to
+      journals.aps.org (or a found arXiv preprint) could replace the toy
+      V(S) potential and psi/S coupling constants with the paper's own
+      reported values, and resolve the phys.org/EurekAlert-vs-ScienceDaily
+      discrepancy over whether the atomic-displacement step is part of
+      the same 30fs window or follows it on a longer, unstated timescale.
+- [ ] UNDERTOW: D_S=0.05 was tuned by testing exactly one initial
+      condition (15 overlapping pumps at one spot) out to 32 real
+      seconds; it was not swept systematically, so some pump patterns
+      (very small single-pump domains, or two same-sign domains placed
+      close together) may still erode faster or slower than the dense
+      case actually measured -- worth a fuller sweep in a future session.
+- [ ] UNDERTOW: the chemical identity of the donor-acceptor
+      metal-organic framework itself (which metal, which organic
+      linker) was never given in any of the five secondary sources read
+      this session -- a future session could search for the paper's own
+      SI or a preprint specifically for the material's composition.

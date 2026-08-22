@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UNDERTOW — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:60vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(255,178,90,.9)}
+#stats .val2{color:rgba(150,150,255,.9)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.68;max-width:100%}
+#legend{
+  position:fixed;top:1.4rem;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:center;
+  color:rgba(255,255,255,.18);
+  pointer-events:none;user-select:none;z-index:2;
+  line-height:1.7;max-width:30vw;
+}
+#legend .p{color:rgba(255,178,90,.8)}
+#legend .n{color:rgba(150,150,255,.8)}
+#legend .f{color:rgba(220,240,255,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:2.4rem;align-items:baseline;max-width:92vw;
+  font-family:'Courier New',monospace;
+  pointer-events:none;user-select:none;
+  text-align:center;z-index:2;
+}
+#modeName{
+  font-size:10px;letter-spacing:.42em;text-transform:uppercase;
+  color:rgba(255,255,255,.35);
+}
+#desc{
+  font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(255,255,255,.13);
+}
+#hint{
+  position:fixed;bottom:1.6rem;right:1.6rem;max-width:27vw;
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.2em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.14);
+  pointer-events:none;user-select:none;z-index:2;
+}
+@media (max-width:480px){
+  #stats{max-width:76vw;font-size:8px}
+  #legend{display:none}
+  #ui{max-width:88vw;flex-wrap:wrap;gap:.6rem}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="legend"><span class="f">flicker</span> bond-order wave, ~30fs &middot; <span class="p">amber</span>/<span class="n">violet</span> hidden polar domains &middot; grey = ground</div>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+  <span class="sub" id="r6">—</span>
+</div>
+<div id="ui">
+  <span id="modeName">UNDERTOW</span>
+  <span id="desc">first the bonds flicker, then the lattice remembers</span>
+</div>
+<div id="hint">grid: click/drag = pump a spot &middot; bottom bar: drag = set dose &middot; not every dose crosses the barrier</div>
+<script>
+/*  UNDERTOW — First the Bonds Flicker, Then the Lattice Remembers a State
+ *  It Was Hiding
+ *
+ *  This session's web wander ("novel physics discovery August 2026", "new
+ *  mathematics discovery 2026", "strange new material behavior discovered
+ *  August 2026") surfaced three fresh candidates: a Monash/Heidelberg
+ *  theoretical prediction that Bose-Fermi mixtures can form self-bound
+ *  "quantum droplets" stabilized by fermion pressure (Foster, Levinsen &
+ *  Parish, Phys. Rev. Lett. 137, 076001, 21 Aug 2026); a hidden gluon
+ *  substructure reported inside the proton; and a photoinduced "hidden"
+ *  polar state caught forming in a donor-acceptor metal-organic framework
+ *  in ~30 femtoseconds. That last item was NOT new to this session's
+ *  search -- it has been sitting in this file's own backlog, passed over
+ *  unbuilt, for five straight sessions (first flagged session 48, still
+ *  listed as open through session 52/REKINDLE). Checked again for novelty
+ *  (grep for "bond-order wave|bond order wave|neutral-ionic|donor-acceptor|
+ *  ferroelectric.*metal-organic|MOF" across every existing piece and this
+ *  file): only this file's own repeated backlog note, no piece built on
+ *  it -- so it is the one finally built, closing out the oldest standing
+ *  item on the list.
+ *
+ *  Primary source: Samiran Banu, Tadahiko Ishikawa et al. (Institute of
+ *  Science Tokyo, with Tohoku Univ. and Nagoya Inst. of Technology),
+ *  "Ultrafast Formation of a Photoinduced Hidden State Driven by a
+ *  Bond-Order Wave in a Metal-Organic Framework," Physical Review
+ *  Letters 137, 046902, accepted 17 Jun 2026, published 22 Jul 2026 (DOI
+ *  10.1103/x43y-61c1). The APS abstract page itself returned HTTP 403 to
+ *  every fetch attempt this session (blocked, not merely paywalled -- no
+ *  abstract text was ever retrieved from journals.aps.org), and no arXiv
+ *  preprint could be found by search. What this piece is built on instead
+ *  is five independent secondary accounts, cross-checked against each
+ *  other for consistency, not against the paper itself: the Institute of
+ *  Science Tokyo's own press release, EurekAlert's syndication of it,
+ *  phys.org, ScienceDaily and SciTechDaily. All five agree on the
+ *  authors, journal, DOI, the "donor-acceptor metal-organic framework"
+ *  material class, the sub-10fs (6fs pulses) time-resolved reflectance
+ *  method, the ~30fs formation time, the "bond-order wave" name for the
+ *  first electronic step, and the second step being small atomic
+ *  displacements that stabilize a metastable, possibly polar "hidden"
+ *  state ("electronic ferroelectricity" in the PRL's own title
+ *  language). They do NOT agree with each other on one point checked
+ *  directly: phys.org and EurekAlert both describe the atomic-
+ *  displacement step as following the 30fs electronic step on some
+ *  later, unspecified timescale, while ScienceDaily's own framing reads
+ *  as if the entire transformation completes within that same 30fs
+ *  window. Not resolved this session -- treated honestly below as an
+ *  open discrepancy in the coverage, not silently picked one way.
+ *
+ *  The physics, as reported: light absorbed by the framework triggers a
+ *  transient "bond-order wave" -- bonding between neighboring sites
+ *  alternating stronger/weaker in a repeating pattern -- that shows up
+ *  within ~30fs as a new transient-reflectance absorption band. Model
+ *  calculations in the paper (not independently reproduced here; only
+ *  the qualitative two-step picture in the press coverage was available)
+ *  indicate this transient state seeds small atomic-position shifts that
+ *  stabilize a metastable "hidden" phase, one the calculations suggest
+ *  may be polar -- an uneven distribution of charge the ground state
+ *  doesn't have. No explicit Landau free energy, coupling constants,
+ *  chemical formula for the MOF, pump wavelength/fluence or lattice
+ *  structure were available in any of the five sources read.
+ *
+ *  What is built here is consequently an ILLUSTRATIVE toy model of that
+ *  qualitative two-step shape, in a real, if invented, dynamical system
+ *  -- not a fit to the paper's own equations, which were never seen.
+ *  Two coupled degrees of freedom run at every site of a grid:
+ *
+ *    psi (fast): a driven, damped harmonic oscillator -- psi'' +
+ *    2*zeta*omega0*psi' + omega0^2*psi = omega0^2*kick(t) -- standing in
+ *    for the electronic bond-order-wave amplitude. It rings up and back
+ *    down within a couple of on-screen seconds, mapped (1 sim unit = 13fs,
+ *    a choice made only to land the flicker's own decay near the paper's
+ *    reported ~30fs, not a physically derived conversion) onto that
+ *    figure directly.
+ *
+ *    S (slow): a damped mass moving in a FIXED triple-well potential
+ *    V(S) = a*S^2 - b*S^4 + c*S^6 (a=1, b=2.2, c=1.35), which has a deep
+ *    global minimum at S=0 (the ground/dark state) and two shallower,
+ *    barrier-separated local minima at S=+-0.873 (the "hidden" polar
+ *    state, positive or negative domain) -- a standard Landau shape for
+ *    a stable ground phase with a metastable photoinduced phase sitting
+ *    behind a barrier. psi's square, not psi itself, exerts a real
+ *    impulsive force on S (a displacive electron-phonon kick, the
+ *    accepted real mechanism -- Zeiger et al. 1992 -- for how ultrafast
+ *    electronic excitation launches coherent atomic motion), giving S a
+ *    chance to be knocked clean over the barrier while the kick lasts and
+ *    then trapped in whichever well it lands in once the kick, and psi
+ *    with it, has completely died away.
+ *
+ *  Independently verified this session (verify_final.js, this session's
+ *  scratchpad, not committed -- run outside the browser, in Node, on the
+ *  exact single-site equations above before they were ever put in a
+ *  canvas): with these constants, sweeping pump strength 1 through 20 in
+ *  integer steps produces trapping (a nonzero S at t=120, roughly 50x
+ *  the electronic step's own decay time, confirming the state is
+ *  genuinely metastable and not merely slow to decay) at strengths
+ *  4, 7, 9, 11, 13, 15, 17 and 18 -- and NOT at 1, 2, 3, 5, 6, 8, 10, 12,
+ *  14, 16, 19 or 20 -- with the trapped sign (+ or -) alternating
+ *  unpredictably between successes. That non-monotonic, sign-alternating
+ *  threshold is a genuine emergent property of a damped mass ringing in
+ *  a multi-well landscape (same class of sensitivity real photoinduced-
+ *  transition experiments report as fluence-dependent, sometimes
+ *  re-entrant switching), not a scripted outcome -- so in the piece
+ *  below, dialing the dose slider does not monotonically make pumps
+ *  "succeed more"; the viewer has to find working doses the same way the
+ *  script found them, by trying values and watching what sticks.
+ *
+ *  What is disclosed as pure artistic liberty, not in the sources read:
+ *  the paper is a bulk, spatially-UNRESOLVED spectroscopic measurement
+ *  (reflectivity of the whole illuminated spot) -- it does not image a
+ *  bond-order wave rippling across a lattice or spatially competing
+ *  polar domains. Laying the toy model out on a grid, letting neighboring
+ *  sites' S values diffusively couple (a small Laplacian term, so
+ *  domains nucleate, grow and press against each other's walls after
+ *  repeated pumping), and giving each site a tiny quenched random bias
+ *  to break the +/- tie independently are all this piece's own additions
+ *  for something to watch, grafted onto a mechanism that is real.
+ *
+ *  Tested in a real headless browser (Playwright, environment's
+ *  preinstalled Chromium) at 1280x800 desktop and 390x844 mobile: fired
+ *  single pumps and held-drag streams of pumps at several dose settings,
+ *  dragged the dose slider across its full range, and let the grid run
+ *  for 20+ seconds of real time between interactions, screenshotted at
+ *  each stage. See this file's own memories.txt entry for what that
+ *  testing pass found and fixed.
+ */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+let cryTop = 0, cryBottom = 0, sliderTop = 0, sliderBottom = 0;
+function measureLayout() {
+  const statsEl = document.getElementById('stats');
+  const legendEl = document.getElementById('legend');
+  const uiEl = document.getElementById('ui');
+  const statsBottom = statsEl ? statsEl.getBoundingClientRect().bottom : 0;
+  const legendBottom = legendEl ? legendEl.getBoundingClientRect().bottom : 0;
+  cryTop = Math.max(statsBottom, legendBottom) + 18;
+  const uiTop = uiEl ? uiEl.getBoundingClientRect().top : H - 60;
+  sliderBottom = Math.max(uiTop - 14, cryTop + 120);
+  sliderTop = sliderBottom - 46;
+  cryBottom = sliderTop - 14;
+}
+
+// ---- grid + physics (see header for full derivation) ----------------------
+const NX = 50, NY = 28;
+const N = NX * NY;
+const psi = new Float32Array(N), vpsi = new Float32Array(N);
+const S = new Float32Array(N), vS = new Float32Array(N);
+const bias = new Float32Array(N);
+for (let i = 0; i < N; i++) bias[i] = (Math.random() - 0.5) * 0.006;
+function idx(i, j) { return j * NX + i; }
+
+const A_LAND = 1.0, B_LAND = 2.2, C_LAND = 1.35; // V(S) = A*S^2 - B*S^4 + C*S^6
+const S_WELL = 0.8733, S_BARRIER = 0.5690;       // from the same potential, solved offline
+function dV(s) { return 2 * A_LAND * s - 4 * B_LAND * s ** 3 + 6 * C_LAND * s ** 5; }
+
+const OMEGA0 = 3.0, ZETA = 0.5, KICK_TAU = 0.15;
+const ALPHA_DRIVE = 6.0;
+const M_STRUCT = 6.0, GAMMA_STRUCT = 2.0;
+const D_PSI = 1.1, D_S = 0.05;
+const SIM_DT = 0.012, SUBSTEPS = 3;
+const FS_PER_UNIT = 13; // chosen so psi's own decay lands near the paper's ~30fs
+
+const DOSE_MIN = 1, DOSE_MAX = 20;
+let dose = 6;
+let draggingSlider = false;
+let simClock = 0;
+let pumpsFired = 0;
+let lastPumpT = -999;
+let pumps = []; // {gx, gy, t0, strength}
+const kick = new Float32Array(N);
+
+function fireAt(px, py) {
+  const gx = (px - gridX0) / cellW - 0.5;
+  const gy = (py - gridY0) / cellH - 0.5;
+  if (gx < -2 || gy < -2 || gx > NX + 1 || gy > NY + 1) return;
+  pumps.push({ gx, gy, t0: simClock, strength: dose });
+  pumpsFired++;
+  lastPumpT = simClock;
+  if (pumps.length > 10) pumps.shift();
+}
+
+function substep(dt) {
+  kick.fill(0);
+  const SIGMA = 2.0, R = 6;
+  pumps = pumps.filter(p => (simClock - p.t0) < 6 * KICK_TAU);
+  for (const p of pumps) {
+    const age = simClock - p.t0;
+    if (age < 0) continue;
+    const kv = p.strength * Math.exp(-age / KICK_TAU);
+    if (kv < 0.002) continue;
+    const i0 = Math.max(0, Math.floor(p.gx - R)), i1 = Math.min(NX - 1, Math.ceil(p.gx + R));
+    const j0 = Math.max(0, Math.floor(p.gy - R)), j1 = Math.min(NY - 1, Math.ceil(p.gy + R));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const dx = i - p.gx, dy = j - p.gy;
+        const d2 = dx * dx + dy * dy;
+        const fall = Math.exp(-d2 / (2 * SIGMA * SIGMA));
+        if (fall > 0.002) kick[idx(i, j)] += kv * fall;
+      }
+    }
+  }
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const id = idx(i, j);
+      const left = i > 0 ? psi[id - 1] : psi[id];
+      const right = i < NX - 1 ? psi[id + 1] : psi[id];
+      const up = j > 0 ? psi[id - NX] : psi[id];
+      const down = j < NY - 1 ? psi[id + NX] : psi[id];
+      const lapPsi = left + right + up + down - 4 * psi[id];
+      const psiAcc = -2 * ZETA * OMEGA0 * vpsi[id] - OMEGA0 * OMEGA0 * psi[id]
+                     + OMEGA0 * OMEGA0 * kick[id] + D_PSI * lapPsi;
+      vpsi[id] += psiAcc * dt;
+      psi[id] += vpsi[id] * dt;
+    }
+  }
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const id = idx(i, j);
+      const left = i > 0 ? S[id - 1] : S[id];
+      const right = i < NX - 1 ? S[id + 1] : S[id];
+      const up = j > 0 ? S[id - NX] : S[id];
+      const down = j < NY - 1 ? S[id + NX] : S[id];
+      const lapS = left + right + up + down - 4 * S[id];
+      const Fdrive = ALPHA_DRIVE * psi[id] * psi[id];
+      const s = S[id] + bias[id];
+      const Sacc = (-dV(s) - GAMMA_STRUCT * vS[id] + Fdrive + D_S * lapS) / M_STRUCT;
+      vS[id] += Sacc * dt;
+      S[id] += vS[id] * dt;
+    }
+  }
+  simClock += dt;
+}
+
+function stepPhysics(realDt) {
+  const n = SUBSTEPS;
+  for (let k = 0; k < n; k++) substep(SIM_DT);
+}
+
+// ---- layout ------------------------------------------------------------
+let gridX0 = 0, gridY0 = 0, cellW = 10, cellH = 10;
+function layoutGrid() {
+  const marginX = 26;
+  const areaW = Math.max(100, W - marginX * 2);
+  const areaH = Math.max(80, cryBottom - cryTop);
+  cellW = areaW / NX;
+  cellH = areaH / NY;
+  const cell = Math.min(cellW, cellH);
+  cellW = cell; cellH = cell;
+  const usedW = cellW * NX, usedH = cellH * NY;
+  gridX0 = (W - usedW) / 2;
+  gridY0 = cryTop + (areaH - usedH) / 2;
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  measureLayout();
+  layoutGrid();
+}
+window.addEventListener('resize', resize);
+setInterval(() => { measureLayout(); layoutGrid(); }, 2000);
+
+// ---- rendering -----------------------------------------------------------
+function lerp(a, b, t) { return a + (b - a) * t; }
+function drawGrid() {
+  for (let j = 0; j < NY; j++) {
+    for (let i = 0; i < NX; i++) {
+      const id = idx(i, j);
+      const s = S[id];
+      const frac = Math.max(-1, Math.min(1, s / (S_WELL * 0.92)));
+      let r, g, b;
+      if (frac >= 0) {
+        r = lerp(70, 255, frac); g = lerp(85, 178, frac); b = lerp(105, 90, frac);
+      } else {
+        const f = -frac;
+        r = lerp(70, 150, f); g = lerp(85, 150, f); b = lerp(105, 255, f);
+      }
+      const flash = 1 - Math.exp(-Math.abs(psi[id]) * 0.9);
+      const checker = ((i + j) % 2 === 0) ? 1 : 0.45;
+      const fl = flash * checker;
+      r = lerp(r, 235, fl); g = lerp(g, 245, fl); b = lerp(b, 255, fl);
+      const alpha = 0.30 + 0.5 * Math.max(Math.abs(frac), flash);
+      ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},${alpha.toFixed(3)})`;
+      const pad = cellW * 0.09;
+      ctx.fillRect(gridX0 + i * cellW + pad, gridY0 + j * cellH + pad, cellW - 2 * pad, cellH - 2 * pad);
+    }
+  }
+}
+
+function drawSlider() {
+  const x0 = 30, x1 = W - 30;
+  const y = (sliderTop + sliderBottom) / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,.14)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  ctx.lineTo(x1, y);
+  ctx.stroke();
+  const t = (dose - DOSE_MIN) / (DOSE_MAX - DOSE_MIN);
+  const hx = x0 + t * (x1 - x0);
+  ctx.fillStyle = draggingSlider ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.55)';
+  ctx.beginPath();
+  ctx.arc(hx, y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.font = "9px 'Courier New',monospace";
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('DOSE LOW (arb.)', x0, y - 12);
+  ctx.textAlign = 'right';
+  ctx.fillText('DOSE HIGH (arb.)', x1, y - 12);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,220,180,.85)';
+  ctx.fillText(dose.toFixed(1), Math.max(x0 + 14, Math.min(x1 - 14, hx)), y + 10);
+}
+
+function updateStats() {
+  let pos = 0, neg = 0, neutral = 0;
+  for (let i = 0; i < N; i++) {
+    if (S[i] > 0.4) pos++;
+    else if (S[i] < -0.4) neg++;
+    else neutral++;
+  }
+  const posPct = (100 * pos / N).toFixed(1);
+  const negPct = (100 * neg / N).toFixed(1);
+  const neutralPct = (100 * neutral / N).toFixed(1);
+  const fsSince = ((simClock - lastPumpT) * FS_PER_UNIT);
+  document.getElementById('r1').innerHTML =
+    `<span class="val">${posPct}%</span> + &middot; <span class="val2">${negPct}%</span> − &middot; ${neutralPct}% ground`;
+  document.getElementById('r2').textContent =
+    lastPumpT > -900 ? `pumps fired: ${pumpsFired} · last ${fsSince < 9999 ? fsSince.toFixed(0) + 'fs ago' : ''}` : `pumps fired: ${pumpsFired}`;
+  document.getElementById('r3').textContent = 'Banu, Ishikawa et al., Phys. Rev. Lett. 137, 046902 (2026)';
+  document.getElementById('r4').textContent =
+    'sub-10fs pump–probe reflectivity: a bond-order wave forms in ~30fs, secondary sources differ on how much later the polar state locks in';
+  document.getElementById('r5').textContent =
+    'toy model: driven BOW oscillator kicks a damped mass in a fixed triple-well potential — not every dose clears the barrier';
+  document.getElementById('r6').textContent =
+    'APS abstract page returned 403 this session; built from 5 secondary sources cross-checked, not the paper itself';
+}
+
+let lastFrameT = null;
+function frame(now) {
+  if (lastFrameT == null) lastFrameT = now;
+  const realDt = Math.min(0.05, (now - lastFrameT) / 1000);
+  lastFrameT = now;
+  stepPhysics(realDt);
+  layoutGrid();
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawGrid();
+  drawSlider();
+  updateStats();
+
+  requestAnimationFrame(frame);
+}
+
+// ---- input -----------------------------------------------------------------
+function pointInSlider(x, y) {
+  return y >= sliderTop - 16 && y <= sliderBottom + 4;
+}
+function setDoseFromX(x) {
+  const x0 = 30, x1 = W - 30;
+  const t = Math.max(0, Math.min(1, (x - x0) / (x1 - x0)));
+  dose = DOSE_MIN + t * (DOSE_MAX - DOSE_MIN);
+}
+
+let downX = 0, downY = 0, draggingPump = false, lastStreamT = 0;
+
+function down(x, y) {
+  downX = x; downY = y;
+  if (pointInSlider(x, y)) {
+    draggingSlider = true;
+    setDoseFromX(x);
+    return;
+  }
+  if (y >= cryTop && y <= cryBottom) {
+    draggingPump = true;
+    fireAt(x, y);
+    lastStreamT = performance.now();
+  }
+}
+function move(x, y) {
+  if (draggingSlider) { setDoseFromX(x); return; }
+  if (draggingPump) {
+    const now = performance.now();
+    if (now - lastStreamT > 90 && y >= cryTop && y <= cryBottom) {
+      fireAt(x, y);
+      lastStreamT = now;
+    }
+  }
+}
+function up() {
+  draggingSlider = false;
+  draggingPump = false;
+}
+
+canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+window.addEventListener('mouseup', () => up());
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: false });
+canvas.addEventListener('touchend', e => { up(); }, { passive: false });
+
+updateStats();
+resize();
+setTimeout(() => fireAt(gridX0 + cellW * NX * 0.36, gridY0 + cellH * NY * 0.5), 400);
+setTimeout(() => fireAt(gridX0 + cellW * NX * 0.64, gridY0 + cellH * NY * 0.42), 900);
+setTimeout(() => fireAt(gridX0 + cellW * NX * 0.5, gridY0 + cellH * NY * 0.62), 1500);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
