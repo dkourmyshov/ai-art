@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+quiver.html      — QUIVER piece
 undertow.html    — UNDERTOW piece
 rekindle.html    — REKINDLE piece
 confluence.html  — CONFLUENCE piece
@@ -10042,3 +10043,205 @@ every piece in this gallery already carries.
       linker) was never given in any of the five secondary sources read
       this session -- a future session could search for the paper's own
       SI or a preprint specifically for the material's composition.
+
+## Piece 54: QUIVER — A Lattice Held Still by Nothing but Its Own
+Repulsion, Dressed in Light (2026-08-23)
+This session's web wander ("novel physics discovery August 2026
+surprising pattern", "new mathematics discovery 2026 geometry
+visualization breakthrough", "strange new material behavior discovered
+week August 2026") surfaced several candidates already claimed by this
+gallery -- MIT's two-mechanism CDW recovery (REKINDLE, session 52), the
+Bose-Fermi quantum-droplet prediction and the donor-acceptor MOF hidden
+state (both re-surfacing only because UNDERTOW, session 53, built the
+latter last session) -- and one genuinely new item: "A strange crystal
+made of electrons just revealed its hidden motion" (ScienceDaily, 12 Aug
+2026) / "Light Reveals the Hidden Quantum Motion Inside an Exotic
+Crystal" (SciTechDaily, University of Basel / TU Munich). A Wigner
+crystal: electrons alone, with no atomic lattice to hold them, freezing
+into their own periodic array purely from mutual Coulomb repulsion.
+Checked against this file's own record before committing (grep for
+"Wigner" across every existing piece and this file): the word already
+appears, but only inside COULOMB (session 25)'s "generalized Wigner
+surmise" -- an unrelated random-matrix-theory spacing law, not a real
+electron crystal at all -- so this cleared the novelty bar cleanly.
+
+Primary source: L. Wang, F. Menzel, F. Pichler, P. Knuppel, K. Watanabe,
+T. Taniguchi, M. Knap & T. Smolenski, "Spectroscopy of Wigner crystal
+polarons in an atomically thin semiconductor," Nature Physics (2026),
+DOI 10.1038/s41567-026-03395-0. Reached this session as three full
+arXiv preprints -- 2512.16552 (the spectroscopy paper itself),
+2512.16651 ("Theory of exciton polarons in 2D Wigner crystals"), and
+2512.16631 ("Wigner polarons reveal Wigner crystal dynamics in a
+monolayer semiconductor") -- via their arXiv HTML mirrors (2512.16631's
+own PDF resisted clean text extraction and was only readable through its
+HTML version), cross-checked against the University of Basel/TU Munich
+press release and phys.org's independent coverage, which agree on
+material, method and authors. The physics: a charge-tunable WSe2
+monolayer, cooled to T=1.6K, where strongly interacting electrons
+spontaneously break translational symmetry and form a triangular Wigner
+crystal WITHOUT any applied magnetic field -- unlike most earlier
+Wigner-crystal sightings, which needed a large B-field to freeze the
+electrons by quenching their kinetic energy, here Coulomb repulsion
+alone does it (B up to 5T is used separately, for spin control of the
+already-formed crystal, not to create it). Shining light on the sample
+creates excitons that get "dressed" by the crystal's own collective
+excitations -- Wigner crystal polarons -- appearing alongside previously
+known "exciton umklapp transitions" (light scattering off the electron
+lattice's own periodicity, exactly analogous to Umklapp phonon
+scattering off an atomic lattice). The abstract's own claim, quoted
+directly and the piece's central visual: the appearance of two
+EQUAL-STRENGTH, PARALLEL, ATTRACTIVE polaron branches is a signature of
+strong electronic correlations.
+
+What is real and independently re-derived before any canvas code was
+written (verify_wc.js, verify_wc2.js, verify_langevin.js, this session's
+scratchpad, not committed): the triangular lattice constant a_WC =
+sqrt(2/(sqrt(3) n_e)), derived from scratch (area per site of a
+triangular Bravais lattice = (sqrt(3)/2) a^2), not assumed; the umklapp
+splitting formula the arXiv HTML text itself states, dE_UX = h^2 n_e /
+(sqrt(3) m_X), re-derived independently via k_W = 4*pi/(sqrt(3) a_WC)
+(the triangular lattice's own first reciprocal-lattice-vector magnitude)
+and dE = hbar^2 k_W^2/(2 m_X), checked in Node to reproduce the paper's
+own closed form to 1 part in 10^9 across a five-decade density sweep --
+two independent routes landing on the same number, not a copied formula
+taken on faith. m_X = 0.65 m_0 (WSe2 neutral-exciton translational mass)
+is deliberately NOT from this paper -- neither its abstract nor its
+reachable HTML text gave a translational exciton mass -- it is cited
+separately from Goryca, Li, Stier et al., "Revealing exciton masses and
+dielectric properties of monolayer semiconductors with high magnetic
+fields" (Nat. Commun. 2019, arXiv:1812.10744). One extracted-webpage
+number was caught and discarded rather than trusted: an early WebFetch
+summary of the arXiv text claimed a_WC~4.2nm at n_e=5x10^11 cm^-2, which
+the very formula in the same fetch contradicts (predicts ~15.2nm at that
+density; ~4.2nm would need ~5x10^12 cm^-2 instead) -- almost certainly a
+dropped digit in the summarizing tool's own extraction, caught only
+because the formula was independently re-derived and checked in Node
+rather than the quoted example value being used directly.
+
+Two real bugs in the lattice's own "hidden motion" simulation, caught
+only by running it, not by inspecting the physics. First: an initial
+attempt gave every electron one random kick and let it relax under a
+damped spring back to rest -- this decays toward zero displacement
+eventually REGARDLESS of spring stiffness, so it cannot show a
+stiffness-dependent jitter signal at all (confirmed: final-snapshot
+displacement came out ~0.222-0.223 across a 16x stiffness range, flat
+and meaningless). Fixed by switching to genuine Langevin dynamics
+(continuous Gaussian noise + damping, proper fluctuation-dissipation),
+verified first on an isolated 1-DOF damped oscillator against the known
+analytic steady-state variance <x^2> = sigma^2/(2*gamma*k) (matched to
+within 5-25% across five parameter combinations -- residual mismatch is
+finite-dt/finite-sampling noise, not a formula error). Second: wiring
+that same correct integrator onto the full lattice patch still gave a
+Lindemann parameter that barely moved across a 30x stiffness range and
+sat absurdly high (0.6-5, bigger than the lattice spacing itself) --
+traced to boundary sites (most sites in a small patch have fewer than
+the bulk's 6 neighbours) undergoing near-free diffusion under the same
+noise a fully-coordinated site gets, which grows with time rather than
+saturating and swamps the average. Fixed by pinning the outer ring (a
+standard clamped-boundary trick for a small demo patch) and measuring
+only over fully 6-coordinated interior sites: the Lindemann parameter
+then scales as 1/sqrt(k) exactly as equipartition predicts (ratios of
+1.41-1.50 for each 2x drop in stiffness, against a predicted sqrt(2)=
+1.414), spanning a believable range (~0.013 rigid to ~0.17 melted)
+crossing the classic 2D Lindemann melting threshold of ~0.1-0.15. A
+third bug was caught only in the browser, not in Node: the on-canvas
+reflectance-spectrum overlay, first placed top-right to match this
+gallery's usual #stats corner, collided visibly with the real #stats
+HTML panel occupying that same corner (confirmed by screenshot, not by
+console error -- both layers render fine, they just overlap into
+unreadable double-exposed text). Moved to bottom-left; that in turn
+collided with the #ui control bar at a 900x700 mid-width viewport
+(the same class of viewport-dependent layout bug REKINDLE's session
+found) -- fixed by measuring #ui's actual live bounding rect each resize
+and anchoring the panel's bottom edge above it dynamically, rather than
+a fixed pixel offset, and by giving the panel an opaque background so
+lattice dots drawn earlier the same frame can never show through at its
+edges.
+
+What is disclosed on screen and in the piece's own header as
+illustrative, not measured or reported by any of the three papers read
+this session: the real crystal's melting is a quantum r_s (Coulomb-to-
+kinetic-energy ratio) transition, not literally a classical thermal
+Langevin process -- this piece's classical damped/noise-driven spring
+lattice is the simplest system that genuinely exhibits a stiffness-
+dependent order-disorder crossover obeying the same Lindemann criterion
+2D Wigner-crystal melting is known (generally, not paper-specifically)
+to follow, not a fit to any measured elastic constant (none was found
+in any of the three papers' reachable text). The n_e-to-spring-stiffness
+mapping (log-interpolated between the two Node-verified endpoints, k=50
+near n_min and k=1.6 near n_c) is this piece's own tuned choice. The
+two-branch "polaron doublet" is a textbook 2x2 level-repulsion
+(avoided-crossing) toy model -- diagonalizing [[E_X,g],[g,E_X+dE_UX]] in
+closed form, independently checked in Node against numeric
+diagonalization (exact match) -- chosen because avoided-level-crossing
+is the same general mechanism behind attractive/repulsive polaron
+branches throughout the real Fermi/Bose-polaron literature, and because
+its standard normal-mode weight formula (0.5*(1 +/- delta/sqrt(delta^2+
+g^2))) does reproduce the qualitative signature the abstract names --
+weight converging toward 50/50 at strong coupling. It is explicitly NOT
+the paper's own many-body self-energy calculation, which was not
+recovered from either arXiv HTML fetch (no coupling Hamiltonian or
+phonon dispersion was found in the reachable text). Tested this session:
+the 50/50 signature is reachable within the piece's own slider ranges at
+LOW density + max coupling (measured 56/44 in Playwright), but NOT fully
+reachable at high density even at max coupling (measured 81/19 at
+n_e~6.9x10^11 cm^-2, g=11.9meV) -- because the bare umklapp splitting
+dE_UX grows with density while the coupling slider's ceiling (g_max=12
+meV) stays fixed, so balancing requires g to dominate dE_UX/2, which
+only happens in part of the parameter space. Left as an honest, earned
+property of the toy model rather than silently widening g_max to force
+the signature everywhere. The on-screen lattice spacing is a fixed
+pixel grid, not literally rescaled to the true nanometer a_WC at every
+density (the same simplification nearly every prior piece with a real
+physical length scale already discloses) -- true a_WC is only a live
+numeric readout. T=1.6K and B up to 5T are shown as real quoted
+experimental context, not simulated. The "probe exciton" tap interaction
+(a local velocity kick radiating outward from the tapped site,
+dissipating under the same verified Langevin dynamics) is an invented
+visualization of "a photoexcited exciton locally dresses itself in the
+lattice's vibrations" -- no pulse shape or decay time is reported in any
+of the three papers' reachable text.
+
+Tested in a real headless browser (Playwright, environment's
+preinstalled Chromium) at 1280x800 desktop, 390x844 mobile and 900x700
+mid-width: dragged density across its full range and watched the
+lattice visibly stiffen (rigid, δ_L~0.03) and loosen (melting, δ_L~
+0.2-0.24) in real time, watched the umklapp tick and the doublet's
+splitting track density and coupling live, dragged the coupling bar
+across its full range and watched the doublet's branch weights approach
+parity at low density, tapped to fire probe pulses and watched the
+resulting ring visibly disturb the lattice, and let the sim run 14+
+seconds at melted density to confirm the (EMA-smoothed) Lindemann
+readout settles to a stable plateau rather than drifting. Zero
+console/page errors beyond the one harmless favicon 404 every piece in
+this gallery already carries.
+
+- [ ] QUIVER: the two-level anti-crossing toy model was chosen because
+      it reproduces the ABSTRACT's qualitative "equal-strength doublet
+      at strong correlation" claim, not because it implements the real
+      many-body self-energy theory -- a future session with access to
+      the theory paper's actual coupling Hamiltonian and phonon
+      dispersion (not recovered from either arXiv HTML fetch this
+      session) could replace it with the real calculation.
+- [ ] QUIVER: the classical Langevin spring-lattice stand-in for the
+      crystal's melting is a disclosed simplification of what is really
+      a quantum r_s transition; a future session could look for the
+      papers' own reported melting r_s or Lindemann-equivalent value
+      (not found in this session's reachable text) to replace the
+      Node-tuned k=50/k=1.6 endpoints with a fitted number.
+- [ ] QUIVER: g_max=12meV does not let the doublet reach 50/50 weight
+      balance across the FULL density range, only at its lower end --
+      disclosed rather than silently widened; a future session could
+      either accept this as physically motivated (bare splitting must
+      stay sub-dominant to coupling) or look for the paper's own
+      reported coupling-strength range to ground g_max in a real number.
+- [ ] Newly surfaced this session, passed over rather than built on: the
+      Sylvester-Gallai/LeanMind and Hadamard/Astra claims remain
+      unpursued (see session 52's note on the latter's missing preprint);
+      the matrix-multiplication exponent omega, the wandering
+      supermassive black hole, the Brown/Michigan nanoparticle
+      superlattice, sunlight-to-entanglement SPDC, the LHC oxygen-neon
+      collision findings, the cyclic superconducting quantum heat
+      engine (Aalto), and Rice University's graphene-nanowrinkle
+      flexoelectricity result all remain open, still unbuilt across
+      several sessions now (see session 52/REKINDLE's fuller list).

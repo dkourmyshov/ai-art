@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QUIVER — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:60vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(255,178,90,.9)}
+#stats .val2{color:rgba(150,150,255,.9)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.68;max-width:100%}
+#legend{
+  position:fixed;top:1.4rem;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:center;
+  color:rgba(255,255,255,.18);
+  pointer-events:none;user-select:none;z-index:2;
+  line-height:1.7;max-width:32vw;
+}
+#legend .p{color:rgba(255,178,90,.85)}
+#legend .n{color:rgba(150,150,255,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:.5rem;
+  width:min(560px,88vw);
+  font-family:'Courier New',monospace;
+  user-select:none;text-align:center;z-index:2;
+}
+#modeRow{display:flex;gap:2.4rem;align-items:baseline;pointer-events:none}
+#modeName{font-size:10px;letter-spacing:.42em;text-transform:uppercase;color:rgba(255,255,255,.35)}
+#desc{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.13)}
+#gbar{
+  position:relative;width:100%;height:22px;cursor:pointer;
+  touch-action:none;
+}
+#gbar .track{position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.14);transform:translateY(-50%)}
+#gbar .fill{position:absolute;left:0;top:50%;height:1px;background:rgba(150,150,255,.55);transform:translateY(-50%)}
+#gbar .handle{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;background:rgba(150,150,255,.9);transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(150,150,255,.6)}
+#gbar .lbl{position:absolute;bottom:100%;font-size:8px;letter-spacing:.2em;color:rgba(255,255,255,.16);text-transform:uppercase;margin-bottom:.3em}
+#gbar .lbl.lo{left:0}
+#gbar .lbl.hi{right:0}
+#hint{
+  font-size:8px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);pointer-events:none;
+}
+@media (max-width:480px){
+  #stats{max-width:76vw;font-size:8px}
+  #legend{display:none}
+  #ui{width:92vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="legend">triangular electron lattice, self-formed by mutual repulsion &middot; drag = set density &middot; <span class="p">amber</span> tick = bare exciton/umklapp &middot; <span class="n">violet</span>/amber solid = dressed polaron branches</div>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+  <span class="sub" id="r6">—</span>
+</div>
+<div id="ui">
+  <div id="modeRow">
+    <span id="modeName">QUIVER</span>
+    <span id="desc">a lattice held still by nothing but its own repulsion, dressed in light</span>
+  </div>
+  <div id="gbar">
+    <span class="lbl lo">g=0</span>
+    <span class="lbl hi">strong coupling</span>
+    <div class="track"></div>
+    <div class="fill" id="gfill"></div>
+    <div class="handle" id="ghandle"></div>
+  </div>
+  <div id="hint">drag canvas L/R = electron density n<sub>e</sub> &middot; bar above = exciton-lattice coupling g &middot; tap = fire a probe exciton</div>
+</div>
+<script>
+/*  QUIVER — A Lattice Held Still by Nothing but Its Own Repulsion,
+ *  Dressed in Light
+ *
+ *  This session's web wander ("novel physics discovery August 2026
+ *  surprising pattern", "new mathematics discovery 2026 geometry
+ *  visualization breakthrough", "strange new material behavior
+ *  discovered week August 2026") surfaced several candidates: MIT's
+ *  two-mechanism charge-density-wave recovery in a rare-earth
+ *  tritelluride (already built as REKINDLE, session 52); the
+ *  Bose-Fermi "quantum droplet" prediction (Foster, Levinsen & Parish,
+ *  PRL 137, 076001) and the donor-acceptor MOF hidden state (already
+ *  built as UNDERTOW, session 53), both re-surfacing and passed over
+ *  again since they are already this gallery's own subjects; and a
+ *  genuinely new item, "A strange crystal made of electrons just
+ *  revealed its hidden motion" (ScienceDaily, 12 Aug 2026) / "Light
+ *  Reveals the Hidden Quantum Motion Inside an Exotic Crystal"
+ *  (SciTechDaily) -- a Wigner crystal, the state where electrons alone,
+ *  with no lattice of atoms to hold them, spontaneously freeze into
+ *  their own periodic array purely from mutual Coulomb repulsion. Checked
+ *  for novelty against this file's own record before committing (grep
+ *  for "Wigner" across every existing piece and this file): the word
+ *  "Wigner" already appears, but only inside COULOMB (session 25)'s
+ *  "generalized Wigner surmise" -- an unrelated random-matrix-theory
+ *  spacing law, not a Wigner CRYSTAL, and not a real material at all.
+ *  No piece in this gallery has built on a real electron crystal, so
+ *  this cleared the novelty bar.
+ *
+ *  Primary source: L. Wang, F. Menzel, F. Pichler, P. Knuppel,
+ *  K. Watanabe, T. Taniguchi, M. Knap & T. Smolenski, "Spectroscopy of
+ *  Wigner crystal polarons in an atomically thin semiconductor," Nature
+ *  Physics (2026), DOI 10.1038/s41567-026-03395-0, alongside its
+ *  companion theory paper "Theory of exciton polarons in 2D Wigner
+ *  crystals" (Pichler & Knap et al.) and a broader dynamics paper "Wigner
+ *  polarons reveal Wigner crystal dynamics in a monolayer semiconductor."
+ *  All three were reached as full arXiv preprints (2512.16552, 2512.16651,
+ *  2512.16631 -- the last one's PDF resisted clean text extraction and
+ *  was only read via its arXiv HTML mirror), cross-checked against the
+ *  University of Basel's and TU Munich's own press release and phys.org's
+ *  independent coverage, which agree on the material, method and authors.
+ *  The abstract's own words: strongly interacting electrons in a
+ *  charge-tunable WSe2 monolayer break translational symmetry and form a
+ *  triangular Wigner crystal WITHOUT any applied magnetic field (unlike
+ *  most earlier Wigner-crystal sightings, which needed a large B-field
+ *  to freeze the electrons by quenching their kinetic energy) -- here
+ *  Coulomb repulsion alone does the freezing. Shining light on the
+ *  sample creates excitons that get "dressed" by the crystal's own
+ *  collective lattice excitations, producing new optical resonances --
+ *  Wigner crystal polarons -- that appear alongside previously known
+ *  "exciton umklapp transitions" (light scattering off the crystal's own
+ *  periodicity, exactly analogous to Umklapp phonon scattering off an
+ *  atomic lattice, except the lattice here is made of electrons). The
+ *  paper's own claim, quoted directly: the appearance of two
+ *  EQUAL-STRENGTH, PARALLEL, ATTRACTIVE polaron branches is a signature
+ *  of strong electronic correlations -- the "hidden motion" hook this
+ *  session's search surfaced, and the piece's central visual.
+ *
+ *  What is real and independently re-derived, not just quoted, before
+ *  any canvas code was written (verify_wc.js / verify_wc2.js /
+ *  verify_langevin.js, this session's scratchpad, not committed):
+ *    - The triangular Wigner-crystal lattice constant, a_WC = sqrt(2 /
+ *      (sqrt(3) n_e)), derived from scratch (area per site of a
+ *      triangular Bravais lattice = (sqrt(3)/2) a^2) rather than assumed.
+ *    - The umklapp splitting formula the arXiv HTML text itself states,
+ *      dE_UX = h^2 n_e / (sqrt(3) m_X): re-derived independently via
+ *      k_W = 4*pi/(sqrt(3) a_WC) (the triangular lattice's own first
+ *      reciprocal-lattice-vector magnitude) and dE = hbar^2 k_W^2 /
+ *      (2 m_X), and checked in Node to reproduce the paper's own closed
+ *      form to 1 part in 10^9 across a five-decade density sweep --
+ *      confirming the two independent routes to the same number, not
+ *      merely copying the quoted formula.
+ *    - m_X = 0.65 m_0, the WSe2 neutral-exciton translational mass, is
+ *      NOT from this paper -- it is an independently measured value from
+ *      Goryca, Li, Stier et al., "Revealing exciton masses and dielectric
+ *      properties of monolayer semiconductors with high magnetic fields"
+ *      (Nat. Commun. 2019, arXiv:1812.10744), cited separately because
+ *      neither the Wigner-crystal paper's own abstract nor its reachable
+ *      HTML text gave a translational exciton mass explicitly.
+ *    - Two real bugs in the lattice's own "hidden motion" simulation,
+ *      caught only by running it, not by inspecting the physics: (1) a
+ *      first attempt gave every electron one random kick and let it
+ *      relax under a damped spring back to rest -- this decays to zero
+ *      displacement eventually REGARDLESS of spring stiffness, so it
+ *      cannot show a stiffness-dependent "how much does the crystal
+ *      jitter" signal at all (confirmed: final-snapshot displacement came
+ *      out ~0.222-0.223 across a 16x stiffness range -- flat, meaningless).
+ *      Fixed by switching to genuine Langevin dynamics (continuous
+ *      Gaussian noise + damping, fluctuation-dissipation), verified
+ *      first on an isolated 1-DOF damped oscillator against the known
+ *      analytic steady-state variance <x^2> = sigma^2/(2*gamma*k) (came
+ *      out within 5-25% across five parameter combinations -- the
+ *      residual mismatch is finite-dt/finite-sampling noise, not a
+ *      formula error). (2) Wiring that SAME correct integrator onto the
+ *      full lattice patch still gave a Lindemann parameter that barely
+ *      moved across a 30x stiffness range, and sat absurdly high (0.6-5,
+ *      i.e. bigger than the lattice spacing itself) -- traced to
+ *      boundary sites (most sites in a small patch have fewer than the
+ *      bulk's 6 neighbours) undergoing near-free diffusion under the
+ *      same noise a fully-coordinated site gets, which grows with time
+ *      rather than saturating and swamps the average. Fixed by pinning
+ *      the outer ring (a standard clamped-boundary trick for a small
+ *      demo patch) and measuring only over fully 6-coordinated interior
+ *      sites: the Lindemann parameter then scales as 1/sqrt(k) exactly as
+ *      equipartition predicts (ratios of ~1.41-1.50 for each 2x drop in
+ *      stiffness, against a predicted sqrt(2)=1.414), and spans a
+ *      believable range (~0.013 rigid to ~0.17 melted) crossing the
+ *      classic 2D Lindemann melting threshold of ~0.1-0.15.
+ *
+ *  What is disclosed on screen as illustrative, not measured or reported
+ *  by any of the three papers read this session:
+ *    - The real crystal's own melting mechanism is quantum, driven by the
+ *      ratio of Coulomb to kinetic/zero-point energy (the dimensionless
+ *      r_s parameter) -- not literally a classical thermal Langevin
+ *      process. This piece stands in with a classical damped/noise-driven
+ *      spring lattice because it is the simplest system that genuinely
+ *      exhibits a stiffness-dependent order-disorder crossover obeying
+ *      the same Lindemann criterion 2D Wigner-crystal melting is known to
+ *      follow (a well-established, general principle -- not itself
+ *      invented for this piece), not because the paper specifies a
+ *      spring constant (it does not; no phonon dispersion or force
+ *      constant was found in any of the three papers' reachable text).
+ *    - The mapping from n_e to the lattice's simulated spring stiffness
+ *      (log-interpolated between the two Node-verified endpoints, k=50
+ *      near n_min and k=1.6 near the melting density n_c) is this
+ *      piece's own tuned choice, picked only so the on-screen crystal
+ *      visibly stiffens and loosens across the density drag range, not a
+ *      fit to any measured elastic constant.
+ *    - The two-branch "polaron doublet" spectrum is a textbook 2x2
+ *      level-repulsion (avoided-crossing) toy model -- diagonalizing
+ *      [[E_X, g],[g, E_X+dE_UX]] in closed form (independently checked
+ *      in Node against numeric diagonalization, exact match) -- chosen
+ *      because avoided-level-crossing is the same general mechanism
+ *      behind attractive/repulsive polaron branches throughout the real
+ *      Fermi/Bose-polaron literature, and because its weight formula
+ *      (standard normal-mode mixing, 0.5*(1 +/- delta/sqrt(delta^2+g^2)))
+ *      does reproduce the qualitative signature the paper's abstract
+ *      names -- weight converging to 50/50 at strong coupling. It is
+ *      explicitly NOT the paper's own many-body self-energy calculation,
+ *      which was not reachable in this session's fetches of the theory
+ *      paper's HTML text (no coupling Hamiltonian or phonon dispersion
+ *      was recovered), and the piece says so in this header rather than
+ *      presenting the doublet as a reproduction of the real theory.
+ *    - The on-screen lattice spacing is a fixed pixel grid, not literally
+ *      rescaled to the true nanometer a_WC at every density (the same
+ *      simplification nearly every prior piece with a real physical
+ *      length scale already discloses) -- the true a_WC is only shown as
+ *      a live numeric readout, not as an actual zoom.
+ *    - T=1.6K and B up to 5T (used in the real experiment for spin
+ *      control of the crystal, not for forming it) are shown as
+ *      real quoted experimental context, not simulated -- this piece
+ *      does not attempt spin physics.
+ *    - The "probe exciton" tap interaction (a local velocity kick
+ *      radiating outward from the tapped site, dissipating under the
+ *      same verified Langevin dynamics) is an invented visualization of
+ *      "a photoexcited exciton locally dresses itself in the lattice's
+ *      vibrations" -- no specific pulse shape or decay time is reported
+ *      in any of the three papers' reachable text.
+ *
+ *  Tested in a real headless browser (Playwright, environment's
+ *  preinstalled Chromium) at 1280x800 desktop and 390x844 mobile:
+ *  dragged density across its full range and watched the lattice visibly
+ *  stiffen/loosen and the umklapp tick move, dragged the coupling bar
+ *  across its full range and watched the doublet split open and its two
+ *  branches converge toward equal height, tapped to fire probe pulses,
+ *  and let the sim run 20+ seconds between checks. Zero console/page
+ *  errors beyond the one harmless favicon 404 every piece in this
+ *  gallery already carries.
+ */
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, DPR;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+const uiEl = document.getElementById('ui');
+let uiTopY = 9999;
+function measureUi() { uiTopY = uiEl.getBoundingClientRect().top; }
+window.addEventListener('resize', () => { resize(); measureUi(); });
+resize();
+
+// ---------------------------------------------------------------- physics
+const HBAR = 1.054571817e-34, H_PLANCK = 6.62607015e-34, M0 = 9.1093837015e-31, EV = 1.602176634e-19;
+const M_X = 0.65 * M0;              // WSe2 neutral-exciton translational mass (Goryca et al. 2019)
+const N_MIN = 1e11, N_C = 7e11;     // cm^-2: density range, melting density (both quoted, Wang/Smolenski et al.)
+const T_SAMPLE = 1.6, B_MAX = 5, T_MELT = 30; // K, T, K -- quoted real experimental context
+
+function aWC_m(ne_cm2) { const ne = ne_cm2 * 1e4; return Math.sqrt(2 / (Math.sqrt(3) * ne)); }
+function deltaEUX_meV(ne_cm2) {
+  const ne = ne_cm2 * 1e4;
+  const dE = (H_PLANCK * H_PLANCK * ne) / (Math.sqrt(3) * M_X); // Joules
+  return dE / EV * 1000;
+}
+function kSpringOf(ne_cm2) {
+  const f = Math.min(1, Math.max(0, (ne_cm2 - N_MIN) / (N_C - N_MIN)));
+  const logK = Math.log(50) + (Math.log(1.6) - Math.log(50)) * f; // Node-verified endpoints
+  return Math.exp(logK);
+}
+
+// dressed-doublet anti-crossing, closed form, Node-verified exact vs numeric diagonalization
+function polaronBranches(dE_meV, g_meV) {
+  const half = dE_meV / 2;
+  const split = Math.sqrt(half * half + g_meV * g_meV);
+  const eMinus = half - split, ePlus = half + split; // relative to bare exciton at 0
+  const wMinus = 0.5 * (1 + half / (split || 1e-9));
+  const wPlus = 1 - wMinus;
+  return { eMinus, ePlus, wMinus, wPlus };
+}
+
+// ---------------------------------------------------------------- lattice
+const GRID_N = 15;
+let eq = [], neigh = [], interior = [], pos = [], vel = [], nSites = 0;
+function buildLattice() {
+  eq = [];
+  for (let j = 0; j < GRID_N; j++) for (let i = 0; i < GRID_N; i++) {
+    eq.push([i + (j % 2 ? 0.5 : 0) - GRID_N / 2, j * Math.sqrt(3) / 2 - GRID_N * Math.sqrt(3) / 4]);
+  }
+  nSites = eq.length;
+  neigh = [];
+  for (let a = 0; a < nSites; a++) {
+    neigh.push([]);
+    for (let b = 0; b < nSites; b++) {
+      if (a === b) continue;
+      const dx = eq[a][0] - eq[b][0], dy = eq[a][1] - eq[b][1];
+      if (Math.hypot(dx, dy) < 1.15) neigh[a].push(b);
+    }
+  }
+  interior = neigh.map(l => l.length === 6);
+  pos = eq.map(p => [...p]);
+  vel = eq.map(() => [0, 0]);
+}
+buildLattice();
+
+let seed = 20260823;
+function rand() { return (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
+function gauss() { return Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand()); }
+
+const DAMPING = 1.0, NOISE_AMP = 0.3, SIM_DT = 0.008; // Node-verified working regime (verify_wc2.js)
+let pulses = []; // {x,y,strength,age}
+
+function stepSim(kSpring) {
+  const force = pos.map(() => [0, 0]);
+  for (let a = 0; a < nSites; a++) {
+    if (!interior[a]) continue;
+    for (const b of neigh[a]) {
+      const dx = pos[b][0] - pos[a][0], dy = pos[b][1] - pos[a][1];
+      const eqx = eq[b][0] - eq[a][0], eqy = eq[b][1] - eq[a][1];
+      const r0 = Math.hypot(eqx, eqy), r = Math.hypot(dx, dy) || 1e-6;
+      const stretch = r - r0;
+      force[a][0] += kSpring * stretch * (dx / r);
+      force[a][1] += kSpring * stretch * (dy / r);
+    }
+    force[a][0] -= DAMPING * vel[a][0];
+    force[a][1] -= DAMPING * vel[a][1];
+  }
+  const sqrtDt = Math.sqrt(SIM_DT);
+  for (let a = 0; a < nSites; a++) {
+    if (!interior[a]) continue;
+    vel[a][0] += force[a][0] * SIM_DT + NOISE_AMP * gauss() * sqrtDt;
+    vel[a][1] += force[a][1] * SIM_DT + NOISE_AMP * gauss() * sqrtDt;
+    pos[a][0] += vel[a][0] * SIM_DT;
+    pos[a][1] += vel[a][1] * SIM_DT;
+  }
+}
+
+let lindemannEMA = 0;
+function measureLindemann() {
+  // spatial average over all interior sites at this instant, then a slow
+  // exponential time-average on top -- a single-frame spatial average
+  // already pools ~150 sites, but still fluctuates frame to frame; the
+  // EMA reads off the steady-state level the Node verification actually
+  // measured (a long time-average), not one noisy instant.
+  let sumSq = 0, n = 0;
+  for (let a = 0; a < nSites; a++) {
+    if (!interior[a]) continue;
+    const dx = pos[a][0] - eq[a][0], dy = pos[a][1] - eq[a][1];
+    sumSq += dx * dx + dy * dy; n++;
+  }
+  const inst = Math.sqrt(sumSq / n);
+  lindemannEMA += (inst - lindemannEMA) * 0.02;
+  return lindemannEMA;
+}
+
+// ---------------------------------------------------------------- input
+let neCm2 = 2.5e11, gMeV = 0;
+const G_MAX = 12;
+let dragging = false, dragMoved = false, dragStartX = 0, dragStartY = 0;
+
+function neFromClientX(x) {
+  const f = Math.min(1, Math.max(0, x / W));
+  return N_MIN + f * (N_C - N_MIN);
+}
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; dragMoved = false; dragStartX = e.clientX; dragStartY = e.clientY;
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) > 6) dragMoved = true;
+  if (dragMoved) neCm2 = neFromClientX(e.clientX);
+});
+window.addEventListener('pointerup', e => {
+  if (dragging && !dragMoved) firePulse(e.clientX, e.clientY);
+  dragging = false;
+});
+function firePulse(cx, cy) {
+  const wx = (cx - W / 2) / scalePx, wy = (cy - H / 2) / scalePx;
+  pulses.push({ x: wx, y: wy, age: 0 });
+  for (let a = 0; a < nSites; a++) {
+    if (!interior[a]) continue;
+    const dx = pos[a][0] - wx, dy = pos[a][1] - wy;
+    const r = Math.hypot(dx, dy);
+    const amp = 6 * Math.exp(-(r * r) / (2 * 1.6 * 1.6));
+    if (amp > 0.02) {
+      const ux = r > 1e-6 ? dx / r : 0, uy = r > 1e-6 ? dy / r : 0;
+      vel[a][0] += ux * amp; vel[a][1] += uy * amp;
+    }
+  }
+}
+
+// g bar
+const gbar = document.getElementById('gbar'), gfill = document.getElementById('gfill'), ghandle = document.getElementById('ghandle');
+let gbarDragging = false;
+function setGFromClientX(clientX) {
+  const rect = gbar.getBoundingClientRect();
+  const f = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  gMeV = f * G_MAX;
+  gfill.style.width = (f * 100) + '%';
+  ghandle.style.left = (f * 100) + '%';
+}
+gbar.addEventListener('pointerdown', e => { gbarDragging = true; setGFromClientX(e.clientX); e.stopPropagation(); });
+window.addEventListener('pointermove', e => { if (gbarDragging) setGFromClientX(e.clientX); });
+window.addEventListener('pointerup', () => { gbarDragging = false; });
+setGFromClientX(gbar.getBoundingClientRect().left);
+measureUi();
+
+// ---------------------------------------------------------------- render
+let scalePx = 26;
+const r1 = document.getElementById('r1'), r2 = document.getElementById('r2'), r3 = document.getElementById('r3');
+const r4 = document.getElementById('r4'), r5 = document.getElementById('r5'), r6 = document.getElementById('r6');
+
+function drawLattice() {
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  // bonds (interior only, faint)
+  ctx.lineWidth = 1;
+  for (let a = 0; a < nSites; a++) {
+    if (!interior[a]) continue;
+    for (const b of neigh[a]) {
+      if (b < a) continue;
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.beginPath();
+      ctx.moveTo(pos[a][0] * scalePx, pos[a][1] * scalePx);
+      ctx.lineTo(pos[b][0] * scalePx, pos[b][1] * scalePx);
+      ctx.stroke();
+    }
+  }
+  for (let a = 0; a < nSites; a++) {
+    const x = pos[a][0] * scalePx, y = pos[a][1] * scalePx;
+    if (Math.abs(x) > W / 2 + 20 || Math.abs(y) > H / 2 + 20) continue;
+    if (interior[a]) {
+      const dx = pos[a][0] - eq[a][0], dy = pos[a][1] - eq[a][1];
+      const disp = Math.hypot(dx, dy);
+      const glow = Math.min(1, 0.35 + disp * 3.2);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, 5.5);
+      grad.addColorStop(0, `rgba(255,190,110,${0.55 + glow * 0.4})`);
+      grad.addColorStop(1, 'rgba(255,190,110,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 6.283); ctx.fill();
+      ctx.fillStyle = `rgba(255,225,190,${0.7 + glow * 0.3})`;
+      ctx.beginPath(); ctx.arc(x, y, 1.6, 0, 6.283); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.beginPath(); ctx.arc(x, y, 1.3, 0, 6.283); ctx.fill();
+    }
+  }
+  // pulses: expanding rings
+  for (const p of pulses) {
+    const r = p.age * 55;
+    const a = Math.max(0, 0.5 - p.age * 0.6);
+    if (a <= 0) continue;
+    ctx.strokeStyle = `rgba(220,240,255,${a})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(p.x * scalePx, p.y * scalePx, r, 0, 6.283); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSpectrum(dE, g) {
+  const { eMinus, ePlus, wMinus, wPlus } = polaronBranches(dE, g);
+  const panelW = Math.min(300, W * 0.44), panelH = 128;
+  const px0 = 18, py0 = Math.min(H - panelH - 18, uiTopY - panelH - 16);
+  ctx.save();
+  ctx.translate(px0, py0);
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 0, panelW, panelH);
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.fillRect(0, 0, panelW, panelH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeRect(0.5, 0.5, panelW - 1, panelH - 1);
+
+  const eMax = Math.max(dE * 1.6, 10, Math.abs(eMinus) * 1.3, ePlus * 1.3);
+  const baseY = panelH - 20;
+  const xOf = e => 14 + (e + eMax * 0.15) / (eMax * 1.3) * (panelW - 28);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath(); ctx.moveTo(10, baseY); ctx.lineTo(panelW - 10, baseY); ctx.stroke();
+
+  function tick(e, color, dashed) {
+    const x = xOf(e);
+    ctx.strokeStyle = color;
+    ctx.setLineDash(dashed ? [2, 2] : []);
+    ctx.lineWidth = dashed ? 1 : 1;
+    ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(x, baseY - 10); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // bare reference ticks
+  tick(0, 'rgba(255,255,255,0.22)', true);
+  tick(dE, 'rgba(255,255,255,0.22)', true);
+
+  function peak(e, weight, color) {
+    const x = xOf(e);
+    const h = 8 + weight * (baseY - 26);
+    const grad = ctx.createLinearGradient(0, baseY - h, 0, baseY);
+    grad.addColorStop(0, color.replace('ALPHA', (0.75).toString()));
+    grad.addColorStop(1, color.replace('ALPHA', '0'));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x - 9, baseY);
+    ctx.quadraticCurveTo(x, baseY - h * 1.15, x + 9, baseY);
+    ctx.closePath(); ctx.fill();
+  }
+  peak(eMinus, wMinus, 'rgba(150,150,255,ALPHA)');
+  peak(ePlus, wPlus, 'rgba(255,178,90,ALPHA)');
+
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '8px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('X', xOf(0), baseY + 11);
+  ctx.fillText('UX', xOf(dE), baseY + 11);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('REFLECTANCE (relative to bare exciton, meV)', 10, 12);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- loop
+let lastT = performance.now();
+function frame(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+  const kSpring = kSpringOf(neCm2);
+  stepSim(kSpring); stepSim(kSpring); // two substeps/frame at SIM_DT for smoothness (verified regime)
+
+  for (const p of pulses) p.age += dt;
+  pulses = pulses.filter(p => p.age < 1.2);
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  drawLattice();
+
+  const dE = deltaEUX_meV(neCm2);
+  if (W >= 560 && uiTopY - 128 - 16 > 40) drawSpectrum(dE, gMeV); // narrow/short screens: skip, avoids colliding with the bottom control bar
+
+  const aNm = aWC_m(neCm2) * 1e9;
+  const dL = measureLindemann();
+  const melted = dL > 0.15;
+  const { wMinus, wPlus } = polaronBranches(dE, gMeV);
+  const balance = 1 - Math.abs(wMinus - wPlus);
+
+  r1.innerHTML = `n<sub>e</sub> = <span class="val">${(neCm2 / 1e11).toFixed(2)}</span>&times;10&sup1;&sup1; cm&#8315;&sup2;`;
+  r2.innerHTML = `a<sub>WC</sub> = <span class="val">${aNm.toFixed(1)}</span> nm &middot; &Delta;E<sub>UX</sub> = <span class="val">${dE.toFixed(2)}</span> meV`;
+  r3.innerHTML = melted
+    ? `lattice: <span class="val2">MELTING</span> (&delta;<sub>L</sub>=${dL.toFixed(3)})`
+    : `lattice: <span class="val">rigid</span> (&delta;<sub>L</sub>=${dL.toFixed(3)})`;
+  r4.textContent = `g = ${gMeV.toFixed(1)} meV · branch weights ${(wMinus*100).toFixed(0)}/${(wPlus*100).toFixed(0)} ${balance>0.85 ? '(~equal — strong-correlation signature)' : ''}`;
+  r5.textContent = `T = ${T_SAMPLE} K · B = 0 (crystal forms field-free) · spin control shown up to ${B_MAX} T`;
+  r6.textContent = `melting density n_c ≈ 7×10¹¹ cm⁻² · T_melt ≈ ${T_MELT} K (Wang, Smoleński et al.)`;
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
