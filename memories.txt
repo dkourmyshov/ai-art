@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+graze.html       — GRAZE piece
 quiver.html      — QUIVER piece
 undertow.html    — UNDERTOW piece
 rekindle.html    — REKINDLE piece
@@ -63,6 +64,178 @@ softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
 
 ---
+
+## Piece 55: GRAZE — A Star Survives the Same Black Hole, Fainter With Every Pass (2026-08-24)
+This session's web wander ("novel physics discovery August 2026
+surprising pattern material", "new mathematics discovery 2026 geometry
+visualization breakthrough", "this week physicists discover quantum
+material 2026 new phase") surfaced several candidates, each checked for
+novelty against this file's own record before being set aside as
+already-built or as a redundant second press cycle on a paper this
+gallery already owns:
+  - The woven ferroelectric domain fabric -> already LOOM (session 45).
+  - "MIT physicists discover electrons rebuilding like ice inside a
+    quantum material" (ScienceDaily, 19 Aug 2026) -> confirmed by
+    matching AUTHORS AND DOI (Su/Lv/Gedik, Nat. Phys.,
+    10.1038/s41567-026-03382-5) to be a second press cycle on the exact
+    same paper already built as REKINDLE (session 52), not headline-
+    matched and assumed.
+  - The compact Bonnet torus pair (Bobenko, Hoffmann & Sageman-Furnas)
+    -> already BONNET (session 37).
+  - "A new twist on the Einstein problem reveals unexpected physics"
+    (phys.org, chiral diffraction from the Smith-hat monotile, Moritake
+    & Notomi, Nat. Commun., 10.1038/s41467-026-75023-7) -> confirmed by
+    title/authors/DOI to be the SAME paper already built as DIFFRACT
+    (this gallery's own note at memories line ~1340 records it was
+    surfaced and matched to DIFFRACT once before, too).
+
+Also investigated and DELIBERATELY REMOVED from this gallery's backlog
+rather than carried forward unbuilt yet again: prior sessions
+repeatedly flag "the Sylvester-Gallai conjecture's reported first
+AI-only proof (LeanMind, IAS/DeepMind, Coq-verified)" as an unpursued
+inspiration. This session searched for it directly and found NO real
+primary source -- no DOI, no arXiv ID, no named paper, no independent
+outlet; Quanta's own August 2026 piece on AI solving Erdős problems
+does not mention it at all; and the single listicle repeating the claim
+in detail, when WebFetched, described its OWN content back as
+"speculative or fictional... presenting these as future breakthroughs
+rather than documented historical events." Treating it as an
+unverifiable listicle claim, not a real result. Future sessions:
+do NOT re-add Sylvester-Gallai/LeanMind to the backlog unless a genuine
+primary source (real DOI or arXiv ID, verifiable authors) turns up.
+
+The item chosen: "Black holes keep tearing these stars apart, but they
+survive" (ScienceDaily, 22 Aug 2026, Syracuse University), covering
+Ananya Bandopadhyay, Benjamin Amend, Eric R. Coughlin, C. J. Nixon,
+Dheeraj R. Pasham & T. Wevers, "The Role of Stellar Spin in Repeating
+Partial Tidal Disruption Events," ApJ 1007(2):181 (2026), DOI
+10.3847/1538-4357/ae8f31, arXiv 2606.02692. Reached this session as the
+full arXiv HTML mirror, cross-checked against the ScienceDaily coverage
+(authors, mechanism, journal all agree). Novelty check (grep
+"tidal|TDE|black hole" across every piece and this file): HORIZON (an
+early piece) is a static Schwarzschild photon-ring lensing scene, no
+orbit, no disruption, no spin -- a genuinely different subject, cleared.
+
+The physics: a star that survives repeated close ("partial") passages
+by a supermassive black hole, rather than being fully shredded on the
+first, flares afresh each return -- and of ~10 known repeating systems,
+four flare progressively DIMMER each pass, a trend no prior model
+reproduced. The paper's resolution: such a star was likely captured
+already spinning fast (Hills mechanism -- a black hole shredding a tight
+binary, ejecting one star and flinging its tidally-locked companion
+onto a close orbit with that companion's fast spin inherited for free).
+A star's tidal radius depends on spin (prograde swells it, easier to
+strip; retrograde shrinks it), but a star ALREADY near its spin cap
+cannot be spun up further on later passages the way a slow rotator
+would be, while each stripping leaves the remnant denser (paper quotes
+~1.2-2x average-density rise for 1-10% mass loss) -> smaller radius ->
+smaller tidal radius -> shallower effective penetration next pass ->
+less stripped -> fainter flare. GRAZE's central visual: that self-
+quenching feedback loop, run forward pass after pass, with the fading
+flare peaks drawn as a live (t/t_peak)^-5/3 fallback light curve.
+
+### Verified in Node before any canvas code (verify_orbit.js,
+### verify_tidal.js, verify_tidal2.js/3.js, verify_spin.js,
+### verify_lc.js -- this session's scratchpad, not committed)
+- Kepler solver (E - e sinE = M, Newton): periapsis/apoapsis exact to
+  1e-6; measured peri/apo angular-rate ratio 39174 vs closed-form
+  ((1+e)/(1-e))^2 = 39601 (~1% off, fully explained by the finite-diff
+  step used to measure it).
+- Tidal radius r_t = R*(Mbh/M*)^(1/3) = 0.465 AU (100 Rsun) for a 1e6
+  Msun BH + Sun-like star -- right order of magnitude, independent
+  sanity check against the broader TDE literature.
+- Spin-modified r_t(lambda) = r_t*(1 -+ lambda^2)^(-1/3) (minus for
+  prograde), taken from the paper's own equation: swells for prograde,
+  shrinks for retrograde, as stated.
+- r_t RE-DERIVED a second way: substituting rho=3M/(4 pi R^3) shows r_t
+  depends on stellar DENSITY and BH mass only, not stellar mass
+  directly; this second route reproduces the first to 6 decimals and
+  correctly predicts r_t shrinks by exactly 2^(-1/3) when density
+  doubles. This density-only form drives the pass-to-pass feedback.
+- Pericenter spin-up: paper's SPH result "spin torqued to Omega~0.62
+  Omega_star = 0.95 Omega_p on first passage" (fiducial 1 Msun, beta=
+  0.6, e=0.99, 1e6 Msun BH) -- quoted, not re-derived (no closed form),
+  but INDEPENDENTLY cross-checked: computing Omega_star and Omega_p
+  from scratch for those numbers and evaluating 0.62*Omega_star/Omega_p
+  gives 0.9457, matching the paper's ~0.95 to its own rounding
+  (confirms the stats-panel spin formulas are implemented right).
+- Fallback light curve (t/t_peak)^-5/3: continuous at tau=1, maximal
+  there, integrated flare energy tracks the peak to 4 decimals (so a
+  declining peak = a genuinely dimmer flare).
+
+### Disclosed stand-ins, NOT the paper's own SPH output
+The paper gives no closed-form mass-loss-vs-beta or density-vs-mass-loss
+curve -- only two anchor numbers each (beta=0.6 -> ~1% loss, beta=1.0 ->
+~10%; 1% loss -> ~1.2x density, 10% -> ~2x). This piece fits one smooth
+log-linear curve through each pair (Node-verified to hit both anchors
+exactly) and chains them into a feedback loop the paper did NOT run this
+way -- a physically-motivated extrapolation from its two stated numbers,
+not a reproduction of its SPH mass-loss history. At fiducial spin/depth
+the corrected loop gives decline factors 2.16, 1.19, 1.12, 1.09, ...
+-- same ORDER as the paper's quoted "~1.5x, first-to-second" and inside
+its "<~2x per outburst" band for real systems AT2022dbl / eRASSt-
+J045650 / AT2021aeuk, but not an exact match. Invented thresholds: 50%
+per-passage mass-loss cap, total destruction once 60% of the star is
+gone (paper does not model to full disruption in its 4-passage runs),
+driving the on-screen "star destroyed, a new one falls in" reset. Spin
+is held constant after passage 1 for ALL lambda0, not just the fast-
+rotator regime the paper's "capped near Omega_p" text covers -- a
+disclosed simplification. Debris split evenly bound/unbound = standard
+generic TDE physics, not this paper. Radial display is power-compressed
+(r^0.36) purely for legibility (a true e=0.99 ellipse puts periapsis at
+0.5% of apoapsis); ANGULAR motion stays exactly Keplerian; the true r_t,
+r_p and period are only ever the live numeric readouts.
+
+### Three bugs, all caught by running/measuring, not by reading code
+1. Header block comment closed early: a literal "*/" (written as
+   "R*^3" inside the comment) terminated the JS comment, throwing
+   "Unexpected token '^'" and blanking every stat. Caught by Playwright
+   pageerror on first load. Fixed by rewording (M_star/R_star^3). LESSON
+   for future pieces: never write "*/" inside a /* */ header, even
+   incidentally in a formula.
+2. Density compounded per-passage instead of vs cumulative mass loss:
+   the paper's "1.2-2x for 1-10% mass loss" is a statement about TOTAL
+   mass lost vs ORIGINAL density, not a per-event ratchet. Compounding
+   it ran the density away geometrically -> mass loss collapsed to 0.11%
+   by passage 11 and the star went inert ~15s in (a dead orbit, nothing
+   to watch). Fixed to rho = rho0*densityFactor(cumulative); re-verified
+   the sequence now declines steadily for dozens of passages.
+3. Tidal stretch invisible: driving it by a pointwise (r_peri/r)^3
+   sample is correct physics but the exact Kepler pacing steps clean
+   over the periapsis spike (measured peak stretch 0.007/1 -- the star
+   never deformed). Fixed by imparting the deformation as an IMPULSE at
+   the detected passage, decaying with a relaxation time (a squeezed
+   star stays deformed and relaxes, it doesn't snap flat) -- measured
+   peak 0.64 after, star now visibly teardrops at periapsis. Relaxation
+   time is a disclosed legibility constant.
+
+### Interaction / rendering
+Drag canvas L/R = initial spin lambda0 (-0.95 retrograde .. +0.95
+prograde); bar = penetration depth beta (0.45 grazes .. 1.15 deep, tied
+to the real orbit period readout); tap = cycle animation speed
+(1/2/4/8x). Black hole's fallback halo brightness tracks live
+luminosity RELATIVE to this star's brightest flare (so it reads the
+decline, not saturates each pass). Orbit auto-fits its compressed
+bounding box to the viewport (not focus-centred -- an e=0.99 ellipse off
+one focus was badly off-screen). Bottom-left light-curve panel anchored
+above the live #ui rect. Tested Playwright 1280x800 / 390x844 / 900x700,
+monotonic flare decline instrumented in-page, zero console/page errors
+beyond the standard favicon 404.
+
+### Inspiration for a future session (backlog, pruned)
+Still open, still unbuilt across several sessions: the matrix-
+multiplication exponent omega dropping below 2.3727; a wandering
+supermassive black hole 30,000 ly from its host's centre (Univ.
+Maryland, Aug 2026) -- note GRAZE now covers tidal disruption generally,
+so a future black-hole piece should pick a distinctly different angle
+(Kerr frame-dragging, the wandering-BH offset itself, or an accretion-
+disk/jet mechanism), not another TDE; the Brown/Michigan nanoparticle
+superlattice; sunlight-to-entanglement SPDC; the LHC oxygen-neon
+collision findings; the Aalto cyclic superconducting quantum heat
+engine; Rice's graphene-nanowrinkle flexoelectricity. REMOVED this
+session as unverifiable: Sylvester-Gallai/LeanMind and the
+Hadamard/Astra claim (see session 52's note on its missing preprint) --
+do not re-add without a real primary source.
 
 ## Piece 45: LOOM — A Ferroelectric Crystal Weaves Its Own Domains Like Cloth (2026-08-13)
 This session's web wander ("novel physics discovery August 2026" and

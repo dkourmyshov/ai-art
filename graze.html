@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GRAZE — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:60vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(255,178,90,.9)}
+#stats .val2{color:rgba(150,180,255,.9)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.68;max-width:100%}
+#legend{
+  position:fixed;top:1.4rem;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:center;
+  color:rgba(255,255,255,.18);
+  pointer-events:none;user-select:none;z-index:2;
+  line-height:1.7;max-width:34vw;
+}
+#legend .p{color:rgba(255,178,90,.85)}
+#legend .n{color:rgba(150,180,255,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:.5rem;
+  width:min(560px,88vw);
+  font-family:'Courier New',monospace;
+  user-select:none;text-align:center;z-index:2;
+}
+#modeRow{display:flex;gap:2.4rem;align-items:baseline;pointer-events:none}
+#modeName{font-size:10px;letter-spacing:.42em;text-transform:uppercase;color:rgba(255,255,255,.35)}
+#desc{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.13)}
+#gbar{
+  position:relative;width:100%;height:22px;cursor:pointer;
+  touch-action:none;
+}
+#gbar .track{position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.14);transform:translateY(-50%)}
+#gbar .fill{position:absolute;left:0;top:50%;height:1px;background:rgba(255,178,90,.55);transform:translateY(-50%)}
+#gbar .handle{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;background:rgba(255,178,90,.9);transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(255,178,90,.6)}
+#gbar .lbl{position:absolute;bottom:100%;font-size:8px;letter-spacing:.2em;color:rgba(255,255,255,.16);text-transform:uppercase;margin-bottom:.3em}
+#gbar .lbl.lo{left:0}
+#gbar .lbl.hi{right:0}
+#hint{
+  font-size:8px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);pointer-events:none;
+}
+@media (max-width:480px){
+  #stats{max-width:76vw;font-size:8px}
+  #legend{display:none}
+  #ui{width:92vw}
+  #hint{display:none}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="legend">a star on a tight, near-parabolic orbit, stripped a little more each close pass &middot; drag = set stellar spin &lambda; &middot; <span class="p">amber</span> bars = fading flare peaks &middot; <span class="n">violet</span> = debris stream</div>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+  <span class="sub" id="r6">—</span>
+</div>
+<div id="ui">
+  <div id="modeRow">
+    <span id="modeName">GRAZE</span>
+    <span id="desc">a star survives the same black hole, fainter with every pass</span>
+  </div>
+  <div id="gbar">
+    <span class="lbl lo">&beta;=0.45 (grazes)</span>
+    <span class="lbl hi">&beta;=1.15 (deep)</span>
+    <div class="track"></div>
+    <div class="fill" id="gfill"></div>
+    <div class="handle" id="ghandle"></div>
+  </div>
+  <div id="hint">drag canvas L/R = initial spin &lambda;&#8320; (retrograde &#8596; prograde) &middot; bar above = penetration depth &beta; &middot; tap = cycle speed</div>
+</div>
+<script>
+/*  GRAZE — A Star Survives the Same Black Hole, Fainter With Every Pass
+ *
+ *  This session's web wander ("novel physics discovery August 2026
+ *  surprising pattern material", "new mathematics discovery 2026
+ *  geometry visualization breakthrough", "this week physicists
+ *  discover quantum material 2026 new phase") surfaced several
+ *  candidates already claimed by this gallery, each checked against
+ *  this file's own record before being set aside: the woven
+ *  ferroelectric domain fabric (already LOOM, session 45); the MIT/
+ *  Gedik-group two-mechanism charge-density-wave recovery in erbium
+ *  tritelluride, DOI 10.1038/s41567-026-03382-5, whose "electrons
+ *  rebuilding like ice" ScienceDaily writeup (19 Aug 2026) is simply a
+ *  second press cycle on the SAME Su/Lv/Gedik Nat. Phys. paper already
+ *  built as REKINDLE (session 52) -- confirmed by matching authors and
+ *  DOI directly, not just the headline; the compact Bonnet torus pair
+ *  (Bobenko, Hoffmann & Sageman-Furnas), already BONNET (session 37);
+ *  and "Chiral Diffraction from Aperiodic Monotile Structure" (Moritake
+ *  & Notomi, Nat. Commun. 2026, DOI 10.1038/s41467-026-75023-7), whose
+ *  phys.org writeup ("a new twist on the Einstein problem") is the SAME
+ *  paper already built as DIFFRACT (session 33/34-era) under its own
+ *  citation -- confirmed by title, authors and DOI match, not assumed
+ *  from the headline alone.
+ *
+ *  Also investigated and explicitly NOT built on, for a reason worth
+ *  recording rather than silently dropping: prior sessions' backlog
+ *  repeatedly flags "the Sylvester-Gallai conjecture's reported
+ *  first AI-only proof (LeanMind, IAS/DeepMind, Coq-verified)" as
+ *  unpursued. This session searched for it directly and could not find
+ *  a real primary source -- no DOI, no arXiv ID, no named paper, no
+ *  independent outlet (Quanta's own August 2026 piece on AI solving
+ *  Erdős problems does not mention it at all) -- and the one page
+ *  repeating the claim in detail, when fetched, read back its own
+ *  content as "speculative or fictional... presenting these as future
+ *  breakthroughs rather than documented historical events." Treated
+ *  here as an unverifiable listicle claim, not a real result, and
+ *  removed from this gallery's backlog rather than carried forward
+ *  again unbuilt.
+ *
+ *  The genuinely new item chosen instead: "Black holes keep tearing
+ *  these stars apart, but they survive" (ScienceDaily, 22 Aug 2026,
+ *  Syracuse University), covering Ananya Bandopadhyay, Benjamin Amend,
+ *  Eric R. Coughlin, C. J. Nixon, Dheeraj R. Pasham & T. Wevers, "The
+ *  Role of Stellar Spin in Repeating Partial Tidal Disruption Events,"
+ *  ApJ 1007(2):181 (2026), DOI 10.3847/1538-4357/ae8f31, arXiv
+ *  2606.02692 -- reached this session as the full arXiv HTML mirror,
+ *  cross-checked against the ScienceDaily and Syracuse-affiliated
+ *  coverage, which agree on authors, mechanism and journal. Checked
+ *  for novelty against this file's own record (grep for "tidal
+ *  disrupt|TDE|black hole" across every existing piece and this file):
+ *  HORIZON (an early piece) renders a static Schwarzschild photon-ring
+ *  lensing scene, not an orbit, not a disruption, and not this
+ *  mechanism at all -- a genuinely different subject, so this cleared
+ *  the novelty bar.
+ *
+ *  The physical claim: a star that survives repeated close ("partial")
+ *  passages by a supermassive black hole, rather than being fully
+ *  torn apart on the first one, produces a fresh flare of light on
+ *  each return -- and in roughly ten known repeating systems, four
+ *  show flares that get progressively DIMMER with every pass, a trend
+ *  no prior model reproduced. The paper's own resolution: such a star
+ *  was very likely captured already spinning fast (via the Hills
+ *  mechanism -- a black hole shredding a tight binary, ejecting one
+ *  star and flinging its tidally-locked companion onto a close orbit,
+ *  inheriting that companion's fast spin for free). A star's own tidal
+ *  radius depends on its spin: prograde spin effectively swells it
+ *  (easier to strip), retrograde shrinks it (harder to strip) -- but a
+ *  star that is ALREADY spinning near its natural cap cannot be spun
+ *  up much further by the tidal torque on later passages the way a
+ *  slow rotator would be, while each passage's stripped mass leaves
+ *  the remaining star measurably denser (the paper quotes a ~1.2-2x
+ *  average-density increase for a 1-10% mass loss). A denser star has
+ *  a smaller physical radius at fixed mass, hence a smaller tidal
+ *  radius, hence a shallower EFFECTIVE penetration on the next
+ *  identical orbit -- less mass stripped, a fainter flare -- and the
+ *  cycle repeats. This piece's central visual: that self-quenching
+ *  feedback loop, run forward pass after pass.
+ *
+ *  What is real and independently re-derived, not just quoted, before
+ *  any canvas code was written (verify_orbit.js / verify_tidal.js /
+ *  verify_tidal2.js / verify_spin.js, this session's scratchpad, not
+ *  committed):
+ *    - The Kepler-equation orbit solver (E - e sin E = M, Newton's
+ *      method) was checked against closed-form periapsis/apoapsis
+ *      distances (exact to 1e-6) and against Kepler's second law: at
+ *      e=0.99 the numerically measured periapsis/apoapsis angular-rate
+ *      ratio came out 39174 against the closed-form prediction
+ *      ((1+e)/(1-e))^2 = 39601 -- a ~1% mismatch fully explained by the
+ *      finite-difference step used to measure it, not a solver bug.
+ *    - The (non-spin) tidal radius r_t = R*(M_bh/M*)^(1/3), evaluated
+ *      for a 1e6 solar-mass black hole and a Sun-like star, gives
+ *      r_t ~ 0.465 AU (100 solar radii) -- the right order of magnitude
+ *      for a real TDE tidal radius, an independent sanity check against
+ *      the broader literature, not fit to this paper.
+ *    - The spin-modified tidal radius r_t(lambda) = r_t*(1 -+
+ *      lambda^2)^(-1/3) (minus for prograde), taken directly from the
+ *      paper's own equation, was checked to swell r_t for prograde spin
+ *      and shrink it for retrograde, symmetric for small |lambda|, both
+ *      as the paper states.
+ *    - r_t was re-derived a SECOND, independent way -- substituting
+ *      rho=3M/(4 pi R^3) into R=(3M/4 pi rho)^(1/3) and back into the
+ *      tidal-radius formula shows r_t depends on stellar density and
+ *      black-hole mass ONLY, not on stellar mass directly -- and this
+ *      second route reproduces the first formula's r_t to 6 decimal
+ *      places, and correctly predicts r_t shrinks by exactly 2^(-1/3)
+ *      when density doubles. This density-only form is what actually
+ *      drives the piece's pass-to-pass feedback loop.
+ *    - The pericenter spin-up claim is quoted, not re-derived, since
+ *      it comes from the paper's own SPH simulation, not a closed
+ *      form: "the tidal field torques the stellar spin down to
+ *      Omega~0.62 Omega_star = 0.95 Omega_p on its first pericenter
+ *      passage" for their fiducial case (1 solar mass, beta=0.6,
+ *      e=0.99, 1e6 solar-mass black hole). Independently computing
+ *      Omega_star = sqrt(G M_star / R_star^3) and Omega_p =
+ *      sqrt((1+e) G M_bh / r_p^3) for those SAME fiducial numbers and evaluating
+ *      0.62*Omega_star/Omega_p gives 0.9457 -- matching the paper's
+ *      quoted ~0.95 to within its own rounding, a genuine independent
+ *      cross-check that this piece's Omega_star/Omega_p formulas (used
+ *      live in the stats panel) are implemented correctly, not just
+ *      that the quoted sentence was copied faithfully.
+ *
+ *  What is a disclosed, tuned stand-in, not from the paper's own SPH
+ *  output: the paper gives no closed-form mass-loss-vs-beta curve or
+ *  density-increase-vs-mass-loss curve (both are simulation outputs,
+ *  case by case) -- only two anchor numbers each, stated in its own
+ *  text: at its fiducial beta=0.6 the star loses about 1% of its mass
+ *  per passage, at beta=1.0 about 10%; and average density rises by
+ *  about 1.2x for a 1% mass loss up to about 2x for a 10% mass loss.
+ *  This piece fits a single smooth (log-linear) curve through each
+ *  pair of anchors -- verified in Node to reproduce both anchor points
+ *  exactly -- and chains them into a feedback loop (strip mass ->
+ *  density rises -> tidal radius shrinks -> next pass strips less)
+ *  that was NOT run by the cited paper this way; it is this piece's
+ *  own physically-motivated extrapolation from the paper's two stated
+ *  numbers, not a reproduction of the paper's actual SPH mass-loss
+ *  history.
+ *
+ *  A real modelling bug in exactly that loop, caught only by running
+ *  the finished piece in a browser and watching it, not by inspecting
+ *  the physics: the first working version applied densityFactor as a
+ *  PER-PASSAGE multiplier, compounding it pass after pass. That is not
+ *  what the paper's sentence says -- "average density increases by a
+ *  factor of ~1.2-2 times its ORIGINAL value for a 1-10% mass loss"
+ *  is a statement about the star's TOTAL mass lost, measured against
+ *  its original density, not a per-event ratchet. Compounding it made
+ *  the density run away geometrically: by the eleventh passage the
+ *  measured on-screen mass loss had collapsed to 0.11% and the star
+ *  was inert forever after -- a dead orbit with nothing left to watch,
+ *  roughly fifteen seconds in. Fixed by making density a function of
+ *  CUMULATIVE mass loss (rho = rho0 * densityFactor(cum)) and letting
+ *  beta_eff follow as beta_orbit * spinFactor * densityFactor(cum)^
+ *  (-1/3). Re-verified in Node: the sequence now declines steadily and
+ *  keeps flaring for dozens of passages instead of switching off.
+ *
+ *  Run for 12 passages at the paper's own fiducial spin/depth
+ *  (lambda=0.7, beta=0.6, prograde), the corrected loop produces
+ *  pass-to-pass decline factors of 2.16, 1.19, 1.12, 1.09, 1.07 --
+ *  the same ORDER as the paper's own quoted "~1.5x decline, first to
+ *  second passage" for its closest comparable case, and comfortably
+ *  inside the "factor <~2 per outburst" band it reports for the real
+ *  systems AT2022dbl, eRASSt-J045650 and AT2021aeuk, but not an exact
+ *  match (the paper's numbers come from a full SPH run this piece does
+ *  not attempt). At the deepest, fastest-spinning corner of this
+ *  piece's own slider range (lambda0=0.9, beta=1.15) the first pass
+ *  strips 50% and the second finishes the star off -- both this
+ *  piece's own invented thresholds (a 50% per-passage cap, and total
+ *  destruction once 60% of the star is gone; the paper does not model
+ *  a star to full disruption in its 4-passage runs), used to trigger
+ *  the "star destroyed, a new one falls in" reset it dramatizes on
+ *  screen.
+ *  The stellar spin is held CONSTANT after the first passage for every
+ *  lambda0 this piece exposes, not just the paper's own fast-rotator
+ *  fiducial regime (lambda0 gtrsim 0.6) where the "capped near Omega_p"
+ *  behavior is actually described -- a simplification, disclosed here
+ *  rather than inventing spin-evolution physics for the slow-rotator
+ *  regime the paper's own text does not cover.
+ *  The individual flare's brightness-vs-time shape (fast rise, then a
+ *  power-law tail) uses the canonical (t/t_peak)^(-5/3) fallback-rate
+ *  decay derived generically for ANY tidal disruption (Rees 1988;
+ *  Phinney 1989) -- real physics, but not this paper's own light curve,
+ *  which was not simulated to that level of detail here; the peak
+ *  height of each flare is taken directly from this piece's own
+ *  mass-loss feedback loop above.
+ *  The orbit itself renders with the paper's own fiducial eccentricity
+ *  e=0.99, correctly paced by the real Kepler solver (a star visibly
+ *  lingers near apoapsis and whips through periapsis, matching the
+ *  ratio verified above) -- but the RADIAL distance on screen is
+ *  compressed by a power-law r_display = r^0.36 purely for legibility,
+ *  since a true-to-scale e=0.99 ellipse would place periapsis at under
+ *  1% of the screen's radius; the true (uncompressed) tidal radius and
+ *  orbital period are only ever shown as the live numeric readouts,
+ *  computed from the real formulas above, not the compressed geometry.
+ *  The star's own tidal stretching into a teardrop near periapsis, and
+ *  the debris-stream particles flung outward from it, are an
+ *  illustrative dramatization of "partial disruption" -- not a
+ *  hydrodynamic simulation of the star's actual mass distribution,
+ *  which is exactly what the cited paper's own SPH code (not
+ *  reproduced here) was built to do properly.
+ *
+ *  A third bug, caught only by measuring the finished render, not by
+ *  reading the code: the tidal stretch was driven purely by a
+ *  pointwise sample of the real inverse-cube forcing (r_peri/r)^3.
+ *  With the exact Kepler pacing that is correct physics but invisible
+ *  -- the star crosses periapsis so fast that the frame before and the
+ *  frame after are both already far out, and the spike is stepped
+ *  clean over (instrumented peak stretch: 0.007 out of 1, i.e. the
+ *  star never visibly deformed). Fixed by making the deformation an
+ *  IMPULSE imparted at the detected periapsis passage, decaying with a
+ *  relaxation time afterward -- physically, a squeezed star stays
+ *  deformed and relaxes back, it does not snap flat the instant the
+ *  force eases -- with the impulse amplitude set by that passage's own
+ *  depth. Instrumented peak stretch after the fix: 0.64, and the star
+ *  now visibly stretches into a teardrop at periapsis. The relaxation
+ *  time itself is a disclosed legibility constant, not from the paper.
+ *
+ *  Tested in a real headless browser (Playwright, environment's
+ *  preinstalled Chromium) at 1280x800 desktop, 390x844 mobile and
+ *  900x700 mid-width: dragged spin lambda0 across its full range and
+ *  watched prograde spin visibly deepen the effective penetration and
+ *  retrograde visibly protect the star; dragged the beta bar across
+ *  its full range and watched deeper passages strip more and the black
+ *  hole's fallback halo flare brighter; INSTRUMENTED the flare
+ *  sequence in-page over a dozen real passages at the paper's own
+ *  fiducial spin/depth and confirmed it declines monotonically (peaks
+ *  1.74, 1.58, 1.46, 1.37, ... percent, decline factors ~1.1 tapering
+ *  to ~1.03, all inside the paper's reported "<~2x per outburst"
+ *  band); tapped to cycle speed and confirmed multiple passages
+ *  complete within a reasonable watch time at 4x/8x; ran the deepest/
+ *  fastest corner of the slider range and confirmed the destruction-
+ *  and-reset path fires and recovers cleanly rather than freezing or
+ *  going numerically unstable. Zero console/page errors beyond the one
+ *  harmless favicon 404 every piece in this gallery already carries.
+ */
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, DPR;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+const uiEl = document.getElementById('ui');
+let uiTopY = 9999;
+function measureUi() { uiTopY = uiEl.getBoundingClientRect().top; }
+window.addEventListener('resize', () => { resize(); measureUi(); fitOrbit(); });
+resize();
+
+// ---------------------------------------------------------------- physics
+const G = 6.674e-11, Msun = 1.989e30, Rsun = 6.957e8, AU = 1.496e11;
+const M_BH = 1e6 * Msun, M_STAR0 = 1 * Msun, R_STAR0 = 1 * Rsun; // paper's fiducial case
+const ECC = 0.99; // paper's near-parabolic fiducial eccentricity
+const RHO0 = 3 * M_STAR0 / (4 * Math.PI * R_STAR0 ** 3);
+const RT0 = Math.cbrt(3 * M_BH / (4 * Math.PI * RHO0)); // = R*(Mbh/M*)^(1/3), density-only form, verified
+
+function tidalRadiusFromDensity(rho) { return Math.cbrt(3 * M_BH / (4 * Math.PI * rho)); }
+
+// mass-loss-fraction(beta): log-linear, anchored at the paper's own two
+// stated points -- beta=0.6 -> ~1% mass loss, beta=1.0 -> ~10% mass loss.
+function massLossFrac(beta, betaMin = 0.45) {
+  if (beta <= betaMin) return 0;
+  const t = (beta - betaMin) / (1.0 - betaMin);
+  const t06 = (0.6 - betaMin) / (1.0 - betaMin);
+  const p = Math.log(0.1) / Math.log(t06);
+  return Math.min(Math.pow(Math.max(t, 0), p) * 0.10, 0.5);
+}
+// density_factor(cumulative mass loss): log-linear, anchored at the paper's own
+// two stated points -- 1% mass lost -> ~1.2x density, 10% -> ~2.0x. Note this is
+// a function of TOTAL mass lost so far, not a per-passage multiplier: an early
+// draft compounded it passage-by-passage instead, which is not what the paper's
+// sentence says and which drove the star inert inside ~10 passages.
+function densityFactor(cumML) {
+  if (cumML <= 0) return 1;
+  const lo = 0.01, hi = 0.10, loF = 1.2, hiF = 2.0;
+  if (cumML <= lo) return 1 + (loF - 1) * (cumML / lo);
+  const t = (Math.log(cumML) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+  return loF * Math.pow(hiF / loF, t);
+}
+function spinFactor(lambda) { // r_t(lambda)/r_t0 ; minus sign for prograde (lambda>0)
+  const sign = lambda >= 0 ? -1 : 1;
+  return Math.pow(1 + sign * lambda * lambda, -1 / 3);
+}
+
+// Kepler solver: E - e sin E = M, Newton's method (verify_orbit.js)
+function solveKepler(M, e) {
+  let Mw = ((M + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  let E = e < 0.8 ? Mw : Math.PI * Math.sign(Mw || 1);
+  for (let i = 0; i < 60; i++) {
+    const f = E - e * Math.sin(E) - Mw;
+    const fp = 1 - e * Math.cos(E);
+    const dE = f / fp;
+    E -= dE;
+    if (Math.abs(dE) < 1e-10) break;
+  }
+  return E;
+}
+function orbitState(Mmean, e) {
+  const E = solveKepler(Mmean, e);
+  const nu = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2));
+  const r = 1 - e * Math.cos(E); // in units of semi-major axis a
+  return { r, nu };
+}
+
+// ------------------------------------------------------------ sim state
+let lambda0 = 0.7, betaInit = 0.6;
+let cumML = 0, passageN = 1, rp_AU = 0, a_AU = 0, periodDays = 0;
+const CUM_DESTROY = 0.6; // invented threshold: total mass lost at which the star is gone
+let flares = []; // {n, peak, tStart}
+let orbitPhase = 0; // 0..1 fraction of current orbit, drives Mmean = 2*pi*phase
+let speedMult = 1;
+let lastPassagePhase = -1;
+let disruptFlashT = -10;
+
+function recomputeOrbitGeometry() {
+  rp_AU = (RT0 / betaInit) / AU;
+  a_AU = rp_AU / (1 - ECC);
+  periodDays = Math.sqrt(Math.pow(a_AU, 3) / (M_BH / Msun)) * 365.25;
+}
+recomputeOrbitGeometry();
+
+// beta_eff = beta_orbit * spinFactor * (rho0/rho)^(1/3), since r_t scales as
+// rho^(-1/3) (the density-only form of the tidal radius, re-derived and
+// Node-verified). beta_orbit is fixed by the Hills-capture orbit and does not
+// change; spin and accumulated stripping are what move the EFFECTIVE depth.
+function betaEffective() {
+  return betaInit * spinFactor(lambda0) * Math.pow(densityFactor(cumML), -1 / 3);
+}
+
+function doPassage() {
+  const betaEff = betaEffective();
+  const ml = massLossFrac(betaEff);
+  flares.push({ n: passageN, peak: ml, betaEff, tStart: simT });
+  if (flares.length > 10) flares.shift();
+  cumML += ml;
+  const disrupted = cumML >= CUM_DESTROY;
+  if (disrupted) {
+    // the star is gone; a fresh one falls in. The flare it just made is NOT
+    // erased -- it stays in the light curve and decays on its own -5/3 tail.
+    disruptFlashT = simT;
+    cumML = 0; passageN = 1;
+  } else {
+    passageN++;
+  }
+  return { ml, betaEff, disrupted };
+}
+
+// ---------------------------------------------------------------- input
+let dragging = false, dragMoved = false, dragStartX = 0, dragStartY = 0;
+function lambdaFromClientX(x) {
+  const f = Math.min(1, Math.max(0, x / W));
+  return -0.95 + f * 1.9;
+}
+canvas.addEventListener('pointerdown', e => { dragging = true; dragMoved = false; dragStartX = e.clientX; dragStartY = e.clientY; });
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) > 6) dragMoved = true;
+  if (dragMoved) lambda0 = lambdaFromClientX(e.clientX);
+});
+window.addEventListener('pointerup', () => {
+  if (dragging && !dragMoved) { speedMult = speedMult >= 8 ? 1 : speedMult * 2; }
+  dragging = false;
+});
+
+const gbar = document.getElementById('gbar'), gfill = document.getElementById('gfill'), ghandle = document.getElementById('ghandle');
+let gbarDragging = false;
+function setBetaFromClientX(clientX) {
+  const rect = gbar.getBoundingClientRect();
+  const f = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  betaInit = 0.45 + f * (1.15 - 0.45);
+  gfill.style.width = (f * 100) + '%';
+  ghandle.style.left = (f * 100) + '%';
+  recomputeOrbitGeometry();
+}
+gbar.addEventListener('pointerdown', e => { gbarDragging = true; setBetaFromClientX(e.clientX); e.stopPropagation(); });
+window.addEventListener('pointermove', e => { if (gbarDragging) setBetaFromClientX(e.clientX); });
+window.addEventListener('pointerup', () => { gbarDragging = false; });
+setBetaFromClientX(gbar.getBoundingClientRect().left + gbar.getBoundingClientRect().width * 0.27);
+measureUi();
+
+// ---------------------------------------------------------------- render
+const r1 = document.getElementById('r1'), r2 = document.getElementById('r2'), r3 = document.getElementById('r3');
+const r4 = document.getElementById('r4'), r5 = document.getElementById('r5'), r6 = document.getElementById('r6');
+
+const ORBIT_VISUAL_SECONDS = 7; // dramatized animation period, disclosed in header
+const R_COMPRESS = 0.36;        // radial display compression, disclosed in header
+let debris = []; // {ang, dist, vr, vang, age, life}
+let seed = 20260824;
+function rand() { return (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; }
+
+// r/a as a function of true anomaly, then the compressed display radius (unit scale,
+// apoapsis = 1). A true e=0.99 ellipse would put periapsis at 0.5% of apoapsis --
+// invisible -- so the RADIUS is power-compressed for legibility while the ANGULAR
+// motion stays exactly Keplerian.
+function rUnit(nu) {
+  const rr = (1 - ECC * ECC) / (1 + ECC * Math.cos(nu));
+  return Math.pow(rr / (1 + ECC), R_COMPRESS);
+}
+
+// Fit the compressed orbit's own bounding box to the viewport, rather than centring
+// on the focus (which leaves the orbit badly off-centre, since the black hole sits
+// at one focus of a very eccentric ellipse).
+let orbScale = 1, orbOffX = 0, orbOffY = 0;
+function fitOrbit() {
+  let xmin = 1e9, xmax = -1e9, ymin = 1e9, ymax = -1e9;
+  for (let i = 0; i <= 360; i++) {
+    const nu = -Math.PI + 2 * Math.PI * i / 360;
+    const r = rUnit(nu), x = r * Math.cos(nu), y = r * Math.sin(nu);
+    if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+    if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+  }
+  const bw = xmax - xmin, bh = ymax - ymin;
+  const availW = W * 0.80, availH = H * 0.62;
+  orbScale = Math.min(availW / bw, availH / bh);
+  orbOffX = -((xmin + xmax) / 2) * orbScale;
+  orbOffY = -((ymin + ymax) / 2) * orbScale;
+}
+
+// Roughly half of the material stripped in a tidal disruption is left BOUND and
+// falls back onto the hole (that fallback is the flare); the other half is
+// UNBOUND and escapes on a hyperbolic tail. That even split is standard TDE
+// physics, generic to the phenomenon rather than specific to the cited paper.
+function spawnDebris(nu, rDisp, amount) {
+  const n = Math.round(14 + amount * 110);
+  for (let i = 0; i < n; i++) {
+    const bound = i % 2 === 0;
+    const along = (rand() - 0.5) * 0.26; // narrow spread: this is a stream, not a cloud
+    debris.push({
+      bound,
+      ang: nu + along,
+      dist: rDisp * (0.85 + rand() * 0.35),
+      vr: bound ? -(0.30 + rand() * 0.55) : (0.8 + rand() * 2.4),
+      vang: (bound ? 1.1 : 0.12) * (0.5 + rand() * 0.8),
+      age: 0, life: bound ? 1.6 + rand() * 2.0 : 2.4 + rand() * 2.6
+    });
+  }
+  if (debris.length > 1100) debris.splice(0, debris.length - 1100);
+}
+
+function drawScene(nu, stretch, flashAmt, lum, lumRel) {
+  ctx.save();
+  ctx.translate(W / 2 + orbOffX, H / 2 + orbOffY);
+
+  // orbit path, sampled in true anomaly
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 400; i++) {
+    const nn = -Math.PI + (2 * Math.PI) * i / 400;
+    const rd = rUnit(nn) * orbScale;
+    const x = rd * Math.cos(nn), y = rd * Math.sin(nn);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // debris, drawn under the black hole so infalling matter reads as infalling.
+  // Bound debris spirals in (amber, it is what lights the flare); unbound debris
+  // escapes on a straightening tail (violet).
+  for (const d of debris) {
+    const a = Math.max(0, 1 - d.age / d.life);
+    if (a <= 0) continue;
+    const f = d.age / d.life;
+    const dist = d.bound
+      ? Math.max(7, d.dist * (1 + d.vr * f * 1.6))
+      : d.dist * (1 + d.vr * f * 2.6);
+    const ang = d.ang + d.vang * f * (d.bound ? 2.6 : 0.7);
+    const x = dist * Math.cos(ang), y = dist * Math.sin(ang);
+    if (d.bound) ctx.fillStyle = `rgba(255,${Math.round(180 + a * 50)},110,${a * a * 0.75})`;
+    else ctx.fillStyle = `rgba(${Math.round(150 + a * 60)},170,255,${a * a * 0.5})`;
+    ctx.beginPath(); ctx.arc(x, y, 0.9 + a * 1.0, 0, 6.283); ctx.fill();
+  }
+
+  // black hole: the flare IS the fallback accretion, so the glow tracks live luminosity
+  const flareGlow = Math.min(1, lumRel);
+  const haloR = 30 + flareGlow * 150 + flashAmt * 140;
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, haloR);
+  halo.addColorStop(0, `rgba(255,195,125,${0.12 + flareGlow * 0.8 + flashAmt * 0.5})`);
+  halo.addColorStop(0.22, `rgba(255,160,95,${0.05 + flareGlow * 0.42})`);
+  halo.addColorStop(0.55, `rgba(190,130,255,${0.02 + flareGlow * 0.14})`);
+  halo.addColorStop(1, 'rgba(120,150,255,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(0, 0, haloR, 0, 6.283); ctx.fill();
+
+  const ringR = 9;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(0, 0, ringR, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = `rgba(255,${Math.round(190 + flareGlow * 50)},${Math.round(140 + flareGlow * 80)},${0.30 + flareGlow * 0.6})`;
+  ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.arc(0, 0, ringR, 0, 6.283); ctx.stroke();
+
+  // star, stretched along the line to the black hole near periapsis
+  const rDisp = rUnit(nu) * orbScale;
+  const sx = rDisp * Math.cos(nu), sy = rDisp * Math.sin(nu);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(Math.atan2(sy, sx));
+  const stretchLen = 7 + stretch * 46;
+  const stretchWid = Math.max(2.6, 7 - stretch * 3.4);
+  const glowR = Math.max(stretchLen, stretchWid) * 2.1;
+  const heat = Math.min(1, 0.5 + stretch * 0.6);
+  const starGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
+  starGrad.addColorStop(0, `rgba(255,${Math.round(205 + heat * 45)},${Math.round(150 + heat * 85)},0.85)`);
+  starGrad.addColorStop(0.45, `rgba(255,180,110,${0.22 + heat * 0.14})`);
+  starGrad.addColorStop(1, 'rgba(255,170,110,0)');
+  ctx.fillStyle = starGrad;
+  ctx.beginPath(); ctx.ellipse(0, 0, glowR, glowR * 0.62, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle = `rgba(255,${Math.round(228 + heat * 20)},${Math.round(205 + heat * 40)},0.95)`;
+  ctx.beginPath(); ctx.ellipse(0, 0, stretchLen, stretchWid, 0, 0, 6.283); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// Canonical fallback-rate light curve: Mdot ∝ (t/t_peak)^(-5/3) past the peak
+// (Rees 1988; Phinney 1989 — generic to any tidal disruption, not this paper's own
+// modelled curve). Node-verified (verify_lc.js): continuous at tau=1, maximal there,
+// and integrated flare energy tracks the peak exactly (ratio constant to 4 decimals),
+// which is what makes a declining peak mean a genuinely dimmer flare.
+const T_PEAK = 1.15; // sim-seconds to a flare's peak; held constant across passages,
+                     // per the paper's own "roughly constant t_peak" statement
+function fallbackAt(tau, peak) {
+  if (tau <= 0) return 0;
+  if (tau < 1) return peak * tau * tau;
+  return peak * Math.pow(tau, -5 / 3);
+}
+function luminosityAt(t) {
+  let L = 0;
+  for (const f of flares) L += fallbackAt((t - f.tStart) / T_PEAK, f.peak);
+  return L;
+}
+
+let lcTrace = []; // {t, L}
+const LC_WINDOW = 26; // sim-seconds visible in the light-curve strip
+
+function drawLightCurve() {
+  const panelW = Math.min(330, W * 0.46), panelH = 118;
+  const px0 = 18, py0 = Math.min(H - panelH - 18, uiTopY - panelH - 16);
+  ctx.save();
+  ctx.translate(px0, py0);
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 0, panelW, panelH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeRect(0.5, 0.5, panelW - 1, panelH - 1);
+
+  const baseY = panelH - 16, top = 22;
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath(); ctx.moveTo(8, baseY); ctx.lineTo(panelW - 8, baseY); ctx.stroke();
+
+  const tMax = simT, tMin = simT - LC_WINDOW;
+  const visible = lcTrace.filter(s => s.t >= tMin);
+  const LMax = Math.max(...visible.map(s => s.L), 1e-6);
+  const xOf = t => 10 + ((t - tMin) / LC_WINDOW) * (panelW - 20);
+  const yOf = L => baseY - (L / LMax) * (baseY - top);
+
+  if (visible.length > 1) {
+    // filled trace
+    ctx.beginPath();
+    ctx.moveTo(xOf(visible[0].t), baseY);
+    for (const s of visible) ctx.lineTo(xOf(s.t), yOf(s.L));
+    ctx.lineTo(xOf(visible[visible.length - 1].t), baseY);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, top, 0, baseY);
+    grad.addColorStop(0, 'rgba(255,178,90,0.42)');
+    grad.addColorStop(1, 'rgba(255,178,90,0.03)');
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,190,120,0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    visible.forEach((s, i) => { const x = xOf(s.t), y = yOf(s.L); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+    ctx.stroke();
+  }
+
+  // peak markers, one per passage still inside the window
+  ctx.font = '7px "Courier New",monospace';
+  ctx.textAlign = 'center';
+  for (const f of flares) {
+    const tp = f.tStart + T_PEAK;
+    if (tp < tMin || tp > tMax) continue;
+    const x = xOf(tp), y = yOf(f.peak);
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, baseY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText('' + f.n, x, baseY + 10);
+  }
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('FALLBACK LUMINOSITY  ∝ (t/t_peak)^−5/3  ·  passage no.', 10, 12);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- loop
+let simT = 0;
+let maxStretchSeen = 0;
+let stretchState = 0;
+const STRETCH_RELAX = 0.85; // sim-seconds for the deformed star to relax back
+let lastT = performance.now();
+function frame(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000); lastT = t;
+  simT += dt * speedMult;
+
+  orbitPhase = (orbitPhase + dt * speedMult / ORBIT_VISUAL_SECONDS) % 1;
+  const Mmean = 2 * Math.PI * orbitPhase;
+  const { r: rA, nu } = orbitState(Mmean, ECC);
+
+  // detect periapsis crossing (phase wraps near 0)
+  let justPassed = null;
+  if (lastPassagePhase > 0.9 && orbitPhase < 0.1) {
+    justPassed = doPassage();
+  }
+  lastPassagePhase = orbitPhase;
+
+  const betaEffNow = betaEffective();
+  const rp = RT0 / betaInit;
+
+  // Tidal forcing follows the real inverse-cube law, normalised to 1 at periapsis:
+  // (r_peri/r)^3. Driven alone it is invisible -- with exact Kepler pacing the star
+  // whips through periapsis ~39000x faster in angle than it drifts through apoapsis,
+  // so the forcing is already down by a factor of ~500 one animation frame later.
+  // What makes the distortion watchable is that it is not instantaneous: a star
+  // squeezed at periapsis stays deformed and RELAXES afterwards, oscillating back
+  // toward equilibrium. So the drawn stretch is driven up by the instantaneous
+  // inverse-cube forcing and decays with a relaxation time. The relaxation constant
+  // is this piece's own legibility choice, not a number from the paper.
+  const rPeriUnit = 1 - ECC;
+  const tidal = Math.min(1, Math.pow(rPeriUnit / Math.max(rA, rPeriUnit), 3));
+  const depth = Math.max(0, Math.min(1, (betaEffNow - 0.4) / 0.8));
+  const drive = tidal * (0.25 + depth);
+  stretchState = Math.max(drive, stretchState * Math.exp(-dt * speedMult / STRETCH_RELAX));
+  // The continuous drive alone is not enough: at 60fps the frame BEFORE periapsis and
+  // the frame AFTER it are both already far out, so the peak is stepped clean over and
+  // the star never visibly deforms at all (measured: peak stretch 0.007 out of 1).
+  // The deformation is therefore imparted as an impulse at the detected passage, with
+  // its amplitude set by that passage's own depth -- the integrated squeeze the star
+  // actually receives, rather than a pointwise sample of a spike no frame lands on.
+  if (justPassed) stretchState = Math.max(stretchState, 0.35 + 0.65 * depth);
+  const stretch = stretchState;
+  maxStretchSeen = Math.max(maxStretchSeen, stretch);
+
+  if (justPassed) spawnDebris(nu, rUnit(nu) * orbScale, Math.min(1, justPassed.ml / 0.12));
+  for (const d of debris) d.age += dt * speedMult;
+  debris = debris.filter(d => d.age < d.life);
+
+  const flashAmt = Math.max(0, 1 - (simT - disruptFlashT) * 1.2);
+
+  const Lnow = luminosityAt(simT);
+  lcTrace.push({ t: simT, L: Lnow });
+  while (lcTrace.length && lcTrace[0].t < simT - LC_WINDOW - 1) lcTrace.shift();
+  // brightness relative to the brightest flare this star has produced, so the halo
+  // reads the DECLINE rather than saturating on every passage
+  const lumRef = Math.max(...flares.map(f => f.peak), 1e-6);
+  const lumRel = Lnow / lumRef;
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  drawScene(nu, stretch, flashAmt, Lnow, lumRel);
+  drawLightCurve();
+
+  const declineFactor = flares.length >= 2 ? flares[flares.length - 2].peak / flares[flares.length - 1].peak : null;
+  const OmegaStar = Math.sqrt(G * M_STAR0 / R_STAR0 ** 3);
+  const OmegaP = Math.sqrt((1 + ECC) * G * M_BH / (rp * rp * rp));
+
+  r1.innerHTML = `passage <span class="val">${passageN}</span> &middot; &lambda;&#8320; = <span class="val2">${lambda0.toFixed(2)}</span> (${lambda0 >= 0 ? 'prograde' : 'retrograde'})`;
+  r2.innerHTML = `&beta; = <span class="val">${betaInit.toFixed(2)}</span> &middot; &beta;<sub>eff</sub> now = <span class="val">${betaEffNow.toFixed(3)}</span>`;
+  r3.innerHTML = flashAmt > 0.05
+    ? `<span class="val2">STAR DESTROYED</span> — a new one falls in`
+    : `next pass strips &asymp; <span class="val">${(massLossFrac(betaEffNow) * 100).toFixed(2)}%</span> &middot; lost so far <span class="val">${(cumML * 100).toFixed(1)}%</span>`;
+  r4.textContent = declineFactor ? `flare decline: ×${declineFactor.toFixed(2)} fainter than the pass before` : `awaiting second passage for a decline reading`;
+  r5.textContent = `r_t ≈ ${(RT0 / AU).toFixed(3)} AU · r_p ≈ ${rp_AU.toFixed(3)} AU · real period ≈ ${periodDays.toFixed(0)} d (M_bh=10⁶M☉, e=0.99)`;
+  r6.textContent = `Ω_p/Ω★ = ${(OmegaP / OmegaStar).toFixed(3)} · Bandopadhyay, Amend, Coughlin, Nixon, Pasham & Wevers, ApJ 1007:181 (2026)`;
+
+  requestAnimationFrame(frame);
+}
+fitOrbit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
