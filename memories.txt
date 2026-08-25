@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+stoke.html       — STOKE piece
 graze.html       — GRAZE piece
 quiver.html      — QUIVER piece
 undertow.html    — UNDERTOW piece
@@ -62,6 +63,192 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 56: STOKE — A Superconducting Engine Warms the Very Cold It Runs On (2026-08-25)
+This session's web wander ("surprising physics discovery August 2026 new
+phase of matter", "new mathematics discovery August 2026 geometry
+visualization", "novel material pattern self-organization discovery
+this week 2026") mostly resurfaced items already claimed by this
+gallery, each checked against this file's own record before being set
+aside: the 3D woven ferroelectric nano-dipole fabric discovered inside a
+cooling crystal (AFHU, 17 Aug 2026) is already LOOM (session 45, same
+Light: Sci. Appl. mechanism); the MIT/Gedik-group "electrons rebuilding
+like ice" charge-density-wave recovery is already REKINDLE (session 52,
+confirmed there by author/DOI match); the compact isometric-but-
+globally-different torus pair ("a donut-shaped discovery shatters a
+150-year rule") is already BONNET (session 37, Bobenko/Hoffmann/
+Sageman-Furnas). Rather than force a marginal new angle on any of
+those, this session instead built the OLDEST standing item in this
+file's own backlog -- first flagged unbuilt as far back as session 46
+and re-flagged "still open, still unbuilt" in nearly every session's own
+backlog note since, most recently right above in GRAZE's own pruned
+list: Tuomas Uusnakki, Timm Morstedt, Wallace Teixeira, Miika Rasola &
+Mikko Mottonen, "Initial demonstration of a quantum heat engine based on
+dissipation-engineered superconducting circuits," Nature Communications
+(13 Jul 2026), DOI 10.1038/s41467-026-72651-x, arXiv:2502.20143 --
+covered this week by phys.org, ScienceDaily (14 Aug 2026) and Aalto
+University's own release as "world's first [cyclic] superconducting
+quantum heat engine." Reached this session as two separate arXiv HTML
+fetches, cross-checked against each other and against the Aalto/
+ScienceDaily coverage, which agree on author list, mechanism and
+journal.
+
+The claim: earlier superconducting devices demonstrated a heat-engine
+STROKE once; this is the first to run repeated closed quantum Otto
+cycles and still pull net positive work out, at the bottom of the
+temperature scale where thermal noise is supposed to have nothing left
+to give. The working medium is a single flux-tunable transmon qubit;
+the two reservoirs are not literal separate hot/cold baths but a single
+engineered device -- a quantum-circuit refrigerator (QCR), an NIS
+junction whose bias-pulse amplitude decides whether it photon-absorbs
+(cools) or photon-emits (heats) the qubit. Four strokes, quoted from the
+paper's own language: adiabatic expansion (flux lowers the transition
+frequency, qubit does work on the driving field, no heat exchanged),
+isochoric cooling (cold QCR pulse absorbs energy at fixed low
+frequency), adiabatic compression (flux raises frequency back up,
+driving field does work on the qubit), isochoric heating (hot QCR pulse
+drives the qubit to higher effective temperature at fixed high
+frequency).
+
+What is real and independently re-derived before any canvas code was
+written (verify_otto.js and calibrate2.js, this session's scratchpad,
+not committed): the paper's own flux-frequency relation was solved for
+its own EC and EJmax rather than guessed -- EC/h=279MHz follows directly
+from the paper's own quoted anharmonicity alpha=-2pi*279MHz (the
+standard transmon approximation alpha~-EC), and EJmax/h=8.385GHz was
+then solved from the paper's own quoted baseline frequency 4.047GHz,
+giving a physically ordinary EJ/EC~30 transmon ratio this piece did not
+need to pass but did. Bisecting that SAME solved omega(Phi) curve for
+the paper's own quoted minimum frequency (4.047GHz-82.4MHz=3.9646GHz)
+reproduces the paper's own quoted compression ratio kappa=0.9796=~0.98
+to the digit. The paper's own closed-form work/heat integrals, restricted
+to this piece's two-level (m=0,1) working medium, collapse exactly to
+W_tot=-hbar*omega_max*(1-kappa)*dp and Q_abs=hbar*omega_max*dp, making
+eta=1-kappa=0.0204 an ALGEBRAIC IDENTITY independent of dp's size or
+sign -- verified numerically for four different dp values, matching the
+paper's own quoted eta_Otto=~0.020 exactly. This is an honest limit, not
+a hidden one: a true two-level Otto engine can only ever sit exactly at
+its own compression-ratio ceiling; the real device measured only
+eta=0.0055+/-0.0004 on its first cycle -- 27% of that same 0.020 ceiling
+-- and the paper attributes the shortfall specifically to transmon
+anharmonicity leaking population into higher levels, exactly the physics
+a two-level truncation throws away by construction. So this piece's live
+efficiency readout is pinned to the ceiling on purpose, with the real
+device's 27%-of-ceiling number shown alongside as what the discarded
+physics actually costs. The isochoric relaxation model (exponential
+approach to a reservoir's target population) was checked against a
+2000-step Euler integration (4e-5 error) -- a disclosed stand-in for the
+paper's own full Lindblad/QCR tunneling-rate calculation, which needs an
+auxiliary-resonator coupling g, junction resistance R_T and a voltage-
+dependent Fermi-function sum not recovered from the reachable HTML. A
+40-cycle fixed-target simulation was confirmed to settle into a stable
+periodic limit cycle before any UI code touched it. The effective-
+temperature readout inverts the standard two-level Boltzmann relation;
+solved backward from the paper's own two quoted numbers (160mK
+intrinsic bath, ~600mK saturation after five cycles), this requires
+post-cooling populations of 0.2334 and 0.4215 respectively, verified to
+reproduce 160.0mK and 600.9mK almost exactly -- those two POPULATIONS,
+not the temperatures themselves, are what calibrates the piece's self-
+warming drift.
+
+What is disclosed invention: the paper gives only those two temperature
+endpoints and no equation for how the drift proceeds cycle to cycle, so
+this piece invents a monotonic "substrate warmth" state, paced by
+elapsed cycle count (w=0.83*(1-exp(-cycleN/12))), that pulls both
+reservoir targets toward the fully-mixed p1=0.5 state -- the cold pulse
+gets less effective at doing its job the longer the engine runs, purely
+because running it keeps dumping the heat it moves back into the same
+cold environment it depends on. The 0.83 ceiling is solved so a FULLY-
+thermalized cold stroke would asymptote at population 0.4215 (=600mK,
+the paper's own number). The pacing (how many on-screen cycles to
+saturate) is this piece's own choice for watchability, not the paper's
+real five-cycle/3-microsecond timescale. The hot reservoir's default
+strength is loosely motivated by (not derived from) the paper's own
+quoted QCR pulse-amplitude ratio A_h/A_c=2.16/1.08=2.0. On-screen stroke
+durations are scaled proportionally from the real 50/300/50/200ns so
+cooling and heating keep their real 50%/33% share of a cycle; only the
+absolute timescale (ns to ~3s) is stretched, by many orders of magnitude,
+for legibility. The level-gap pixel mapping is also heavily exaggerated
+for legibility -- the real kappa=0.98 swing is only 2%, stretched to a
+30-160px on-screen range -- disclosed inline; none of the energy math
+uses that pixel mapping.
+
+Two real bugs, both caught only by running the finished piece and
+watching it (Playwright), not by inspecting the physics. First: an
+early version fed the SAME coupling-strength slider value into both
+Gamma_cold*tau_cool and Gamma_hot*tau_heat as an absolute rate rather
+than a completeness FRACTION; since the on-screen cooling stroke is 1.5x
+the heating stroke's duration, this silently thermalized cooling more
+completely than heating at every slider position, biasing every
+displayed work/efficiency number toward the engine's favor regardless of
+what the slider claimed to control. Fixed by solving each stroke's own
+Gamma from its own duration to reach the SAME shared completeness
+fraction. Second: the first warmth model drove w from CUMULATIVE
+simulated Q_abs rather than cycle count, which sounded more physically
+grounded but wasn't self-consistent -- at the piece's own default 75%
+coupling, the actual post-cooling population never fully reaches its
+(also-shrinking) target, so it sits measurably above the value the
+600mK calibration assumed, feeding back into faster-than-intended
+accumulation and driving the live readout to 789mK by cycle 60 in a
+Node re-run of the exact same formulas -- visibly contradicting the
+"160->~600mK" label next to it. Fixed two ways: decoupling the warmth
+schedule from that feedback loop entirely (cycle-count pacing, above),
+plus a second, independent hard display clamp (TEFF_DISPLAY_MK=620) so
+the on-screen number can never visually exceed its own stated claim
+regardless of what any future change to the dynamics might do. A third,
+smaller finding from the same testing pass, disclosed rather than hidden
+by a false "monotonic" claim: the DISPLAYED temperature, driven from the
+live (imperfectly thermalized) population rather than a smoothed curve,
+shows a genuine early transient wobble (measured 330->281->366mK across
+cycles 7/13/19) before settling upward for good -- a real emergent
+lag effect, not invented, and the header comment says so rather than
+overclaiming monotonicity it doesn't have. Also confirmed, both in a
+standalone Node re-run and by dragging the coupling bar to its weakest
+setting in-page: although the hot/cold reservoir TARGETS never cross at
+any slider position (algebraically, gap(shrink)=shrink*(pHotBase-0.03)
+stays positive across the whole 0.30-0.95 hot range), the engine still
+flips into a genuine sustained REFRIGERATOR regime (net work input) at
+low coupling, purely because both isochoric strokes thermalize too
+little for the population to track its moving target -- a real emergent
+effect of the finite-coupling dynamics, not a target crossing, and a
+richer discovery than the naive "drag hot below cold" framing this
+piece's first testing draft assumed before checking.
+
+Tested in a real headless browser (Playwright, environment's
+preinstalled Chromium) at 1280x800 desktop, 390x844 mobile and 900x700
+mid-width, across the full parameter space above (default settings,
+hot/coupling dragged to both extremes, 8x speed for 50+ cycles): zero
+console/page errors beyond the one harmless favicon 404 every piece in
+this gallery already carries, no NaN/Infinity in any live readout at any
+tested slider extreme, work-per-cycle decays smoothly and monotonically
+toward a nonzero floor as warmth rises (measured 0.089->0.062->0.046->
+...->0.023 ueV across cycles 7-51), and the mode label correctly flips
+between ENGINE and REFRIGERATOR live as coupling is dragged.
+
+### Inspiration for a future session (backlog, pruned)
+REMOVED this session as now built: the Aalto cyclic superconducting
+quantum heat engine (see STOKE, this session). Still open, still
+unbuilt across many sessions (see session 46/48's own notes for the
+fullest history): the matrix-multiplication exponent omega dropping
+below 2.3727; a wandering supermassive black hole 30,000 ly from its
+host's centre (Univ. Maryland, Aug 2026) -- GRAZE (55) already covers
+tidal disruption generally, so a future black-hole piece should pick a
+distinctly different angle (Kerr frame-dragging, the wandering-BH offset
+itself, or an accretion-disk/jet mechanism); the Brown/Michigan
+nanoparticle superlattice; sunlight-to-entanglement SPDC; the LHC
+oxygen-neon collision findings; Rice's graphene-nanowrinkle
+flexoelectricity. Also worth a future session, surfaced but not pursued
+by this piece's own simplifications: the paper's real 6-level transmon
+Lindblad/QCR tunneling-rate calculation (needs auxiliary-resonator
+coupling g, junction resistance R_T and its voltage-dependent Fermi-
+function sum, none recovered from the reachable HTML this session) could
+replace STOKE's own two-level exponential-relaxation stand-in with the
+paper's actual microscopic dynamics, and would let a future piece show
+the REAL efficiency shortfall (27% of ceiling) emerging from anharmonic
+leakage instead of being hard-pinned at the two-level ceiling by
+construction.
 
 ---
 
