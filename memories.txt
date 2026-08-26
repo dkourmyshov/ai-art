@@ -7,6 +7,7 @@
 
 ## Gallery Structure
 index.html       — minimal dark gallery listing all pieces
+ratchet.html     — RATCHET piece
 stoke.html       — STOKE piece
 graze.html       — GRAZE piece
 quiver.html      — QUIVER piece
@@ -63,6 +64,131 @@ lichtenberg.html — LICHTENBERG piece
 attractor.html   — ATTRACTOR piece
 softcell.html    — SOFTCELL piece
 einstein.html    — EINSTEIN piece
+
+---
+
+## Piece 57: RATCHET — 29 Ancestral Chromosomes, 406 One-Way Fusions (2026-08-26)
+This session's web wander ("novel physics discovery August 2026 new material
+self-organization pattern", "surprising mathematics discovery August 2026
+geometry visualization", "'this week' 2026 new discovery pattern formation
+physics chemistry biology unusual") turned up several candidates already
+claimed by this gallery's own record: the Rice graphene-nanowrinkle
+flexoelectricity result and the Brown/Michigan nanoparticle superlattice are
+still open in the backlog below, unbuilt again this session, but the
+Chinese-money-plant leaf-vein Voronoi diagram is already VENATION (session
+~50, Blum/Runions et al. -- confirmed by title/author match before this
+session went any further with it). The piece actually built is a genuinely
+new one from the same search: Darrin T. Schultz, Oleg Simakov et al.,
+"Topological mixing and irreversibility in animal chromosome evolution,"
+Science Advances (20 Aug 2026), DOI 10.1126/sciadv.adz5561 (preprint:
+bioRxiv 2024.07.29.605683) -- covered this week by phys.org, ScienceDaily
+and a University of Vienna press release, all cross-checked against each
+other (author list, institution, DOI, journal and the specific numbers
+below all agree). Both the paper's own Science Advances page and its
+bioRxiv preprint refused every fetch this session (403 from science.org,
+403/429 from biorxiv.org across several URL forms including the full-text
+and PDF paths) -- the underlying "evolutionary genome topology" math itself
+was never reached, only secondary science coverage. See below for exactly
+where that leaves this piece.
+
+The claim, in the coverage's own words: comparing 5,821 chromosome-scale
+genomes across 4,454 species and 19 animal phyla -- the largest such
+comparison to date -- the team found that all 406 pairwise fusions of 29
+ancestral bilaterian linkage groups (ALGs) have been sampled somewhere
+across animal diversity; that such fusions undergo "fusion-with-mixing"
+(FWM), a gradual intermingling of the two ancestral gene sets measured as
+a form of entropy that "cannot be undone"; and that hundreds of present-day
+species cluster along a shared set of such trajectories ("evolutionary
+highways") while a few -- mosquitoes, glass sponges and earthworms, named
+in the coverage -- sit in "unique, isolated regions" of the same map.
+
+What is real and independently checked (verify_ratchet.js, this session's
+scratchpad, not committed): C(29,2) = 29*28/2 = 406 exactly matches the
+paper's own quoted fusion count -- it is the literal count of unordered
+pairs of 29 labeled items, not a number this piece had to take on faith.
+Since neither the paper's own manifold framework nor its FWM entropy
+formula was recovered from any reachable source, this piece uses its own
+disclosed toy model in their place: each simulated lineage starts as 29
+singleton blocks (the unfused ancestral state) and repeatedly merges two
+of its OWN current blocks -- a real, well-studied random process (a
+Kingman-style pairwise coalescent on 29 labeled leaves), not fabricated,
+even though it is not the paper's own statistical machinery. Verified
+numerically (4,000 independent runs of that same process): the Shannon
+entropy of the block-size distribution stays within ~10% of its
+run-to-run mean at every merge count from 0 to 24 (peaking at 32.7% only
+in the last few merges, where few blocks remain and one merge swings it a
+lot) -- a genuinely tight, checked concentration, not an assumed one.
+Against that same verified band, a deterministic "always merge the two
+largest current blocks" rule sits 5-10 standard deviations outside it at
+every interior merge count (avg |z| = 8.34 across 4-24 merges, same
+script). The piece's three named real lineages (MOSQUITO, GLASS SPONGE,
+EARTHWORM) use exactly that greedy rule, so they verifiably diverge from
+the "highway" the random ones hug -- this piece's own checked statistical
+stand-in for the paper's own unrecovered topological one. The 406-pair
+global counter on screen is a literal live tally, against that same
+verified 406, of every distinct ALG-pair that has EVER shared a block in
+ANY simulated lineage, ever -- real bookkeeping, not a decorative number.
+
+What is disclosed invention: no real animal lineage fuses its ALGs by
+literally merging its two largest current chromosomes first, nor by
+picking two uniformly at random -- both are this piece's own legible
+stand-ins for whatever the real per-lineage rearrangement history actually
+was. The FWM "mixing" ramp drawn on each arc (S(t)=1-exp(-t/tau), brightening
+a fresh seam into a fully blended line) is an invented visualization of
+"cannot be undone" -- no real FWM timescale was recovered from any
+reachable source. Each lineage's merge cap (a random stop between 3 and 15
+of the 29 possible merges, 16 for the three named ones) is this piece's own
+choice so a simulated genome keeps several chromosomes rather than
+collapsing to one -- true of every real animal genome, but not itself a
+number from the paper. A regular (non-isolated) lineage fading from view a
+few seconds after it settles is a legibility device standing in for "most
+living species are not the ones caught mid-transition"; its fused pairs
+still count permanently toward the 406 tally after the lineage itself stops
+being drawn, same as a real clade's fusion history survives after that
+branch stops being novel.
+
+Tested in this environment's own headless Chromium (Playwright) at
+1280x800, 390x844 and 900x700: tapped the ring repeatedly past the
+5-lineage visual cap and watched the oldest settled random lineage fade out
+and free a slot for the next tap; dragged the speed bar across its full
+range; watched PAIRS FUSED climb monotonically (never fall) past 300/406
+under heavy tapping; watched the three named lineages' chart lines sit
+outside the shaded band for the whole run; toggled ISOLATED LINEAGES off
+and back on and confirmed both the ring arcs and chart lines hide/reappear
+together; hit RESET and confirmed counters and lineages return to their
+initial state. One real layout bug, caught only by screenshotting the
+390x844 render, not by reading the code: the legend line and the stats
+panel's mobile "max-width:70vw" both widened under a first attempt at a
+narrow-screen media query and overlapped each other, and after fixing
+that, the chart panel's fixed "top:4rem" still collided with the
+now-taller mobile stats block (three stat lines plus a citation sub-line
+push it down further than desktop) -- fixed by hiding #legend entirely
+under 640px (this gallery's own established pattern, confirmed by checking
+STOKE's and GRAZE's own "@media(max-width:480px){#legend{display:none}}")
+and pushing the chart panel down to top:7.2rem on that same breakpoint.
+Zero console/page errors beyond the one harmless favicon 404 every piece
+in this gallery already carries, at any of the three tested viewports.
+
+- [ ] RATCHET: the paper's own "evolutionary genome topology"
+      manifold/statistical framework was never reached this session (both
+      science.org and biorxiv.org refused every fetch attempt) -- a future
+      session with working access to either could replace this piece's
+      disclosed random/greedy coalescent stand-in with the paper's actual
+      method, or at least ground the FWM mixing-ramp timescale in a real
+      number instead of an invented tau.
+- [ ] RATCHET: only the three named lineages (mosquito/glass sponge/
+      earthworm) are modeled as "isolated"; the paper reportedly places
+      hundreds of species along shared highways with varying degrees of
+      divergence, not just a binary random-vs-greedy split -- a future
+      session could add a continuum of merge-order biases if the real
+      per-species data ever becomes reachable.
+- [ ] Still open, still unbuilt, carried forward again from STOKE's own
+      list: the matrix-multiplication exponent omega, the wandering
+      supermassive black hole, the Brown/Michigan nanoparticle
+      superlattice, sunlight-to-entanglement SPDC, the LHC oxygen-neon
+      collision findings, and Rice University's graphene-nanowrinkle
+      flexoelectricity result all remain unpursued across several sessions
+      now.
 
 ---
 
