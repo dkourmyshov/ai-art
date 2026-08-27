@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DEW — AI.ART</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#back{
+  position:fixed;top:1.4rem;left:1.6rem;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(255,255,255,.2);text-decoration:none;
+  transition:color .25s;z-index:2;
+}
+#back:hover{color:rgba(255,255,255,.6)}
+#stats{
+  position:fixed;top:1.4rem;right:1.6rem;max-width:60vw;
+  font-family:'Courier New',monospace;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:right;
+  color:rgba(255,255,255,.22);
+  pointer-events:none;user-select:none;
+  line-height:1.85;z-index:2;
+}
+#stats .val{color:rgba(120,225,255,.9)}
+#stats .val2{color:rgba(255,180,100,.9)}
+#stats .row{display:block}
+#stats .sub{display:block;margin-top:.5em;font-size:8px;letter-spacing:.09em;opacity:.68;max-width:100%}
+#legend{
+  position:fixed;top:1.4rem;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.13em;text-transform:uppercase;text-align:center;
+  color:rgba(255,255,255,.18);
+  pointer-events:none;user-select:none;z-index:2;
+  line-height:1.7;max-width:34vw;
+}
+#legend .b{color:rgba(120,225,255,.85)}
+#legend .f{color:rgba(255,180,100,.85)}
+#ui{
+  position:fixed;bottom:1.6rem;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:.5rem;
+  width:min(560px,88vw);
+  font-family:'Courier New',monospace;
+  user-select:none;text-align:center;z-index:2;
+}
+#modeRow{display:flex;gap:2.4rem;align-items:baseline;pointer-events:none}
+#modeName{font-size:10px;letter-spacing:.42em;text-transform:uppercase;color:rgba(255,255,255,.35)}
+#desc{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:rgba(255,255,255,.13)}
+#gbar{
+  position:relative;width:100%;height:22px;cursor:pointer;
+  touch-action:none;
+}
+#gbar .track{position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.14);transform:translateY(-50%)}
+#gbar .fill{position:absolute;left:0;top:50%;height:1px;background:rgba(120,225,255,.5);transform:translateY(-50%)}
+#gbar .handle{position:absolute;top:50%;width:9px;height:9px;border-radius:50%;background:rgba(120,225,255,.9);transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(120,225,255,.6)}
+#gbar .tick{position:absolute;top:50%;width:1px;height:9px;background:rgba(255,255,255,.35);transform:translate(-50%,-50%)}
+#gbar .ticklbl{position:absolute;top:100%;font-size:7px;letter-spacing:.18em;color:rgba(255,255,255,.22);text-transform:uppercase;transform:translateX(-50%);margin-top:.15em}
+#gbar .lbl{position:absolute;bottom:100%;font-size:8px;letter-spacing:.2em;color:rgba(255,255,255,.16);text-transform:uppercase;margin-bottom:.3em}
+#gbar .lbl.lo{left:0}
+#gbar .lbl.hi{right:0}
+#btns{display:flex;gap:1.2rem;margin-top:.35rem}
+.btn{
+  font-family:'Courier New',monospace;font-size:8px;
+  letter-spacing:.25em;text-transform:uppercase;
+  color:rgba(255,255,255,.3);background:none;
+  border:1px solid rgba(255,255,255,.14);
+  padding:.45em 1.1em;cursor:pointer;transition:all .25s;
+}
+.btn:hover{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.35)}
+.btn.on{color:rgba(255,180,100,.9);border-color:rgba(255,180,100,.5)}
+#hint{
+  font-size:8px;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.14);pointer-events:none;
+}
+@media (max-width:480px){
+  #stats{max-width:76vw;font-size:8px}
+  #legend{display:none}
+  #ui{width:92vw}
+  #hint{display:none}
+  #desc{display:none}
+  #gbar{margin-top:.7rem}
+}
+</style>
+</head>
+<body>
+<a id="back" href="index.html">← AI.ART</a>
+<canvas id="c"></canvas>
+<div id="legend">two quantum gases condense into one self-holding drop &middot; <span class="b">bosons</span> + <span class="f">fermions</span> &middot; Fermi pressure balances resonant polaron attraction &middot; slider = attraction (tick = unitarity) &middot; drag = fermion fill &middot; tap = add atoms</div>
+<div id="stats">
+  <span class="row" id="r1">—</span>
+  <span class="row" id="r2">—</span>
+  <span class="row" id="r3">—</span>
+  <span class="sub" id="r4">—</span>
+  <span class="sub" id="r5">—</span>
+  <span class="sub" id="r6">Foster, Bleu, Levinsen &amp; Parish &middot; Phys. Rev. Lett. 2026 &middot; arXiv:2601.12777</span>
+</div>
+<div id="ui">
+  <div id="modeRow">
+    <span id="modeName">DEW</span>
+    <span id="desc">a drop that needs no container</span>
+  </div>
+  <div id="gbar">
+    <span class="lbl lo">weak attraction</span>
+    <span class="lbl hi">strong attraction</span>
+    <div class="track"></div>
+    <div class="fill" id="gfill"></div>
+    <div class="tick" id="gtick"></div>
+    <span class="ticklbl" id="gticklbl">unitarity</span>
+    <div class="handle" id="ghandle"></div>
+  </div>
+  <div id="btns">
+    <button class="btn" id="trapBtn">trap: off</button>
+    <button class="btn" id="resetBtn">reset haze</button>
+  </div>
+  <div id="hint">drag canvas L/R = fermion fill (0.3&times; &#8596; 3&times; commensurate) &middot; tap = inject atoms &middot; trap = hold the gas in a container instead</div>
+</div>
+<script>
+/*  DEW — A Drop of Liquid That Needs No Container
+ *
+ *  This session's web wander ("surprising physics discovery August 2026
+ *  pattern formation new phase of matter", "new mathematics discovery
+ *  August 2026 geometry proof visualization", "'this week' discovery
+ *  August 2026 unexpected self-organization biology chemistry fluid")
+ *  surfaced several candidates already claimed by this gallery, each
+ *  checked against memories.txt before being set aside: the AFHU woven
+ *  ferroelectric nano-dipole fabric is already LOOM, the MIT/Gedik
+ *  "electrons rebuilding like ice" CDW recovery is already REKINDLE,
+ *  the isometric torus pair is already BONNET. The piece built instead
+ *  is genuinely new to this gallery: Sam Foster, Olivier Bleu, Jesper
+ *  Levinsen & Meera M. Parish (Monash University), "Quantum droplets in
+ *  a resonant Bose-Fermi mixture," Physical Review Letters (Aug 2026),
+ *  DOI 10.1103/5pr6-5fmd, arXiv:2601.12777 — covered 21 Aug 2026 by
+ *  phys.org ("Physicists predict a new form of quantum matter that
+ *  holds itself together") and ScienceDaily. Reached this session as
+ *  the arXiv abstract plus the arXiv HTML full text, cross-checked
+ *  against the phys.org coverage: author list, journal, mechanism and
+ *  the paper's own numbers all agree between sources.
+ *
+ *  The claim: mix a Bose-Einstein condensate with a Fermi gas and tune
+ *  the boson-fermion attraction to resonance, and the mixture can
+ *  condense into SELF-BOUND liquid droplets — droplets that hold
+ *  themselves together with no trap, no container, no wall — because
+ *  the outward Fermi pressure of the fermions is exactly balanced by
+ *  the resonant boson-fermion attraction. The paper's own remarkable
+ *  point about unitarity: there the attraction energy scales with
+ *  density the SAME way Fermi pressure does (~n^{5/3}), so the balance
+ *  is not a fine-tuned accident. Push in more fermions than the drop
+ *  wants and the excess phase-separates out as a surrounding vapor —
+ *  "behavior reminiscent of a liquid-gas critical point," in the
+ *  paper's own words. The paper's real machinery is a variational
+ *  coherent-state ansatz with boson-fermion pair correlations
+ *  (|psi> = N exp(a0 b0+ + sum a_kq B+_kq)|FS>), far beyond what runs
+ *  in a browser; what runs here instead is the standard mean-field
+ *  stand-in built from the SAME balance the paper describes, with every
+ *  substitution disclosed below.
+ *
+ *  The model (all algebra verified in verify_dew.js, this session's
+ *  scratchpad, not committed):
+ *    E(nB,nF) = (g/2) nB^2  +  (3/5) cF nF^{5/3}  +  eta cF nB nF^{2/3}
+ *  boson repulsion + Fermi pressure + polaron attraction, hbar = m = 1,
+ *  cF = (6 pi^2)^{2/3}/2 so that eF = cF nF^{2/3} is the literal ideal
+ *  Fermi energy. The attraction term says: each boson lowers its energy
+ *  by eta*eF, the FERMI POLARON energy — and at unitarity for equal
+ *  masses eta = -0.615 is a real, established number (Chevy's
+ *  variational value, confirmed by experiment), not this piece's
+ *  invention. The paper itself notes its spinodal follows the
+ *  Fermi-polaron energy, which is exactly the regime this term encodes.
+ *  Verified consequences, each checked numerically to <1e-10 relative
+ *  error before any canvas code was written:
+ *    - minimizing over nF at fixed nB gives a COMMENSURATE ratio
+ *      nF* / nB = 2|eta|/3 (= 0.41 at unitarity — the same ~1:2
+ *      fermion:boson proportion as the paper's own Na-K example,
+ *      5e14 vs 1e15 cm^-3, which this piece did not tune for);
+ *    - at that ratio the energy collapses to (g/2)nB^2 - A nB^{5/3},
+ *      A = (3/5) cF |eta| (2|eta|/3)^{2/3} — attraction that wins at low
+ *      density, repulsion that wins at high density: a liquid;
+ *    - the zero-pressure equilibrium density is n0 = (4A/3g)^3 with
+ *      energy per particle e(n0) = -(A/3) n0^{2/3} < 0 (self-bound) and
+ *      P(n0) = 0 verified to 3e-9.
+ *  The 2D gradient-flow simulation below (the SAME stepping code as the
+ *  verify script) reproduces n0 to -3.3% (surface effects), the 0.41
+ *  core ratio to 0.5%, an empty halo at commensurate fill (halo nB
+ *  ~1e-13), full dispersal at weak attraction (max/uniform = 1.00), and
+ *  at 2.5x fermion overfill a fermion vapor halo (halo nF = 0.69) with
+ *  ZERO bosons in it — the paper's phase separation, emerging from the
+ *  functional rather than being scripted.
+ *
+ *  What is disclosed invention / stand-in:
+ *    - The paper's variational pair-correlation ansatz is replaced by
+ *      the mean-field polaron functional above; |eta| here is a direct
+ *      slider (0.05-0.95) standing in for the paper's real control knob
+ *      1/(kF aBF), and only the |eta| = 0.615 tick is pinned to a real
+ *      number. The paper's droplet onset (kF aBF ~ -1) and its
+ *      aBB/aBF window are NOT reproduced by this functional.
+ *    - This is a 2D slice using the 3D uniform-matter energy density as
+ *      a local functional (Thomas-Fermi-von Weizsacker style, gradient
+ *      coefficient kap = 0.5 for both species — a legibility choice,
+ *      not the real von Weizsacker 1/9).
+ *    - Imaginary-time gradient flow with global renormalization, i.e.
+ *      energy descent, NOT real-time quantum dynamics: mass moves
+ *      non-locally, which accelerates the (real) coarsening of many
+ *      small droplets into few big ones. The nucleation-and-ripening
+ *      look when condensing from the uniform haze is genuine energetics
+ *      but its TIMESCALE is arbitrary.
+ *    - Small multiplicative noise (0.5-2%, every 10th step) breaks the
+ *      symmetry of the uniform state so nucleation can happen at all;
+ *      real experiments get this for free from thermal/quantum
+ *      fluctuations.
+ *    - All densities/lengths are in arbitrary code units; nothing here
+ *      is a real cm^-3.
+ *  Emergent effects observed in testing, not scripted: small droplets
+ *  equilibrate a few % ABOVE n0 (Laplace pressure from surface tension
+ *  — the verify run measured 9.85 vs n0 = 8.78 mid-coarsening); under
+ *  fermion overfill the core nF/nB rises above 0.41 (measured 0.57 at
+ *  2.5x) because the surrounding fermion vapor squeezes the drop —
+ *  coexistence at equal chemical potential, the honest analog of the
+ *  paper's first-order transition.
+ *
+ *  Tested in this environment's headless Chromium (Playwright) at
+ *  1280x800, 390x844 and 900x700: see memories.txt session entry for
+ *  the full behavior checklist. Zero console/page errors beyond the
+ *  harmless favicon 404 every piece in this gallery already carries.
+ */
+'use strict';
+
+const TAU = Math.PI * 2;
+const cF = Math.pow(6 * Math.PI * Math.PI, 2 / 3) / 2; // eF = cF n^{2/3}
+const G_BB = 1.0;             // boson-boson repulsion
+const ETA_UNI = 0.615;        // |unitary Fermi polaron energy| / eF, equal masses
+const N = 120;                // sim grid
+const L = 64;                 // box size, code units
+const H = L / N, INV_H2 = 1 / (H * H);
+const KAP = 0.5;              // gradient (quantum pressure) coefficient
+const DT = 2e-3;
+const STEPS_PER_FRAME = 5;
+const NB0 = 2370;             // initial boson number (droplet radius ~9 units at unitarity)
+const NB_MAX = 3 * NB0;
+
+let eta = ETA_UNI;            // |eta|, slider-controlled
+let fill = 1.0;               // fermion fill x commensurate, drag-controlled
+let NB = NB0;
+let trapOn = false;
+const TRAP_W2 = 0.074;        // 0.5*w^2*r^2 ~ mu at r~18
+
+const pB = new Float32Array(N * N), pF = new Float32Array(N * N);
+const nB = new Float32Array(N * N), nF = new Float32Array(N * N);
+const wB = new Float32Array(N * N), wF = new Float32Array(N * N);
+
+let seed = 987654321;
+function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+
+function derived() {
+  const A = 0.6 * cF * eta * Math.pow(2 * eta / 3, 2 / 3);
+  const n0 = Math.pow(4 * A / (3 * G_BB), 3);
+  return { A, n0, ratio: 2 * eta / 3 };
+}
+
+function renorm(p, target) {
+  let s = 0;
+  for (let k = 0; k < p.length; k++) s += p[k] * p[k];
+  s *= H * H;
+  if (s <= 0) return;
+  const f = Math.sqrt(target / s);
+  for (let k = 0; k < p.length; k++) p[k] *= f;
+}
+
+function seedHaze() {
+  for (let k = 0; k < N * N; k++) {
+    const v = 1 + 0.1 * (rnd() - 0.5);
+    pB[k] = Math.sqrt(v);
+    pF[k] = Math.sqrt(v);
+  }
+  NB = NB0;
+  renorm(pB, NB); renorm(pF, fill * (2 * eta / 3) * NB);
+}
+seedHaze();
+
+let stepCount = 0;
+function step() {
+  const e = -eta; // signed eta < 0
+  for (let k = 0; k < N * N; k++) { nB[k] = pB[k] * pB[k]; nF[k] = pF[k] * pF[k]; }
+  for (let j = 0; j < N; j++) {
+    const jp = j === N - 1 ? -N * (N - 1) : N, jm = j === 0 ? N * (N - 1) : -N;
+    const y = (j - N / 2) * H;
+    for (let i = 0; i < N; i++) {
+      const k = j * N + i;
+      const ip = i === N - 1 ? -(N - 1) : 1, im = i === 0 ? (N - 1) : -1;
+      const lapB = (pB[k + ip] + pB[k + im] + pB[k + jp] + pB[k + jm] - 4 * pB[k]) * INV_H2;
+      const lapF = (pF[k + ip] + pF[k + im] + pF[k + jp] + pF[k + jm] - 4 * pF[k]) * INV_H2;
+      const nb = nB[k], nf = nF[k];
+      const nf13 = Math.cbrt(nf), nf23 = nf13 * nf13;
+      let V = 0;
+      if (trapOn) {
+        const x = (i - N / 2) * H;
+        V = 0.5 * TRAP_W2 * (x * x + y * y);
+      }
+      // dE/dnB = g nB + eta cF nF^{2/3}          (+ trap)
+      const muB = G_BB * nb + e * cF * nf23 + V;
+      // (dE/dnF) psiF, with nF^{-1/3} psiF = psiF^{1/3} (regular at 0)
+      const muFp = (cF * nf23 + V) * pF[k] + (2 / 3) * e * cF * nb * Math.cbrt(pF[k]);
+      let b = pB[k] + DT * (KAP * lapB - muB * pB[k]);
+      let f = pF[k] + DT * (KAP * lapF - muFp);
+      wB[k] = (b > 0 && isFinite(b)) ? b : 0;
+      wF[k] = (f > 0 && isFinite(f)) ? f : 0;
+    }
+  }
+  pB.set(wB); pF.set(wF);
+  if (stepCount % 10 === 0) {
+    const amp = 0.02;
+    for (let k = 0; k < N * N; k++) pB[k] *= 1 + amp * (rnd() - 0.5);
+  }
+  renorm(pB, NB);
+  renorm(pF, fill * (2 * eta / 3) * NB);
+  stepCount++;
+}
+
+// tap injection: local gaussian bump on both species, then grow NB target
+function inject(gx, gy) {
+  if (NB < NB_MAX) NB = Math.min(NB_MAX, NB * 1.12);
+  const sig = 4 / H; // 4 code units in cells
+  const amp = Math.sqrt(derived().n0 || 1) + 1;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    let dx = i - gx, dy = j - gy;
+    if (dx > N / 2) dx -= N; if (dx < -N / 2) dx += N;
+    if (dy > N / 2) dy -= N; if (dy < -N / 2) dy += N;
+    const r2 = (dx * dx + dy * dy) / (sig * sig);
+    if (r2 < 9) {
+      const bump = amp * Math.exp(-r2);
+      const k = j * N + i;
+      pB[k] += bump; pF[k] += bump * Math.sqrt(2 * eta / 3);
+    }
+  }
+}
+
+// ---- diagnostics (every 15 frames)
+// vapor region = cells with essentially no bosons (position-independent,
+// so off-center droplets mid-coarsening don't pollute the metric)
+const diag = { mode: '—', maxB: 0, plateau: 0, coreRatio: 0, vaporF: 0 };
+function measure() {
+  let maxB = 0;
+  for (let k = 0; k < N * N; k++) if (nB[k] > maxB) maxB = nB[k];
+  const plateau = [], ratios = [];
+  let vaporF = 0, vaporCt = 0;
+  for (let k = 0; k < N * N; k++) {
+    if (nB[k] > 0.5 * maxB) { plateau.push(nB[k]); ratios.push(nF[k] / Math.max(nB[k], 1e-9)); }
+    if (nB[k] < 0.02 * maxB) { vaporF += nF[k]; vaporCt++; }
+  }
+  plateau.sort((a, b) => a - b); ratios.sort((a, b) => a - b);
+  diag.maxB = maxB;
+  diag.plateau = plateau.length ? plateau[plateau.length >> 1] : 0;
+  diag.coreRatio = ratios.length ? ratios[ratios.length >> 1] : 0;
+  diag.vaporF = vaporCt ? vaporF / vaporCt : 0;
+  const uniformB = NB / (L * L);
+  const d = derived();
+  if (trapOn) diag.mode = 'TRAPPED MIXTURE — the container does the work';
+  else if (maxB < 3 * uniformB) diag.mode = 'UNBOUND GAS — attraction loses to pressure';
+  else if (diag.vaporF > 0.05 * d.ratio * diag.plateau) diag.mode = 'DROP + FERMION VAPOR — coexistence';
+  else diag.mode = 'SELF-BOUND DROP — no container';
+}
+
+// ---- rendering
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const off = document.createElement('canvas'); off.width = N; off.height = N;
+const octx = off.getContext('2d');
+const img = octx.createImageData(N, N);
+let W = 0, Hpx = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.width = Math.floor(innerWidth * DPR);
+  Hpx = cv.height = Math.floor(innerHeight * DPR);
+}
+addEventListener('resize', resize); resize();
+
+function render() {
+  const d = derived();
+  const ref = Math.max(2, 0.55 * d.n0);
+  const data = img.data;
+  for (let k = 0; k < N * N; k++) {
+    const tB = 1 - Math.exp(-nB[k] / ref);
+    const tF = 1 - Math.exp(-nF[k] / (0.6 * ref));
+    let r = 255 * (0.22 * tB + 0.95 * tF);
+    let g = 255 * (0.72 * tB + 0.60 * tF);
+    let b = 255 * (1.00 * tB + 0.22 * tF);
+    const p = k * 4;
+    data[p] = r > 255 ? 255 : r;
+    data[p + 1] = g > 255 ? 255 : g;
+    data[p + 2] = b > 255 ? 255 : b;
+    data[p + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, Hpx);
+  ctx.imageSmoothingEnabled = true;
+  const s = Math.max(W, Hpx);
+  ctx.drawImage(off, (W - s) / 2, (Hpx - s) / 2, s, s);
+  // trap ring
+  if (trapOn) {
+    ctx.strokeStyle = 'rgba(255,180,100,.25)';
+    ctx.lineWidth = 1 * DPR;
+    ctx.setLineDash([4 * DPR, 6 * DPR]);
+    ctx.beginPath();
+    ctx.arc(W / 2, Hpx / 2, 18 / L * s, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// ---- UI
+const $ = id => document.getElementById(id);
+const r1 = $('r1'), r2 = $('r2'), r3 = $('r3'), r4 = $('r4'), r5 = $('r5');
+const gbar = $('gbar'), gfill = $('gfill'), ghandle = $('ghandle'), gtick = $('gtick'), gticklbl = $('gticklbl');
+const trapBtn = $('trapBtn'), resetBtn = $('resetBtn');
+const ETA_MIN = 0.05, ETA_MAX = 0.95;
+
+function setSlider() {
+  const t = (eta - ETA_MIN) / (ETA_MAX - ETA_MIN);
+  gfill.style.width = (t * 100) + '%';
+  ghandle.style.left = (t * 100) + '%';
+  const tu = (ETA_UNI - ETA_MIN) / (ETA_MAX - ETA_MIN);
+  gtick.style.left = (tu * 100) + '%';
+  gticklbl.style.left = (tu * 100) + '%';
+}
+setSlider();
+
+let sliderDrag = false;
+function sliderFromEvent(ev) {
+  const rect = gbar.getBoundingClientRect();
+  const t = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+  eta = ETA_MIN + t * (ETA_MAX - ETA_MIN);
+  setSlider();
+}
+gbar.addEventListener('pointerdown', ev => { sliderDrag = true; gbar.setPointerCapture(ev.pointerId); sliderFromEvent(ev); });
+gbar.addEventListener('pointermove', ev => { if (sliderDrag) sliderFromEvent(ev); });
+gbar.addEventListener('pointerup', () => { sliderDrag = false; });
+
+trapBtn.addEventListener('click', () => {
+  trapOn = !trapOn;
+  trapBtn.textContent = 'trap: ' + (trapOn ? 'on' : 'off');
+  trapBtn.classList.toggle('on', trapOn);
+});
+resetBtn.addEventListener('click', () => { trapOn = false; trapBtn.textContent = 'trap: off'; trapBtn.classList.remove('on'); seedHaze(); });
+
+// canvas: tap = inject, horizontal drag = fermion fill
+let cDown = null, cMoved = false;
+cv.addEventListener('pointerdown', ev => {
+  cDown = { x: ev.clientX, y: ev.clientY, fill0: fill };
+  cMoved = false;
+  cv.setPointerCapture(ev.pointerId);
+});
+cv.addEventListener('pointermove', ev => {
+  if (!cDown) return;
+  const dx = ev.clientX - cDown.x;
+  if (Math.abs(dx) > 8) cMoved = true;
+  if (cMoved) {
+    fill = Math.min(3, Math.max(0.3, cDown.fill0 + dx / innerWidth * 3.0));
+  }
+});
+cv.addEventListener('pointerup', ev => {
+  if (cDown && !cMoved) {
+    // map screen -> sim cell (canvas is a centered square of side s)
+    const s = Math.max(W, Hpx);
+    const gx = ((ev.clientX * DPR - (W - s) / 2) / s) * N;
+    const gy = ((ev.clientY * DPR - (Hpx - s) / 2) / s) * N;
+    if (gx >= 0 && gx < N && gy >= 0 && gy < N) inject(gx, gy);
+  }
+  cDown = null;
+});
+
+// ---- stats
+function fmt(x, d) { return (+x).toFixed(d); }
+let frame = 0;
+function updateStats() {
+  const d = derived();
+  r1.textContent = diag.mode;
+  r2.innerHTML = 'attraction &eta; = <span class="val">-' + fmt(eta, 3) + '</span> &middot; unitarity -0.615';
+  r3.innerHTML = 'peak n<sub>B</sub> = <span class="val">' + fmt(diag.maxB, 2) + '</span> &middot; predicted n&#8320; = ' + fmt(d.n0, 2);
+  r4.innerHTML = 'core n<sub>F</sub>/n<sub>B</sub> = <span class="val2">' + fmt(diag.coreRatio, 2) + '</span> &middot; commensurate 2|&eta;|/3 = ' + fmt(d.ratio, 2);
+  r5.innerHTML = 'fermion fill = <span class="val2">' + fmt(fill, 2) + '&times;</span> &middot; N<sub>B</sub> = ' + Math.round(NB);
+}
+
+// test/debug handle (read-only; used by this session's Playwright checks)
+window.DEW = {
+  diag, derived, nB, nF,
+  get eta() { return eta; }, get fill() { return fill; },
+  get NB() { return NB; }, get trapOn() { return trapOn; }
+};
+
+// ---- main loop
+function loop() {
+  for (let s = 0; s < STEPS_PER_FRAME; s++) step();
+  if (frame % 15 === 0) { measure(); updateStats(); }
+  render();
+  frame++;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
